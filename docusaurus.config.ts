@@ -41,6 +41,7 @@ const config: Config = {
           // Remove this to remove the "edit this page" links.
           editUrl:
             'https://github.com/codeboltai/agentswarmprotocol/tree/main/',
+          routeBasePath: 'docs',
         },
         blog: {
           showReadingTime: true,
@@ -75,8 +76,23 @@ const config: Config = {
           sidebarId: 'userGuideSidebar',
           position: 'left',
           label: 'User Guide',
+          to: '/docs/user-guide',
         },
-        {to: '/blog', label: 'Blog', position: 'left'},
+        {
+          type: 'docSidebar',
+          sidebarId: 'apiSidebar',
+          position: 'left',
+          label: 'API',
+          to: '/docs/api',
+        },
+        {
+          type: 'docSidebar',
+          sidebarId: 'sdkSidebar',
+          position: 'left',
+          label: 'SDK',
+          to: '/docs/sdk',
+        },
+        // {to: '/blog', label: 'Blog', position: 'left'},
         {
           href: 'https://github.com/codeboltai/agentswarmprotocol',
           label: 'GitHub',
@@ -91,8 +107,16 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'Tutorial',
-              to: '/docs/intro',
+              label: 'User Guide',
+              to: '/docs/user-guide',
+            },
+            {
+              label: 'API',
+              to: '/docs/api',
+            },
+            {
+              label: 'SDK',
+              to: '/docs/sdk',
             },
           ],
         },

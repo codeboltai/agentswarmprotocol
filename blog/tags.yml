@@ -17,3 +17,7 @@ hola:
   label: Hola
   permalink: /hola
   description: Hola tag description
+
+welcome:
+  label: Welcome
+  description: Announcements and welcome messages about Agent Swarm Protocol
