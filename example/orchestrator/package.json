@@ -1,0 +1,19 @@
+{
+  "name": "asp-orchestrator-example",
+  "version": "1.0.0",
+  "description": "Example implementation of the Agent Swarm Protocol (ASP) Orchestrator",
+  "main": "example-usage.js",
+  "scripts": {
+    "start": "node example-usage.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "agent",
+    "swarm",
+    "protocol",
+    "orchestrator",
+    "ASP"
+  ],
+  "author": "",
+  "license": "MIT"
+} 

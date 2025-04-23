@@ -2,46 +2,50 @@
 sidebar_position: 1
 ---
 
-# Tutorial Intro
+# Introduction
 
-Let's discover **Docusaurus in less than 5 minutes**.
+The **Agent Swarm Protocol (ASP)** is a revolutionary approach to orchestrating multiple AI agents working together as a coordinated swarm. Unlike other protocols, ASP provides a robust framework for enabling powerful multi-agent collaboration through a centralized orchestrator.
+
+## What is Agent Swarm Protocol?
+
+Agent Swarm Protocol is designed to facilitate the seamless coordination of multiple specialized agents, allowing them to work together to solve complex problems. By leveraging a central orchestrator, ASP provides core services, tools, and utilities that enable agents to focus on their specialized tasks while the orchestrator handles communication, state management, and resource allocation.
+
+## How ASP Differs from Other Protocols
+
+### ASP vs. Machine Communication Protocol (MCP)
+
+**MCP** primarily focuses on providing tools to LLMs, where the LLM calls the tools and the tools execute and send back the result. This creates a direct one-to-one relationship between the LLM and its tools.
+
+**ASP**, on the other hand, enables many-to-many relationships between agents and services through its orchestrator, facilitating complex workflows involving multiple specialized agents working in concert.
+
+### ASP vs. Agent-to-Agent (A2A)
+
+**A2A** focuses on chaining opaque blackbox agents, where one agent can call another agent. The challenge with A2A is that each agent must be capable of handling numerous functionalities independently, such as LLM communication.
+
+**ASP** solves this by centralizing common services in the orchestrator, allowing agents to be more specialized and efficient while still being able to collaborate through standardized communication channels.
+
+## Key Components of ASP
+
+1. **Orchestrator**: The central coordinator that provides:
+   - Core services (LLM calling, logging, state management)
+   - Tool integration (including MCP support)
+   - Agent discovery and management
+
+2. **Agents**: Specialized modules with clearly defined capabilities
+   - Each agent has a manifest file defining its capabilities
+   - Agents connect to the orchestrator via WebSocket for bidirectional communication
+   - Agents can be composed hierarchically (parent-child relationships)
+
+3. **Marketplace**: A registry of available agents and their capabilities
+
+## Benefits of Agent Swarm Protocol
+
+- **Specialization**: Agents can focus on specific tasks without needing to implement common functionalities
+- **Scalability**: Easily add new agents to extend system capabilities
+- **Bidirectional Communication**: Asynchonous communication between orchestrator and agents
+- **Hierarchical Composition**: Support for parent-child agent relationships
+- **Standardization**: Consistent interface between agents and the orchestrator
 
 ## Getting Started
 
-Get started by **creating a new site**.
-
-Or **try Docusaurus immediately** with **[docusaurus.new](https://docusaurus.new)**.
-
-### What you'll need
-
-- [Node.js](https://nodejs.org/en/download/) version 18.0 or above:
-  - When installing Node.js, you are recommended to check all checkboxes related to dependencies.
-
-## Generate a new site
-
-Generate a new Docusaurus site using the **classic template**.
-
-The classic template will automatically be added to your project after you run the command:
-
-```bash
-npm init docusaurus@latest my-website classic
-```
-
-You can type this command into Command Prompt, Powershell, Terminal, or any other integrated terminal of your code editor.
-
-The command also installs all necessary dependencies you need to run Docusaurus.
-
-## Start your site
-
-Run the development server:
-
-```bash
-cd my-website
-npm run start
-```
-
-The `cd` command changes the directory you're working with. In order to work with your newly created Docusaurus site, you'll need to navigate the terminal there.
-
-The `npm run start` command builds your website locally and serves it through a development server, ready for you to view at http://localhost:3000/.
-
-Open `docs/intro.md` (this page) and edit some lines: the site **reloads automatically** and displays your changes.
+To begin working with Agent Swarm Protocol, proceed to the [Installation](./installation) guide to set up your environment, followed by the [Quick Start](./quick-start) tutorial to create your first agent swarm.
