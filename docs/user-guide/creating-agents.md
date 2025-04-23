@@ -403,5 +403,5 @@ testAgent().catch(console.error);
 Now that you understand how to create agents, you can:
 
 1. Learn about [agent communication patterns](./agent-communication)
-2. Explore the [orchestrator services](./orchestrator-services)
+2. Explore the [orchestrator services](../api/orchestrator-services)
 3. Dive into [agent marketplace](./agent-marketplace) publishing 

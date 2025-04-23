@@ -178,4 +178,4 @@ node example/sdk/examples/run-research-agent.js
 - **Agent not receiving tasks**: Check that the agent is registered with the correct task types
 - **Task timeout**: The orchestrator has a default timeout for tasks; increase it if needed
 
-For more detailed information, check out the [SDK documentation](/docs/sdk) and [examples](/docs/examples/conversation-agent). 
+For more detailed information, check out the [SDK documentation](/docs/sdk) and [examples](./examples/conversation-agent). 

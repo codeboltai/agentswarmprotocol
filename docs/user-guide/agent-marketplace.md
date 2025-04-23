@@ -419,5 +419,5 @@ The marketplace encourages community contributions:
 Now that you understand the agent marketplace, you can:
 
 1. Explore [advanced workflows](./advanced-workflows)
-2. Learn about [orchestrator configuration](./orchestrator-configuration)
+2. Learn about [orchestrator configuration](../api/orchestrator-configuration)
 3. Dive into [security considerations](./security-considerations) 

@@ -104,4 +104,4 @@ Now that you have installed the Agent Swarm Protocol, you're ready to:
 
 1. [Create your first agent](./creating-agents)
 2. Follow the [Quick Start guide](./quick-start) to see ASP in action
-3. Explore the [Orchestrator API](./orchestrator-api) for advanced configuration options 
+3. Explore the [Orchestrator API](../api/orchestrator-api) for advanced configuration options 

@@ -40,9 +40,9 @@ Agents communicate through structured messages, either directly or via the orche
 
 To start building with Agent Swarm Protocol, check out:
 
-- [Quick Start Guide](/docs/getting-started) - Set up your first agent system
-- [Agent Communication](/docs/agent-communication) - Learn how agents interact
-- [SDK Documentation](/docs/sdk) - Explore the client library
+- [Quick Start Guide](./getting-started) - Set up your first agent system
+- [Agent Communication](./agent-communication) - Learn how agents interact
+- [SDK Documentation](../sdk/overview) - Explore the client library
 
 ## Use Cases
 

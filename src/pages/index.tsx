@@ -24,7 +24,7 @@ function HomepageHeader() {
             <div className={styles.heroButtons}>
               <Link
                 className="button button--primary button--lg"
-                to="/docs/intro">
+                to="/docs/user-guide/introduction">
                 Get Started →
               </Link>
             </div>
@@ -92,14 +92,14 @@ function HomepageContent() {
                 <div className={styles.showcaseCard}>
                   <h3>Conversation Agent</h3>
                   <p>Natural language conversation agent with contextual memory and preference adaptation.</p>
-                  <Link to="/docs/examples/conversation-agent">
+                  <Link to="/docs/user-guide/examples/conversation-agent">
                     Learn More →
                   </Link>
                 </div>
                 <div className={styles.showcaseCard}>
                   <h3>Research Agent</h3>
                   <p>Information gathering, analysis, and report generation for research tasks.</p>
-                  <Link to="/docs/examples/research-agent">
+                  <Link to="/docs/user-guide/examples/research-agent">
                     Learn More →
                   </Link>
                 </div>

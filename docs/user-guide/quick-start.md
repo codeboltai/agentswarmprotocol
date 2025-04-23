@@ -238,5 +238,5 @@ Now that you've created your first agent swarm, you can:
 1. Add more agents with different capabilities
 2. Create more complex workflows
 3. Explore [advanced agent features](./creating-agents)
-4. Learn about [orchestrator services](./orchestrator-services)
+4. Learn about [orchestrator services](../api/orchestrator-services)
 5. Understand [agent communication patterns](./agent-communication) 

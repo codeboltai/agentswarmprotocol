@@ -754,4 +754,4 @@ Now that you understand agent communication, you can:
 
 1. Explore [advanced workflows](./advanced-workflows)
 2. Learn about the [agent marketplace](./agent-marketplace)
-3. Dive into [orchestrator configuration](./orchestrator-configuration) 
+3. Dive into [orchestrator configuration](../api/orchestrator-configuration) 

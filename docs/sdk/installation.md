@@ -62,4 +62,4 @@ testConnection();
 
 ## Next Steps
 
-Now that you have installed the SDK, check out the [SDK Overview](./sdk) to learn about the available features and how to use them in your application. 
+Now that you have installed the SDK, check out the [SDK Overview](./overview) to learn about the available features and how to use them in your application. 

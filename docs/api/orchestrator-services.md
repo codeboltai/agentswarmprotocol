@@ -515,6 +515,10 @@ const orchestrator = new Orchestrator({
 
 Now that you understand the orchestrator services, you can:
 
-1. Learn about [agent communication patterns](./agent-communication)
-2. Explore [agent marketplace](./agent-marketplace) publishing
-3. Dive into [advanced workflows](./advanced-workflows) 
+1. Learn about [agent communication patterns](./../user-guide/agent-communication)
+2. Explore [agent marketplace](./../user-guide/agent-marketplace) publishing
+3. Dive into [advanced workflows](./../user-guide/advanced-workflows)
+
+## Related Topics
+
+1. Learn about agent communication patterns 
