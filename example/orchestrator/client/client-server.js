@@ -6,12 +6,26 @@ const { v4: uuidv4 } = require('uuid');
  * ClientServer - Handles WebSocket communication with clients
  */
 class ClientServer {
-  constructor(orchestrator, config = {}) {
-    this.orchestrator = orchestrator;
+  constructor(eventBus, config = {}) {
+    this.eventBus = eventBus;
     this.clientPort = config.clientPort || process.env.CLIENT_PORT || 3001;
-    this.agents = orchestrator.agents;
-    this.tasks = orchestrator.tasks;
     this.clientConnections = new Map(); // Store client connections
+    this.pendingResponses = {}; // Track pending responses
+    
+    // Set up event listeners for client communication
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    // Listen for task results from agents and forward to clients
+    this.eventBus.on('task.result', (clientId, taskId, content) => {
+      this.forwardTaskResultToClient(clientId, taskId, content);
+    });
+    
+    // Listen for task errors from agents and forward to clients
+    this.eventBus.on('task.error', (clientId, message) => {
+      this.forwardTaskErrorToClient(clientId, message);
+    });
   }
 
   async start() {
@@ -89,177 +103,114 @@ class ClientServer {
       });
     }
     
-    switch (message.type) {
-      case 'task.create':
-        await this.handleClientTaskCreation(message, ws);
-        break;
-        
-      case 'task.status':
-        await this.handleClientTaskStatus(message, ws);
-        break;
-        
-      case 'agent.list':
-        await this.handleClientAgentList(message, ws);
-        break;
-        
-      default:
-        this.sendToClient(ws, {
-          type: 'error',
-          content: {
-            error: 'Unsupported message type',
-            details: `Message type '${message.type}' is not supported`
-          }
-        });
+    try {
+      switch (message.type) {
+        case 'task.create':
+          await this.handleClientTaskCreation(message, ws);
+          break;
+          
+        case 'task.status':
+          await this.handleClientTaskStatus(message, ws);
+          break;
+          
+        case 'agent.list':
+          await this.handleClientAgentList(message, ws);
+          break;
+          
+        default:
+          this.sendToClient(ws, {
+            type: 'error',
+            content: {
+              error: 'Unsupported message type',
+              details: `Message type '${message.type}' is not supported`
+            }
+          });
+      }
+    } catch (error) {
+      console.error('Error handling client message:', error);
+      this.sendToClient(ws, {
+        type: 'error',
+        content: {
+          error: 'Error processing message',
+          details: error.message
+        }
+      });
     }
   }
   
   // Handle task creation request from client
   async handleClientTaskCreation(message, ws) {
-    const { agentName, taskData } = message.content;
-    
-    if (!agentName || !taskData) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        content: {
-          error: 'Invalid task creation request',
-          details: 'Both agentName and taskData are required'
-        }
-      });
-    }
-    
-    // Find the agent by name
-    const agent = this.agents.getAgentByName(agentName);
-    if (!agent) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        content: {
-          error: 'Agent not found',
-          details: `No agent found with name '${agentName}'`
-        }
-      });
-    }
-    
-    try {
-      // Create a task
-      const taskId = uuidv4();
-      const taskMessage = {
-        id: taskId,
-        type: 'task.execute',
-        content: {
-          input: taskData,
-          metadata: {
-            clientId: ws.id,
-            timestamp: new Date().toISOString()
+    // Emit task creation event and wait for response
+    this.eventBus.emit('client.task.create', message, ws.id, (result) => {
+      if (result.error) {
+        this.sendToClient(ws, {
+          type: 'error',
+          id: message.id,
+          content: {
+            error: 'Error creating task',
+            details: result.error
           }
-        }
-      };
+        });
+        return;
+      }
       
-      // Register task in task registry
-      this.tasks.registerTask(taskId, {
-        agentId: agent.id,
-        clientId: ws.id,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        taskData
-      });
-      
-      // Send task to agent
-      const response = await this.orchestrator.sendAndWaitForResponse(agent.connection, taskMessage);
-      
-      // Update task status
-      this.tasks.updateTaskStatus(taskId, 'completed', response);
-      
-      // Notify client
+      // Notify client of task creation
       this.sendToClient(ws, {
-        type: 'task.result',
+        type: 'task.created',
         id: message.id,
-        content: {
-          taskId,
-          result: response.content
-        }
+        content: result
       });
-      
-    } catch (error) {
-      console.error('Error processing client task:', error);
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error processing task',
-          details: error.message
-        }
-      });
-    }
+    });
   }
   
   // Handle task status request from client
   async handleClientTaskStatus(message, ws) {
-    const { taskId } = message.content;
-    
-    if (!taskId) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Invalid task status request',
-          details: 'Task ID is required'
-        }
-      });
-    }
-    
-    try {
-      const task = this.tasks.getTask(taskId);
+    // Emit task status request event
+    this.eventBus.emit('client.task.status', message.content.taskId, (result) => {
+      if (result.error) {
+        this.sendToClient(ws, {
+          type: 'error',
+          id: message.id,
+          content: {
+            error: 'Error getting task status',
+            details: result.error
+          }
+        });
+        return;
+      }
       
       this.sendToClient(ws, {
         type: 'task.status',
         id: message.id,
-        content: {
-          taskId,
-          status: task.status,
-          result: task.result,
-          createdAt: task.createdAt,
-          completedAt: task.completedAt
-        }
+        content: result
       });
-    } catch (error) {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting task status',
-          details: error.message
-        }
-      });
-    }
+    });
   }
   
   // Handle agent list request from client
   async handleClientAgentList(message, ws) {
-    try {
-      const agents = this.agents.getAllAgents().map(agent => ({
-        id: agent.id,
-        name: agent.name,
-        status: agent.status,
-        capabilities: agent.capabilities
-      }));
+    // Emit agent list request event
+    this.eventBus.emit('client.agent.list', {}, (result) => {
+      if (result.error) {
+        this.sendToClient(ws, {
+          type: 'error',
+          id: message.id,
+          content: {
+            error: 'Error getting agent list',
+            details: result.error
+          }
+        });
+        return;
+      }
       
       this.sendToClient(ws, {
         type: 'agent.list',
         id: message.id,
         content: {
-          agents
+          agents: result
         }
       });
-    } catch (error) {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting agent list',
-          details: error.message
-        }
-      });
-    }
+    });
   }
   
   // Send message to client
@@ -320,6 +271,71 @@ class ClientServer {
       this.clientServer.close();
       console.log('Client WebSocket server closed');
     }
+  }
+
+  // Helper method to send a message and wait for a response
+  async sendAndWaitForResponse(ws, message, options = {}) {
+    const timeout = options.timeout || 30000; // Default 30 second timeout
+    
+    return new Promise((resolve, reject) => {
+      // Generate an ID if not present
+      if (!message.id) {
+        message.id = uuidv4();
+      }
+      
+      const messageId = message.id;
+      
+      // Initialize pending responses for this ID if it doesn't exist
+      if (!this.pendingResponses[messageId]) {
+        this.pendingResponses[messageId] = [];
+      }
+      
+      // Set a timeout
+      const timeoutId = setTimeout(() => {
+        // Check if we still have callbacks for this message
+        if (this.pendingResponses[messageId]) {
+          // Remove this specific callback
+          const index = this.pendingResponses[messageId].findIndex(cb => cb === responseCallback);
+          if (index !== -1) {
+            this.pendingResponses[messageId].splice(index, 1);
+          }
+          
+          // If no more callbacks, delete the entry
+          if (this.pendingResponses[messageId].length === 0) {
+            delete this.pendingResponses[messageId];
+          }
+          
+          reject(new Error(`Response timeout for message ID ${messageId}`));
+        }
+      }, timeout);
+      
+      // Define the response callback
+      const responseCallback = (response) => {
+        clearTimeout(timeoutId);
+        resolve(response);
+      };
+      
+      // Add the callback to the list
+      this.pendingResponses[messageId].push(responseCallback);
+
+      // Subscribe to response events
+      const responseHandler = (message) => {
+        if (message.requestId === messageId) {
+          responseCallback(message);
+        }
+      };
+      
+      this.eventBus.once('response.message', responseHandler);
+      
+      // Send the message
+      try {
+        ws.send(JSON.stringify(message));
+      } catch (error) {
+        clearTimeout(timeoutId);
+        this.eventBus.removeListener('response.message', responseHandler);
+        reject(error);
+      }
+    });
   }
 }
 

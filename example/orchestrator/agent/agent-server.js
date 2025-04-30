@@ -4,14 +4,14 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * AgentServer - Handles WebSocket communication with agents
+ * Responsible only for communication layer, not business logic
  */
 class AgentServer {
-  constructor(orchestrator, config = {}) {
-    this.orchestrator = orchestrator;
+  constructor({ agents }, eventBus, config = {}) {
+    this.agents = agents; // Only needed for connection tracking
+    this.eventBus = eventBus;
     this.port = config.port || process.env.PORT || 3000;
-    this.agents = orchestrator.agents;
-    this.services = orchestrator.services;
-    this.tasks = orchestrator.tasks;
+    this.pendingResponses = {}; // Track pending responses
   }
 
   async start() {
@@ -46,7 +46,8 @@ class AgentServer {
       // Handle disconnections
       ws.on('close', () => {
         console.log(`Agent connection closed: ${connectionId}`);
-        this.agents.removeAgentByConnectionId(connectionId);
+        // Emit event for disconnection, let the message handler deal with it
+        this.eventBus.emit('agent.disconnected', connectionId);
       });
       
       // Send welcome message
@@ -74,193 +75,86 @@ class AgentServer {
       return this.sendError(ws, 'Invalid message format: type is required', message.id);
     }
     
-    switch (message.type) {
-      case 'agent.register':
-        await this.handleAgentRegistration(message, ws);
-        break;
-        
-      case 'service.request':
-        await this.handleServiceRequest(message, ws);
-        break;
-        
-      case 'agent.request':
-        await this.handleAgentRequest(message, ws);
-        break;
-        
-      case 'task.result':
-        this.handleTaskResult(message);
-        this.orchestrator.handleResponseMessage(message);
-        break;
-        
-      case 'task.error':
-        // Handle task error and forward to client
-        if (message.requestId && this.tasks.hasTask(message.requestId)) {
-          const task = this.tasks.updateTaskStatus(message.requestId, 'failed', message.content);
+    try {
+      switch (message.type) {
+        case 'agent.register':
+          // Emit registration event and wait for response
+          this.eventBus.emit('agent.register', message, ws.id, (registrationResult) => {
+            if (registrationResult.error) {
+              this.sendError(ws, registrationResult.error, message.id);
+              return;
+            }
+            
+            // Store connection object with the agent
+            const agent = this.agents.getAgentById(registrationResult.agentId);
+            if (agent) {
+              agent.connection = ws;
+              this.agents.registerAgent(agent);
+            }
+            
+            // Send confirmation
+            this.send(ws, {
+              type: 'agent.registered',
+              content: registrationResult,
+              requestId: message.id
+            });
+          });
+          break;
           
-          if (task.clientId) {
-            this.orchestrator.forwardTaskErrorToClient(task.clientId, message);
-          }
-        }
-        this.orchestrator.handleResponseMessage(message);
-        break;
-        
-      default:
-        console.warn(`Unhandled message type: ${message.type}`);
-    }
-  }
-
-  handleAgentRegistration(message, ws) {
-    const { name, capabilities, manifest } = message.content;
-    
-    if (!name) {
-      return this.sendError(ws, 'Agent name is required');
-    }
-    
-    // Register the agent
-    const agent = {
-      id: uuidv4(),
-      name,
-      capabilities: capabilities || [],
-      manifest: manifest || {},
-      connection: ws,
-      connectionId: ws.id,
-      status: 'online',
-      registeredAt: new Date().toISOString()
-    };
-    
-    this.agents.registerAgent(agent);
-    
-    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
-    
-    // Send confirmation
-    this.send(ws, {
-      type: 'agent.registered',
-      content: {
-        agentId: agent.id,
-        name: agent.name,
-        message: 'Agent successfully registered'
-      },
-      requestId: message.id
-    });
-  }
-
-  async handleServiceRequest(message, ws) {
-    const { service, params } = message.content;
-    
-    if (!service) {
-      return this.sendError(ws, 'Service name is required', message.id);
-    }
-    
-    // Get the agent making the request
-    const agent = this.agents.getAgentByConnectionId(ws.id);
-    if (!agent) {
-      return this.sendError(ws, 'Agent not registered', message.id);
-    }
-    
-    // Check if the service exists
-    if (!this.services[service]) {
-      return this.sendError(ws, `Service not found: ${service}`, message.id);
-    }
-    
-    // Check if the agent is allowed to use this service
-    if (agent.manifest.requiredServices && !agent.manifest.requiredServices.includes(service)) {
-      return this.sendError(ws, `Agent is not authorized to use service: ${service}`, message.id);
-    }
-    
-    // Execute the service
-    try {
-      const result = await this.services[service](params, { agent });
-      
-      // Send the result back
-      this.send(ws, {
-        type: 'service.response',
-        content: result,
-        requestId: message.id
-      });
-    } catch (error) {
-      this.sendError(ws, `Service execution error: ${error.message}`, message.id);
-    }
-  }
-
-  // Method to handle agent-to-agent requests
-  async handleAgentRequest(message, ws) {
-    const { targetAgentName, taskData } = message.content;
-    
-    if (!targetAgentName) {
-      return this.sendError(ws, 'Target agent name is required', message.id);
-    }
-    
-    // Get the requesting agent
-    const requestingAgent = this.agents.getAgentByConnectionId(ws.id);
-    if (!requestingAgent) {
-      return this.sendError(ws, 'Requesting agent not registered', message.id);
-    }
-    
-    // Get the target agent
-    const targetAgent = this.agents.getAgentByName(targetAgentName);
-    if (!targetAgent) {
-      return this.sendError(ws, `Target agent not found: ${targetAgentName}`, message.id);
-    }
-    
-    // Check if target agent is online
-    if (targetAgent.status !== 'online') {
-      return this.sendError(ws, `Target agent is not available: ${targetAgentName} (status: ${targetAgent.status})`, message.id);
-    }
-    
-    // Create a task for the target agent
-    const taskId = uuidv4();
-    const taskMessage = {
-      id: taskId,
-      type: 'task.execute',
-      content: {
-        input: taskData,
-        metadata: {
-          requestingAgentId: requestingAgent.id,
-          requestingAgentName: requestingAgent.name,
-          timestamp: new Date().toISOString()
-        }
+        case 'service.request':
+          // Emit service request event
+          this.eventBus.emit('service.request', message, ws.id, (serviceResult) => {
+            if (serviceResult.error) {
+              this.sendError(ws, serviceResult.error, message.id);
+              return;
+            }
+            
+            // Send the result back
+            this.send(ws, {
+              type: 'service.response',
+              content: serviceResult,
+              requestId: message.id
+            });
+          });
+          break;
+          
+        case 'agent.request':
+          // Emit agent request event
+          this.eventBus.emit('agent.request.received', message, ws.id, (result) => {
+            if (result.error) {
+              this.sendError(ws, result.error, message.id);
+              return;
+            }
+            
+            // The actual communication will be handled by event listeners in the orchestrator
+            // This just returns a task ID for tracking
+            this.send(ws, {
+              type: 'agent.request.accepted',
+              content: result,
+              requestId: message.id
+            });
+          });
+          break;
+          
+        case 'task.result':
+          // Emit task result event
+          this.eventBus.emit('task.result.received', message);
+          this.eventBus.emit('response.message', message);
+          break;
+          
+        case 'task.error':
+          // Emit task error event
+          this.eventBus.emit('task.error.received', message);
+          this.eventBus.emit('response.message', message);
+          break;
+          
+        default:
+          console.warn(`Unhandled message type: ${message.type}`);
+          this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
       }
-    };
-    
-    // Register task in task registry
-    this.tasks.registerTask(taskId, {
-      agentId: targetAgent.id,
-      requestingAgentId: requestingAgent.id,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      taskData
-    });
-    
-    try {
-      // Send task to target agent
-      const response = await this.orchestrator.sendAndWaitForResponse(targetAgent.connection, taskMessage);
-      
-      // Update task status
-      this.tasks.updateTaskStatus(taskId, 'completed', response);
-      
-      // Send the result back to the requesting agent
-      this.send(ws, {
-        type: 'agent.response',
-        content: response.content,
-        requestId: message.id
-      });
     } catch (error) {
-      this.sendError(ws, `Error processing agent request: ${error.message}`, message.id);
-    }
-  }
-
-  // Extend to handle task.result messages from agents to update task status and forward to clients
-  handleTaskResult(message) {
-    const { requestId, content } = message;
-    
-    if (requestId && this.tasks.hasTask(requestId)) {
-      // Update task status
-      const task = this.tasks.updateTaskStatus(requestId, 'completed', content);
-      
-      // Forward result to client if still connected
-      if (task.clientId) {
-        this.orchestrator.forwardTaskResultToClient(task.clientId, requestId, content);
-      }
+      console.error('Error handling message:', error);
+      this.sendError(ws, error.message, message.id);
     }
   }
 
@@ -299,6 +193,71 @@ class AgentServer {
     } catch (error) {
       console.error('Error sending error message:', error);
     }
+  }
+
+  // Helper method to send a message and wait for a response
+  async sendAndWaitForResponse(ws, message, options = {}) {
+    const timeout = options.timeout || 30000; // Default 30 second timeout
+    
+    return new Promise((resolve, reject) => {
+      // Generate an ID if not present
+      if (!message.id) {
+        message.id = uuidv4();
+      }
+      
+      const messageId = message.id;
+      
+      // Initialize pending responses for this ID if it doesn't exist
+      if (!this.pendingResponses[messageId]) {
+        this.pendingResponses[messageId] = [];
+      }
+      
+      // Set a timeout
+      const timeoutId = setTimeout(() => {
+        // Check if we still have callbacks for this message
+        if (this.pendingResponses[messageId]) {
+          // Remove this specific callback
+          const index = this.pendingResponses[messageId].findIndex(cb => cb === responseCallback);
+          if (index !== -1) {
+            this.pendingResponses[messageId].splice(index, 1);
+          }
+          
+          // If no more callbacks, delete the entry
+          if (this.pendingResponses[messageId].length === 0) {
+            delete this.pendingResponses[messageId];
+          }
+          
+          reject(new Error(`Response timeout for message ID ${messageId}`));
+        }
+      }, timeout);
+      
+      // Define the response callback
+      const responseCallback = (response) => {
+        clearTimeout(timeoutId);
+        resolve(response);
+      };
+      
+      // Add the callback to the list
+      this.pendingResponses[messageId].push(responseCallback);
+
+      // Subscribe to response events
+      const responseHandler = (message) => {
+        if (message.requestId === messageId) {
+          responseCallback(message);
+        }
+      };
+      
+      this.eventBus.once('response.message', responseHandler);
+      
+      // Send the message
+      try {
+        ws.send(JSON.stringify(message));
+      } catch (error) {
+        clearTimeout(timeoutId);
+        this.eventBus.removeListener('response.message', responseHandler);
+        reject(error);
+      }
+    });
   }
 
   stop() {
