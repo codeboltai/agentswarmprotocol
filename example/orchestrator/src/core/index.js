@@ -116,6 +116,41 @@ class Orchestrator {
     // Listen for task created events
     this.eventBus.on('task.created', (taskId, agentId, clientId, taskData) => {
       console.log(`Task ${taskId} created for agent ${agentId} by client ${clientId}`);
+      
+      // Get the agent connection
+      const agent = this.agents.getAgentById(agentId);
+      if (agent && agent.connection) {
+        // Create a task message to send to the agent
+        const taskMessage = {
+          id: taskId,
+          type: 'task.execute',
+          content: {
+            ...taskData,
+            taskType: taskData.taskType,
+            input: taskData.input || taskData,
+            metadata: {
+              clientId: clientId,
+              timestamp: new Date().toISOString()
+            }
+          }
+        };
+        
+        // Send the task to the agent
+        this.sendAndWaitForResponse(agent.connection, taskMessage)
+          .then(response => {
+            // Task completed by agent
+            this.tasks.updateTaskStatus(taskId, 'completed', response);
+            this.eventBus.emit('response.message', response);
+          })
+          .catch(error => {
+            // Task failed
+            console.error(`Error sending task to agent: ${error.message}`);
+            this.tasks.updateTaskStatus(taskId, 'failed', { error: error.message });
+          });
+      } else {
+        console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent not connected`);
+        this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent not connected' });
+      }
     });
     
     // Listen for agent-to-agent request events

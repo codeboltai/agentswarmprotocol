@@ -34,17 +34,6 @@ class MessageHandler {
     
     // Create a task
     const taskId = uuidv4();
-    const taskMessage = {
-      id: taskId,
-      type: 'task.execute',
-      content: {
-        input: taskData,
-        metadata: {
-          clientId: clientId,
-          timestamp: new Date().toISOString()
-        }
-      }
-    };
     
     // Register task in task registry
     this.tasks.registerTask(taskId, {

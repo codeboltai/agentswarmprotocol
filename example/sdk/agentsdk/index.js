@@ -222,19 +222,22 @@ class SwarmAgentSDK extends EventEmitter {
     }
     
     const taskId = message.id;
-    const taskType = message.content && message.content.taskType;
-    
-    console.log(`[SDK] Task ID: ${taskId}, Type: ${taskType || 'unknown'}`);
     
     try {
       // Extract task content
       const taskData = message.content || {};
       
+      // Get taskType with fallback options
+      // First try direct taskType field, then try from input if available
+      const taskType = taskData.taskType || (taskData.input && taskData.input.taskType);
+      
+      console.log(`[SDK] Task ID: ${taskId}, Type: ${taskType || 'unknown'}, Raw taskData:`, JSON.stringify(taskData));
+      
       // Get metadata
       const metadata = {
         taskId,
         timestamp: new Date().toISOString(),
-        clientId: message.clientId || 'unknown'
+        clientId: taskData.metadata ? taskData.metadata.clientId : 'unknown'
       };
       
       this.emit('task', { taskId, taskData, metadata });

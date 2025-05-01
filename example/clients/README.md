@@ -17,8 +17,7 @@ clients/
 │   ├── connection.js      # Connection to orchestrator
 │   ├── display.js         # Display formatting
 │   └── helpers.js         # Common helper functions
-├── terminal-client.js     # Original client (monolithic)
-└── terminal-client-refactored.js  # New modular client
+└── terminal-client.js     # Main terminal client (modular implementation)
 ```
 
 ## Components

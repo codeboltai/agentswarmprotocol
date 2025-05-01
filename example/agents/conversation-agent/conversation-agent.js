@@ -53,7 +53,29 @@ class ConversationAgent extends SwarmAgentSDK {
     this.registerTaskHandler('chat', this.handleChatTask.bind(this));
     
     // Register a default handler for unrecognized task types
-    this.registerDefaultTaskHandler(this.handleDefaultTask.bind(this));
+    this.registerDefaultTaskHandler(this.handleDefaultOrConvertTask.bind(this));
+  }
+
+  /**
+   * Handle default tasks or try to convert to supported format
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleDefaultOrConvertTask(task, metadata) {
+    this.logger.warn(`Trying to determine task type from payload: ${JSON.stringify(task)}`);
+    
+    // Check if this is a conversation message task but the type is missing or in a different field
+    if (task.taskType === 'conversation:message' || 
+        (task.input && task.input.taskType === 'conversation:message') ||
+        (task.message && task.conversationId)) {
+      
+      this.logger.info('Recognized conversation:message pattern, handling as conversation message');
+      return this.handleConversationMessage(task, metadata);
+    }
+    
+    // Otherwise fall back to the default handler
+    return this.handleDefaultTask(task, metadata);
   }
 
   /**
@@ -66,9 +88,11 @@ class ConversationAgent extends SwarmAgentSDK {
     this.logger.warn(`Received unknown task type: ${task.taskType || 'undefined'}`);
     this.logger.warn(`Task debug info: ${JSON.stringify({
       taskType: task.taskType,
+      input: task.input ? typeof task.input : 'undefined',
       conversationId: task.conversationId,
       hasMessage: !!task.message,
-      metadata: metadata
+      metadata: metadata,
+      fullTask: JSON.stringify(task)
     })}`);
     
     return {
