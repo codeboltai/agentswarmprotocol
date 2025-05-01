@@ -1,96 +1,69 @@
-# Agent Swarm Protocol Clients
+# Terminal Client for Agent Swarm Protocol
 
-This directory contains client applications for interacting with the Agent Swarm Protocol orchestrator.
+A command-line interface to interact with the ASP Orchestrator using the SwarmClientSDK.
 
-## Terminal Client
+## Directory Structure
 
-The Terminal Client provides a command-line interface for interacting with the orchestrator:
+The terminal client is organized into the following modules:
 
-- List available agents
-- Send tasks to agents
-- Check task status
-- Execute workflows
-
-### Installation
-
-```bash
-# From the clients directory
-npm install
-npm link  # Installs the client globally as 'asp-cli'
-
-# Or from the parent directory
-npm run client:install
+```
+clients/
+├── handlers/              # Command handlers
+│   ├── chat-handler.js    # Handles chat functionality
+│   └── task-handler.js    # Handles task-related functionality
+├── models/               
+│   └── state.js           # Client state model
+├── utils/                
+│   ├── connection.js      # Connection to orchestrator
+│   ├── display.js         # Display formatting
+│   └── helpers.js         # Common helper functions
+├── terminal-client.js     # Original client (monolithic)
+└── terminal-client-refactored.js  # New modular client
 ```
 
-### Usage
+## Components
 
-You can run the client in two ways:
+### Models
+
+- **state.js**: Manages the client's global application state.
+
+### Utils
+
+- **helpers.js**: Contains common helper functions like prompting users and displaying help.
+- **display.js**: Contains functions for formatting and displaying data.
+- **connection.js**: Handles connecting to the orchestrator and setting up event handlers.
+
+### Handlers
+
+- **chat-handler.js**: Handles functionality related to chat sessions with agents.
+- **task-handler.js**: Handles sending tasks to agents and checking task status.
+
+## Usage
+
+Run the terminal client:
 
 ```bash
-# Using the global command (if linked)
-asp-cli
+# From the example directory
+node clients/terminal-client-refactored.js
 
-# Or directly with Node
-node terminal-client.js
-
-# Or from the parent directory using npm
-npm run client:terminal
+# Or directly
+./clients/terminal-client-refactored.js
 ```
 
-### Configuration
+Available commands:
 
-The client connects to the Orchestrator's client WebSocket port. By default, it uses:
-
-- `ws://localhost:3001`
-
-You can configure the connection URL by setting the `ORCHESTRATOR_CLIENT_URL` environment variable
-in the `.env` file in the parent directory.
-
-### Available Commands
-
-Once the client is running, the following commands are available:
-
-- `agents` - List all available agents
+- `agents` - List available agents
 - `task` - Send a task to an agent
-- `status` - Check the status of a task
-- `workflow` - Execute a workflow
-- `help` - Show the help menu
-- `exit` or `quit` - Exit the client
+- `chat` - Start a chat session with an agent
+- `status` - Check task status
+- `mcp` - List available MCP servers
+- `help` - Show help message
+- `exit` - Exit the client
 
-### Example: Sending a Task to the Conversation Agent
+## Advantages of Modular Design
 
-```
-> agents
-# View the available agents
-
-> task
-# Select the conversation-agent
-Enter agent name: conversation-agent
-
-# Enter the task data
-Task data: {"message": "Hello, how are you?", "conversationId": "test-123"}
-
-# The agent will process the task and send back a response
-```
-
-### Example: Executing a Workflow
-
-```
-> workflow
-Enter workflow name: example-workflow
-
-# Enter any additional options
-Options: {"initialMessage": "Start the process", "parameters": {"key": "value"}}
-
-# The workflow will execute and return its results
-```
-
-## Creating New Clients
-
-You can use the Terminal Client as a template for creating new clients. The key components are:
-
-1. Establish a WebSocket connection to the orchestrator's client port
-2. Send messages with the correct format for listing agents, creating tasks, etc.
-3. Process the responses from the orchestrator
-
-See the [Agent Swarm Protocol documentation](https://github.com/your-repo/agentswarmprotocol) for more details on the message formats and API. 
+1. **Maintainability**: Each module has a single responsibility, making it easier to understand and maintain.
+2. **Reusability**: Functions can be reused across different parts of the application.
+3. **Testability**: Isolated components are easier to test independently.
+4. **Scalability**: New features can be added by creating new modules without modifying existing code.
+5. **Readability**: Smaller files are easier to navigate and understand. 

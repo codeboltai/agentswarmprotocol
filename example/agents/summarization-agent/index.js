@@ -1,44 +1,54 @@
 /**
- * Summarization Agent for ASP
+ * Summarization Agent for Agent Swarm Protocol
  * Summarizes content and extracts key information
  */
 
 // Load environment variables
 require('dotenv').config({ path: '../../.env' });
 
-// Import the Swarm Agent SDK
-const { createSummarizationAgent } = require('../../sdk');
+// Import the Summarization Agent
+const SummarizationAgent = require('./summarization-agent');
 
 // Create and start the summarization agent
 async function startSummarizationAgent() {
   try {
     console.log('Starting summarization agent...');
     
-    const agent = createSummarizationAgent({
-      // Override the name if needed
-      // name: 'custom-summarization-agent',
-      
-      // Use values from environment or defaults
-      defaultModel: process.env.DEFAULT_MODEL,
-      orchestratorUrl: process.env.ORCHESTRATOR_URL
+    // Create the summarization agent with configuration
+    const agent = new SummarizationAgent({
+      name: process.env.AGENT_NAME || 'Summarization Agent',
+      orchestratorUrl: process.env.ORCHESTRATOR_URL || 'ws://localhost:3000',
+      autoReconnect: true
     });
     
-    // Register additional event handlers if needed
-    agent.on('task', (message) => {
-      console.log(`Handling task: ${message.type}`);
+    // Register additional event handlers
+    agent.on('connected', () => {
+      console.log('Summarization agent connected to orchestrator');
+    });
+    
+    agent.on('registered', (data) => {
+      console.log(`Summarization agent registered with ID: ${agent.agentId}`);
+    });
+    
+    agent.on('task', (task) => {
+      console.log(`Received task: ${JSON.stringify(task)}`);
+    });
+    
+    agent.on('disconnected', () => {
+      console.log('Summarization agent disconnected from orchestrator');
     });
     
     agent.on('error', (error) => {
-      console.error('Agent error:', error);
+      console.error('Summarization agent error:', error.message);
     });
     
-    // Connect to the orchestrator and register
+    // Connect to the orchestrator
     await agent.connect();
-    console.log('Agent connected and registered with the orchestrator');
+    console.log('Summarization agent started successfully');
     
     return agent;
   } catch (error) {
-    console.error('Failed to start agent:', error);
+    console.error('Failed to start summarization agent:', error.message);
     throw error;
   }
 }
@@ -47,6 +57,8 @@ async function startSummarizationAgent() {
 if (require.main === module) {
   startSummarizationAgent()
     .then(agent => {
+      console.log('Summarization agent is running...');
+      
       // Handle graceful shutdown
       process.on('SIGINT', () => {
         console.log('Shutting down summarization agent...');
@@ -55,7 +67,7 @@ if (require.main === module) {
       });
     })
     .catch(error => {
-      console.error('Error starting agent:', error);
+      console.error('Error starting summarization agent:', error);
       process.exit(1);
     });
 }

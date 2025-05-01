@@ -1,0 +1,19 @@
+{
+  "name": "@agentswarmprotocol/agentsdk",
+  "version": "1.0.0",
+  "description": "SDK for building agents compatible with Agent Swarm Protocol",
+  "main": "index.js",
+  "keywords": [
+    "agent",
+    "swarm",
+    "protocol",
+    "sdk",
+    "ASP"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "publishConfig": {
+    "access": "public"
+  }
+}

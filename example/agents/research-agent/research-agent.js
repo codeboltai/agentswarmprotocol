@@ -1,4 +1,4 @@
-const { Agent } = require('../../../sdk/dist');
+const SwarmAgentSDK = require('../../sdk/agentsdk');
 
 /**
  * ResearchAgent - Specialized agent for research tasks
@@ -9,11 +9,13 @@ const { Agent } = require('../../../sdk/dist');
  * - Generating reports and insights
  * - Answering research questions
  */
-class ResearchAgent extends Agent {
-  constructor() {
-    super('research-agent');
+class ResearchAgent extends SwarmAgentSDK {
+  constructor(config = {}) {
+    // Set default name if not provided
+    config.name = config.name || 'Research Agent';
     
-    this.capabilities = [
+    // Set capabilities
+    config.capabilities = [
       'research',
       'information-gathering',
       'analysis',
@@ -21,7 +23,14 @@ class ResearchAgent extends Agent {
       'report-generation',
       'question-answering'
     ];
-
+    
+    // Set description
+    config.description = 'Agent that performs research, analysis, and reporting tasks';
+    
+    // Call parent constructor with config
+    super(config);
+    
+    // Set additional properties
     this.supportedSources = [
       'web',
       'scientific-papers',
@@ -29,6 +38,7 @@ class ResearchAgent extends Agent {
       'databases'
     ];
     
+    // Register task handlers
     this.registerTaskHandlers();
   }
 
@@ -40,17 +50,40 @@ class ResearchAgent extends Agent {
     this.registerTaskHandler('research:analyze', this.handleAnalyzeContent.bind(this));
     this.registerTaskHandler('research:summarize', this.handleSummarizeContent.bind(this));
     this.registerTaskHandler('research:report', this.handleGenerateReport.bind(this));
+    
+    // Register a default handler for unrecognized task types
+    this.registerDefaultTaskHandler(this.handleDefaultTask.bind(this));
+  }
+
+  /**
+   * Handle default tasks
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleDefaultTask(task, metadata) {
+    console.log(`[ResearchAgent] Received unknown task type: ${task.taskType || 'undefined'}`);
+    return {
+      message: `Unsupported task type: ${task.taskType || 'undefined'}`,
+      supportedTaskTypes: [
+        'research:query',
+        'research:analyze',
+        'research:summarize',
+        'research:report'
+      ]
+    };
   }
 
   /**
    * Handle a research query task
    * @param {Object} task - The research query task
+   * @param {Object} metadata - Task metadata
    * @returns {Promise<Object>} Research results
    */
-  async handleResearchQuery(task) {
-    console.log(`[ResearchAgent] Processing research query: ${task.data.query}`);
+  async handleResearchQuery(task, metadata) {
+    console.log(`[ResearchAgent] Processing research query: ${task.query}`);
     
-    const { query, sources = ['web'], maxResults = 5 } = task.data;
+    const { query, sources = ['web'], maxResults = 5 } = task;
     
     // Validate sources
     const validSources = sources.filter(source => 
@@ -79,12 +112,13 @@ class ResearchAgent extends Agent {
   /**
    * Handle content analysis task
    * @param {Object} task - The analysis task
+   * @param {Object} metadata - Task metadata
    * @returns {Promise<Object>} Analysis results
    */
-  async handleAnalyzeContent(task) {
-    console.log(`[ResearchAgent] Analyzing content: ${task.data.title || 'Untitled'}`);
+  async handleAnalyzeContent(task, metadata) {
+    console.log(`[ResearchAgent] Analyzing content: ${task.title || 'Untitled'}`);
     
-    const { content, analysisType = 'general', depth = 'standard' } = task.data;
+    const { content, analysisType = 'general', depth = 'standard' } = task;
     
     if (!content) {
       return {
@@ -107,12 +141,13 @@ class ResearchAgent extends Agent {
   /**
    * Handle content summarization task
    * @param {Object} task - The summarization task
+   * @param {Object} metadata - Task metadata
    * @returns {Promise<Object>} Summarization results
    */
-  async handleSummarizeContent(task) {
-    console.log(`[ResearchAgent] Summarizing content: ${task.data.title || 'Untitled'}`);
+  async handleSummarizeContent(task, metadata) {
+    console.log(`[ResearchAgent] Summarizing content: ${task.title || 'Untitled'}`);
     
-    const { content, maxLength = 200, format = 'text' } = task.data;
+    const { content, maxLength = 200, format = 'text' } = task;
     
     if (!content) {
       return {
@@ -136,17 +171,18 @@ class ResearchAgent extends Agent {
   /**
    * Handle report generation task
    * @param {Object} task - The report generation task
+   * @param {Object} metadata - Task metadata
    * @returns {Promise<Object>} Generated report
    */
-  async handleGenerateReport(task) {
-    console.log(`[ResearchAgent] Generating report: ${task.data.title || 'Untitled Report'}`);
+  async handleGenerateReport(task, metadata) {
+    console.log(`[ResearchAgent] Generating report: ${task.title || 'Untitled Report'}`);
     
     const { 
       title = 'Research Report', 
       findings = [],
       format = 'markdown',
       includeReferences = true
-    } = task.data;
+    } = task;
     
     if (findings.length === 0) {
       return {
@@ -199,32 +235,17 @@ class ResearchAgent extends Agent {
   mockContentAnalysis(content, analysisType, depth) {
     const wordCount = content.split(/\s+/).length;
     
-    const results = {
-      key_points: [
-        "First key point extracted from content",
-        "Second key point with important information",
-        "Third key point highlighting critical concepts"
-      ],
+    // Simple mock analysis
+    return {
       sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
-      complexity: wordCount > 200 ? 'high' : 'medium'
+      complexity: wordCount > 500 ? 'high' : wordCount > 200 ? 'medium' : 'low',
+      keyTopics: ['topic1', 'topic2', 'topic3'].map(t => ({ 
+        name: t, 
+        confidence: Math.round(Math.random() * 100) / 100 
+      })),
+      languageQuality: Math.round(Math.random() * 100) / 100,
+      readingLevel: ['elementary', 'intermediate', 'advanced'][Math.floor(Math.random() * 3)]
     };
-    
-    if (analysisType === 'technical' || depth === 'deep') {
-      results.technical_terms = [
-        { term: "Technical term 1", definition: "Definition of technical term 1" },
-        { term: "Technical term 2", definition: "Definition of technical term 2" }
-      ];
-    }
-    
-    if (depth === 'deep') {
-      results.structural_analysis = {
-        coherence: Math.round(Math.random() * 100) / 100,
-        argumentative_strength: Math.round(Math.random() * 100) / 100,
-        evidence_quality: Math.round(Math.random() * 100) / 100
-      };
-    }
-    
-    return results;
   }
 
   /**
@@ -232,12 +253,12 @@ class ResearchAgent extends Agent {
    * @private
    */
   mockSummarizeContent(content, maxLength) {
-    // Simple mock summary logic - truncate and add ellipsis
-    const words = content.split(/\s+/);
-    const summaryWordCount = Math.min(words.length, Math.floor(maxLength / 5));
-    const summary = words.slice(0, summaryWordCount).join(' ');
+    if (content.length <= maxLength) {
+      return content;
+    }
     
-    return summary.length < content.length ? `${summary}...` : summary;
+    // Simple mock summarization
+    return content.substring(0, maxLength) + '...';
   }
 
   /**
@@ -245,42 +266,62 @@ class ResearchAgent extends Agent {
    * @private
    */
   mockGenerateReport(title, findings, format, includeReferences) {
+    let report = '';
+    
     if (format === 'markdown') {
-      let report = `# ${title}\n\n`;
-      
+      report += `# ${title}\n\n`;
+      report += `*Generated on ${new Date().toISOString()}*\n\n`;
       report += `## Executive Summary\n\n`;
-      report += `This research report contains ${findings.length} key findings.\n\n`;
+      report += `This is an automatically generated research report based on ${findings.length} findings.\n\n`;
       
-      report += `## Key Findings\n\n`;
+      report += `## Findings\n\n`;
+      
       findings.forEach((finding, index) => {
-        report += `### Finding ${index + 1}: ${finding.title || 'Untitled Finding'}\n\n`;
-        report += `${finding.description || 'No description provided'}\n\n`;
+        report += `### Finding ${index + 1}: ${finding.title || 'Untitled'}\n\n`;
+        report += `${finding.description || 'No description provided.'}\n\n`;
         
-        if (finding.evidencePoints && finding.evidencePoints.length > 0) {
-          report += `#### Evidence:\n\n`;
-          finding.evidencePoints.forEach(point => {
-            report += `- ${point}\n`;
-          });
-          report += `\n`;
+        if (finding.data) {
+          report += `**Data points:**\n\n`;
+          report += `- ${Array.isArray(finding.data) ? finding.data.join('\n- ') : finding.data}\n\n`;
         }
       });
       
       if (includeReferences) {
         report += `## References\n\n`;
-        report += `1. Reference One\n`;
-        report += `2. Reference Two\n`;
-        report += `3. Reference Three\n`;
+        report += `1. Example Reference\n`;
+        report += `2. Another Reference\n`;
       }
-      
-      return report;
     } else {
-      // For other formats, return a simplified version
-      return `Report: ${title} with ${findings.length} findings`;
+      // Plain text format
+      report += `${title}\n\n`;
+      report += `Generated on ${new Date().toISOString()}\n\n`;
+      report += `EXECUTIVE SUMMARY\n\n`;
+      report += `This is an automatically generated research report based on ${findings.length} findings.\n\n`;
+      
+      report += `FINDINGS\n\n`;
+      
+      findings.forEach((finding, index) => {
+        report += `Finding ${index + 1}: ${finding.title || 'Untitled'}\n\n`;
+        report += `${finding.description || 'No description provided.'}\n\n`;
+        
+        if (finding.data) {
+          report += `Data points:\n\n`;
+          report += `${Array.isArray(finding.data) ? finding.data.join('\n') : finding.data}\n\n`;
+        }
+      });
+      
+      if (includeReferences) {
+        report += `REFERENCES\n\n`;
+        report += `1. Example Reference\n`;
+        report += `2. Another Reference\n`;
+      }
     }
+    
+    return report;
   }
 
   /**
-   * Helper to capitalize the first letter of a string
+   * Helper function to capitalize the first letter of a string
    * @private
    */
   capitalize(string) {
@@ -288,16 +329,4 @@ class ResearchAgent extends Agent {
   }
 }
 
-module.exports = ResearchAgent;
-
-// If this file is being run directly, create and start the agent
-if (require.main === module) {
-  const agent = new ResearchAgent();
-  agent.connect(process.env.ORCHESTRATOR_URL || 'ws://localhost:3000')
-    .then(() => {
-      console.log('[ResearchAgent] Connected to orchestrator');
-    })
-    .catch(error => {
-      console.error('[ResearchAgent] Failed to connect:', error);
-    });
-} 
+module.exports = ResearchAgent; 

@@ -25,34 +25,33 @@ To start the agent, run:
 
 ```bash
 # With default configuration
-node start.js
+node index.js
 
 # With environment variables
-AGENT_ID=my-conversation-agent ORCHESTRATOR_URL=ws://myorchestrator:3000 DEBUG=true node start.js
+AGENT_NAME=my-conversation-agent ORCHESTRATOR_URL=ws://myorchestrator:3000 node index.js
 ```
 
 Or use npm scripts defined in your package.json:
 
 ```json
 "scripts": {
-  "start": "node start.js",
-  "dev": "DEBUG=true node start.js"
+  "start": "node index.js",
+  "dev": "NODE_ENV=development node index.js"
 }
 ```
 
 ### Environment Variables
 
-- `AGENT_ID`: Custom identifier for the agent (default: randomly generated)
-- `ORCHESTRATOR_URL`: WebSocket URL to the ASP orchestrator (default: ws://localhost:3000)
-- `DEBUG`: Enable verbose logging (default: false)
+- `AGENT_NAME`: Custom name for the agent (default: 'Conversation Agent')
+- `ORCHESTRATOR_URL`: WebSocket URL to the Agent Swarm Protocol orchestrator (default: ws://localhost:3000)
 
 ### Task Types
 
 The Conversation Agent responds to these task types:
 
-1. `conversation.start` - Initialize a new conversation
-2. `conversation.message` - Process a message within a conversation
-3. `conversation.end` - End a conversation and get statistics
+1. `conversation:start` - Initialize a new conversation
+2. `conversation:message` - Process a message within a conversation
+3. `conversation:end` - End a conversation and get statistics
 
 ### Example API Usage
 
@@ -60,16 +59,14 @@ The Conversation Agent responds to these task types:
 
 ```javascript
 const task = {
-  taskType: 'conversation.start',
-  taskData: {
-    conversationId: 'user-123-conv-456',
-    context: {
-      userData: {
-        name: 'Alice',
-        preferences: {
-          formality: 'casual',
-          verbosity: 'concise'
-        }
+  taskType: 'conversation:start',
+  conversationId: 'user-123-conv-456',
+  context: {
+    userData: {
+      name: 'Alice',
+      preferences: {
+        formality: 'casual',
+        verbosity: 'concise'
       }
     }
   }
@@ -80,14 +77,12 @@ const task = {
 
 ```javascript
 const task = {
-  taskType: 'conversation.message',
-  taskData: {
-    conversationId: 'user-123-conv-456',
-    message: 'Tell me about yourself',
-    context: {
-      userData: {
-        // Updated user data if needed
-      }
+  taskType: 'conversation:message',
+  conversationId: 'user-123-conv-456',
+  message: 'Tell me about yourself',
+  context: {
+    userData: {
+      // Updated user data if needed
     }
   }
 };
@@ -97,16 +92,30 @@ const task = {
 
 ```javascript
 const task = {
-  taskType: 'conversation.end',
-  taskData: {
-    conversationId: 'user-123-conv-456'
-  }
+  taskType: 'conversation:end',
+  conversationId: 'user-123-conv-456'
 };
 ```
 
-### Example Client Integration
+### Programmatic Usage
 
-See `example/sdk/examples/run-conversation-agent.js` for a complete example of how to interact with this agent using the Swarm SDK client.
+You can also use the agent programmatically:
+
+```javascript
+const { startConversationAgent } = require('./index');
+
+async function main() {
+  // Start the agent
+  const agent = await startConversationAgent();
+  
+  // Use the agent...
+  
+  // When done
+  await agent.disconnect();
+}
+
+main().catch(console.error);
+```
 
 ## Development
 

@@ -1,0 +1,16 @@
+{
+  "name": "research-agent",
+  "version": "1.0.0",
+  "description": "The Research Agent is a specialized agent within the Agent Swarm Protocol ecosystem designed to perform research tasks, analyze content, summarize information, and generate reports.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^16.5.0"
+  }
+}

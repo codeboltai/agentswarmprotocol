@@ -1,0 +1,21 @@
+{
+  "name": "@agentswarmprotocol/clientsdk",
+  "version": "1.0.0",
+  "description": "Client SDK for Agent Swarm Protocol",
+  "main": "index.js",
+  "keywords": [
+    "agent",
+    "swarm",
+    "protocol",
+    "client",
+    "sdk",
+    "ASP"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}

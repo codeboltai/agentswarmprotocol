@@ -1,0 +1,17 @@
+{
+  "name": "@agentswarmprotocol/conversation-agent",
+  "version": "1.0.0",
+  "description": "A natural language conversation agent that can hold contextual conversations with users, remember conversation history, and adapt responses based on user preferences.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "uuid": "^11.1.0"
+  }
+}

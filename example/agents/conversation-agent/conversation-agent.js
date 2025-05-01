@@ -3,20 +3,34 @@
  * Provides conversational capabilities with memory and context awareness
  */
 
-const { Agent } = require('../../../sdk/nodejs/agent');
+const SwarmAgentSDK = require('../../sdk/agentsdk');
 const { v4: uuidv4 } = require('uuid');
 
-class ConversationAgent extends Agent {
+class ConversationAgent extends SwarmAgentSDK {
   constructor(config = {}) {
-    super({
-      ...config,
-      capabilities: [
-        'chat',
-        'contextual-responses',
-        'memory',
-        'preference-adaptation'
-      ]
-    });
+    // Set default name if not provided
+    config.name = config.name || 'Conversation Agent';
+    
+    // Set capabilities
+    config.capabilities = [
+      'chat',
+      'contextual-responses',
+      'memory',
+      'preference-adaptation'
+    ];
+    
+    // Set description
+    config.description = 'Conversational agent with memory and context awareness';
+    
+    // Call parent constructor with config
+    super(config);
+
+    // Set up logging
+    this.logger = {
+      info: (message) => console.log(`[INFO] ${message}`),
+      warn: (message) => console.warn(`[WARN] ${message}`),
+      error: (message) => console.error(`[ERROR] ${message}`)
+    };
 
     // Store active conversations with their contexts
     this.conversations = new Map();
@@ -31,18 +45,57 @@ class ConversationAgent extends Agent {
    * Register handlers for different task types
    */
   registerTaskHandlers() {
-    this.registerTaskHandler('conversation.start', this.handleConversationStart.bind(this));
-    this.registerTaskHandler('conversation.message', this.handleConversationMessage.bind(this));
-    this.registerTaskHandler('conversation.end', this.handleConversationEnd.bind(this));
+    this.registerTaskHandler('conversation:start', this.handleConversationStart.bind(this));
+    this.registerTaskHandler('conversation:message', this.handleConversationMessage.bind(this));
+    this.registerTaskHandler('conversation:end', this.handleConversationEnd.bind(this));
+    
+    // Add support for the simple 'chat' task type for backward compatibility
+    this.registerTaskHandler('chat', this.handleChatTask.bind(this));
+    
+    // Register a default handler for unrecognized task types
+    this.registerDefaultTaskHandler(this.handleDefaultTask.bind(this));
+  }
+
+  /**
+   * Handle default tasks
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleDefaultTask(task, metadata) {
+    this.logger.warn(`Received unknown task type: ${task.taskType || 'undefined'}`);
+    this.logger.warn(`Task debug info: ${JSON.stringify({
+      taskType: task.taskType,
+      conversationId: task.conversationId,
+      hasMessage: !!task.message,
+      metadata: metadata
+    })}`);
+    
+    return {
+      message: `Unsupported task type: ${task.taskType || 'undefined'}`,
+      supportedTaskTypes: [
+        'conversation:start',
+        'conversation:message',
+        'conversation:end'
+      ]
+    };
   }
 
   /**
    * Handle conversation start task
    * @param {Object} task - The task object
+   * @param {Object} metadata - Task metadata
    * @returns {Object} - Result with greeting and initialized context
    */
-  async handleConversationStart(task) {
-    const { conversationId = uuidv4(), context = {} } = task.taskData || {};
+  async handleConversationStart(task, metadata) {
+    this.logger.info(`Handling conversation:start task`);
+    this.logger.info(`Task debug info: ${JSON.stringify({
+      conversationId: task.conversationId,
+      context: task.context,
+      metadata: metadata
+    })}`);
+    
+    const { conversationId = uuidv4(), context = {} } = task || {};
     
     if (this.conversations.has(conversationId)) {
       this.logger.warn(`Conversation ${conversationId} already exists, reinitializing`);
@@ -68,7 +121,7 @@ class ConversationAgent extends Agent {
     // Generate greeting based on context
     const greeting = this.generateGreeting(conversationId, convoContext);
     
-    return {
+    const result = {
       conversationId,
       response: greeting,
       sentiment: 'positive',
@@ -82,28 +135,43 @@ class ConversationAgent extends Agent {
       ],
       contextUpdates: {}
     };
+    
+    this.logger.info(`Sending conversation:start response: ${JSON.stringify(result)}`);
+    
+    return result;
   }
 
   /**
    * Handle message in an ongoing conversation
    * @param {Object} task - The task object
+   * @param {Object} metadata - Task metadata
    * @returns {Object} - Result with response and updated context
    */
-  async handleConversationMessage(task) {
-    const { conversationId, message, context = {} } = task.data || {};
+  async handleConversationMessage(task, metadata) {
+    this.logger.info(`Handling conversation:message task`);
+    this.logger.info(`Task debug info: ${JSON.stringify({
+      conversationId: task.conversationId,
+      hasMessage: !!task.message,
+      messageLength: task.message ? task.message.length : 0,
+      metadata: metadata
+    })}`);
+    
+    const { conversationId, message, context = {} } = task || {};
     
     if (!conversationId) {
+      this.logger.error('Missing required field: conversationId');
       throw new Error('Missing required field: conversationId');
     }
     
     if (!message) {
+      this.logger.error('Missing required field: message');
       throw new Error('Missing required field: message');
     }
     
     // Get or create conversation context
     if (!this.conversations.has(conversationId)) {
       this.logger.warn(`Conversation ${conversationId} not found, initializing`);
-      await this.handleConversationStart({ taskData: { conversationId, context } });
+      await this.handleConversationStart({ conversationId, context });
     }
     
     const convoContext = this.conversations.get(conversationId);
@@ -152,7 +220,7 @@ class ConversationAgent extends Agent {
         try {
           // Use agent-to-agent communication to request research
           researchResult = await this.requestAgentTask(researchAgent.name, {
-            taskType: 'research.query',
+            taskType: 'research:query',
             query: message,
             context: {
               conversationId,
@@ -187,175 +255,166 @@ class ConversationAgent extends Agent {
     // Update conversation context
     this.conversations.set(conversationId, convoContext);
     
+    this.logger.info(`Sending conversation:message response for "${message}"`);
+    this.logger.info(`Response debug info: ${JSON.stringify({
+      responseType: typeof responseData, 
+      hasResponse: !!responseData.response, 
+      responseLength: responseData.response ? responseData.response.length : 0
+    })}`);
+    
     return responseData;
   }
 
   /**
    * Handle conversation end task
    * @param {Object} task - The task object
+   * @param {Object} metadata - Task metadata
    * @returns {Object} - Result with conversation statistics
    */
-  async handleConversationEnd(task) {
-    const { conversationId } = task.taskData || {};
+  async handleConversationEnd(task, metadata) {
+    const { conversationId } = task || {};
     
     if (!conversationId) {
       throw new Error('Missing required field: conversationId');
     }
     
     if (!this.conversations.has(conversationId)) {
-      throw new Error(`Conversation ${conversationId} not found`);
+      return {
+        error: `Conversation ${conversationId} not found`
+      };
     }
     
     const convoContext = this.conversations.get(conversationId);
     const endedAt = new Date().toISOString();
-    const duration = new Date(endedAt) - new Date(convoContext.startedAt);
-    
-    // Calculate conversation statistics
-    const stats = {
-      startedAt: convoContext.startedAt,
-      endedAt,
-      durationMs: duration,
-      durationHuman: this.formatDuration(duration),
-      messageCount: convoContext.messageCount,
-      averageResponseTime: '~1 second' // Placeholder, would calculate from actual response times
-    };
+    const startedAt = new Date(convoContext.startedAt);
+    const duration = new Date() - startedAt;
     
     // Generate farewell message
     const farewell = this.generateFarewell(conversationId, convoContext);
     
-    // Remove the conversation from memory
+    // Create conversation summary
+    const summary = {
+      conversationId,
+      startedAt: convoContext.startedAt,
+      endedAt,
+      duration: this.formatDuration(duration),
+      messageCount: convoContext.messageCount,
+      farewell
+    };
+    
+    // Remove the conversation from active conversations
     this.conversations.delete(conversationId);
     
-    this.logger.info(`Ended conversation ${conversationId}`);
+    this.logger.info(`Ended conversation ${conversationId} (duration: ${summary.duration})`);
     
-    return {
-      conversationId,
-      response: farewell,
-      sentiment: 'neutral',
-      stats
-    };
+    return summary;
   }
 
   /**
-   * Generate a greeting based on user context
-   * @param {string} conversationId - Conversation identifier
+   * Generate a greeting message based on context
+   * @param {string} conversationId - Conversation ID
    * @param {Object} context - Conversation context
-   * @returns {string} - Personalized greeting
+   * @returns {string} - Greeting message
    */
   generateGreeting(conversationId, context) {
-    const { userData } = context;
-    const name = userData.name ? `, ${userData.name}` : '';
+    const timeOfDay = new Date().getHours();
+    let greeting = '';
     
-    // Adjust formality based on preferences
-    if (context.preferences.formality === 'casual') {
-      return `Hey${name}! How can I help you today?`;
-    } else if (context.preferences.formality === 'formal') {
-      return `Hello${name}. How may I assist you today?`;
-    } else {
-      return `Hi${name}! How can I assist you today?`;
+    if (timeOfDay < 12) greeting = 'Good morning';
+    else if (timeOfDay < 18) greeting = 'Good afternoon';
+    else greeting = 'Good evening';
+    
+    // Add user name if available
+    if (context.userData && context.userData.name) {
+      greeting += `, ${context.userData.name}`;
     }
+    
+    greeting += '! I\'m your conversation assistant. How can I help you today?';
+    
+    return greeting;
   }
 
   /**
-   * Generate a farewell based on conversation context
-   * @param {string} conversationId - Conversation identifier
+   * Generate a farewell message based on context
+   * @param {string} conversationId - Conversation ID
    * @param {Object} context - Conversation context
-   * @returns {string} - Personalized farewell
+   * @returns {string} - Farewell message
    */
   generateFarewell(conversationId, context) {
-    const { userData, messageCount } = context;
-    const name = userData.name ? `, ${userData.name}` : '';
+    let farewell = 'Thank you for chatting with me';
     
-    // Adjust message based on conversation length
-    let messageSuffix = '.';
-    if (messageCount > 10) {
-      messageSuffix = '. It was a pleasure having this extended conversation with you.';
-    } else if (messageCount > 5) {
-      messageSuffix = '. I enjoyed our conversation.';
+    // Add user name if available
+    if (context.userData && context.userData.name) {
+      farewell += `, ${context.userData.name}`;
     }
     
-    // Adjust formality based on preferences
-    if (context.preferences.formality === 'casual') {
-      return `See you later${name}${messageSuffix}`;
-    } else if (context.preferences.formality === 'formal') {
-      return `Goodbye${name}. Thank you for the conversation${messageSuffix}`;
-    } else {
-      return `Goodbye${name}${messageSuffix} Have a great day!`;
+    farewell += '. Have a great day!';
+    
+    if (context.messageCount > 10) {
+      farewell += ' It was a pleasure having such an in-depth conversation with you.';
     }
+    
+    return farewell;
   }
 
   /**
-   * Generate a response based on message and context
-   * @param {string} conversationId - Conversation identifier
+   * Generate a response to a user message
+   * @param {string} conversationId - Conversation ID
    * @param {string} message - User message
    * @param {Object} context - Conversation context
    * @param {Array} intents - Detected intents
    * @param {string} sentiment - Detected sentiment
-   * @param {Object} researchResult - Optional research results
-   * @returns {Object} - Response object
+   * @param {Object} researchResult - Research results if available
+   * @returns {Object} - Response data object
    */
   generateResponse(conversationId, message, context, intents, sentiment, researchResult = null) {
-    let response = '';
-    let suggestedActions = [];
+    // Initialize contextUpdates for tracking changes
     const contextUpdates = {};
+    
+    // Initialize response data
+    const responseData = {
+      conversationId,
+      intents,
+      sentiment,
+      contextUpdates
+    };
+    
+    let response = '';
     
     // Handle different intents
     if (intents.includes('greeting')) {
       response = this.generateGreeting(conversationId, context);
-    } else if (intents.includes('farewell')) {
+    }
+    else if (intents.includes('farewell')) {
       response = this.generateFarewell(conversationId, context);
-    } else if (intents.includes('capabilities')) {
+    }
+    else if (intents.includes('help') || intents.includes('capabilities')) {
       response = this.generateCapabilitiesResponse(context);
-      suggestedActions = [
-        { type: 'suggestion', label: 'Adjust verbosity', value: 'adjust_verbosity' },
-        { type: 'suggestion', label: 'Adjust formality', value: 'adjust_formality' }
-      ];
-    } else if (intents.includes('preference_change')) {
+    }
+    else if (intents.includes('preference_change')) {
       response = this.handlePreferenceChange(message, context, contextUpdates);
-    } else if (intents.includes('help')) {
-      response = this.generateHelpResponse(context);
-      suggestedActions = [
-        { type: 'suggestion', label: 'Tell me about your capabilities', value: 'tell_me_about_capabilities' }
-      ];
-    } else if (researchResult) {
-      // Use research results if available
+    }
+    else if (researchResult) {
       response = this.formatResearchResponse(researchResult, context);
-      
-      // Add suggested follow-up questions if provided by research agent
-      if (researchResult.suggestedQuestions && researchResult.suggestedQuestions.length > 0) {
-        researchResult.suggestedQuestions.forEach(question => {
-          suggestedActions.push({
-            type: 'suggestion',
-            label: question,
-            value: question
-          });
-        });
-      }
-    } else {
-      // Default response for other messages
+    }
+    else {
+      // Generate a generic response
       response = this.generateGenericResponse(message, context);
-      
-      // Add suggested actions based on message content
-      if (message.length > 100) {
-        suggestedActions.push({
-          type: 'suggestion',
-          label: 'Give me a shorter response next time',
-          value: 'set_preference_verbosity_concise'
-        });
+    }
+    
+    // Adjust response based on user preferences
+    if (context.preferences) {
+      if (context.preferences.verbosity) {
+        response = this.adjustResponseVerbosity(response, context.preferences.verbosity);
       }
     }
     
-    // Adjust response based on verbosity preference
-    response = this.adjustResponseVerbosity(response, context.preferences.verbosity);
+    responseData.response = response;
     
-    return {
-      conversationId,
-      response,
-      sentiment,
-      intents,
-      suggestedActions,
-      contextUpdates
-    };
+    // Add suggested actions based on conversation flow
+    responseData.suggestedActions = this.generateSuggestedActions(message, context, intents);
+    
+    return responseData;
   }
 
   /**
@@ -365,71 +424,74 @@ class ConversationAgent extends Agent {
    * @returns {string} - Adjusted response
    */
   adjustResponseVerbosity(response, verbosity) {
-    switch (verbosity) {
-      case 'concise':
-        // Shorten the response
-        return response.split('. ')[0] + '.';
-      case 'detailed':
-        // Add more details
-        return response + ' Is there anything specific you would like me to elaborate on?';
-      case 'balanced':
-      default:
-        return response;
+    if (verbosity === 'concise') {
+      // Simplify response for concise preference
+      return response.split('. ').slice(0, 1).join('. ');
+    } 
+    else if (verbosity === 'detailed') {
+      // Add more details for detailed preference
+      return response + ' Is there anything else you would like to know about this?';
     }
+    
+    // Return original for balanced verbosity
+    return response;
   }
 
   /**
-   * Generate response about agent capabilities
+   * Generate a response about agent capabilities
    * @param {Object} context - Conversation context
-   * @returns {string} - Capabilities description
+   * @returns {string} - Capabilities response
    */
   generateCapabilitiesResponse(context) {
-    // Adjust based on verbosity preference
-    if (context.preferences.verbosity === 'concise') {
-      return "I can chat, remember our conversation, and adapt to your preferences.";
-    } else if (context.preferences.verbosity === 'detailed') {
-      return "I'm a conversation agent with several capabilities. I can engage in natural language conversations, remember our conversation history for context, adapt my responses based on your preferences for formality and verbosity, and suggest relevant actions based on our conversation. I can also handle different conversation styles and topics.";
-    } else {
-      return "I'm a conversation agent that can chat with you, remember our conversation history, and adapt to your preferences for formality and verbosity. I can also suggest relevant actions based on our conversation.";
-    }
+    return 'I am a conversational agent. I can chat with you, remember our conversation context, ' +
+           'adapt to your preferences, and connect with research capabilities. ' +
+           'You can ask me questions, request information, or just have a casual conversation. ' +
+           'How can I assist you today?';
   }
 
   /**
-   * Generate help response
+   * Generate a help response
    * @param {Object} context - Conversation context
-   * @returns {string} - Help information
+   * @returns {string} - Help response
    */
   generateHelpResponse(context) {
-    return "I'm here to chat with you. You can ask me about my capabilities, change your preferences for how I respond (like being more formal/casual or more detailed/concise), or just have a conversation. What would you like to do?";
+    return 'You can talk to me about various topics. If you have questions that require research, ' +
+           'I can collaborate with a Research Agent to get you answers. ' +
+           'You can also tell me your preferences for how verbose or formal you\'d like me to be. ' +
+           'What would you like to talk about?';
   }
 
   /**
-   * Handle preference change intent
+   * Handle a message about changing preferences
    * @param {string} message - User message
    * @param {Object} context - Conversation context
-   * @param {Object} contextUpdates - Context updates to apply
-   * @returns {string} - Response confirming preference change
+   * @param {Object} contextUpdates - Updates to context
+   * @returns {string} - Response
    */
   handlePreferenceChange(message, context, contextUpdates) {
-    // Check for verbosity change
+    // Extract preferences from message
     if (message.toLowerCase().includes('concise') || message.toLowerCase().includes('shorter')) {
-      contextUpdates.preferences = { ...contextUpdates.preferences, verbosity: 'concise' };
-      return "I'll keep my responses more concise from now on.";
-    } else if (message.toLowerCase().includes('detailed') || message.toLowerCase().includes('longer')) {
-      contextUpdates.preferences = { ...contextUpdates.preferences, verbosity: 'detailed' };
-      return "I'll provide more detailed responses from now on.";
+      context.preferences.verbosity = 'concise';
+      contextUpdates.preferences = { verbosity: 'concise' };
+      return 'I\'ll keep my responses more concise from now on.';
     } 
-    
-    // Check for formality change
-    if (message.toLowerCase().includes('formal')) {
-      contextUpdates.preferences = { ...contextUpdates.preferences, formality: 'formal' };
-      return "I'll maintain a more formal tone going forward.";
-    } else if (message.toLowerCase().includes('casual') || message.toLowerCase().includes('informal')) {
-      contextUpdates.preferences = { ...contextUpdates.preferences, formality: 'casual' };
-      return "I'll keep things casual from now on.";
+    else if (message.toLowerCase().includes('detailed') || message.toLowerCase().includes('longer')) {
+      context.preferences.verbosity = 'detailed';
+      contextUpdates.preferences = { verbosity: 'detailed' };
+      return 'I\'ll provide more detailed responses from now on.';
+    }
+    else if (message.toLowerCase().includes('formal')) {
+      context.preferences.formality = 'formal';
+      contextUpdates.preferences = { formality: 'formal' };
+      return 'I\'ll maintain a more formal tone in our conversation moving forward.';
+    }
+    else if (message.toLowerCase().includes('casual') || message.toLowerCase().includes('informal')) {
+      context.preferences.formality = 'casual';
+      contextUpdates.preferences = { formality: 'casual' };
+      return 'I\'ll keep things casual from now on.';
     }
     
-    return "I'm not sure which preference you'd like to change. You can adjust my verbosity (concise/detailed) or formality (formal/casual).";
+    return 'I\'m not sure which preference you want to change. You can ask for more concise or detailed responses, or request a more formal or casual tone.';
   }
 
   /**
@@ -439,84 +501,129 @@ class ConversationAgent extends Agent {
    * @returns {string} - Generic response
    */
   generateGenericResponse(message, context) {
-    // This would typically use NLP/LLM to generate contextual responses
-    // Here we're using simple patterns for demonstration
+    // In a real implementation, this would use an AI model
+    // Here we'll just use some simple patterns
     
-    const lowercaseMessage = message.toLowerCase();
-    
-    if (lowercaseMessage.includes('thank')) {
-      return context.preferences.formality === 'formal' 
-        ? "You're most welcome. Is there anything else I can assist you with?"
-        : "You're welcome! Anything else you need?";
+    if (message.endsWith('?')) {
+      return 'That\'s an interesting question. In a real implementation, I would use an AI model to generate a thoughtful response based on our conversation history.';
     }
     
-    if (lowercaseMessage.includes('?')) {
-      return "That's an interesting question. In a real implementation, I would use a language model to generate a proper response based on our conversation history.";
-    }
-    
-    if (context.messageCount === 1) {
-      return "Thank you for your message. How can I assist you further today?";
-    }
-    
-    // Default fallback response
     const responses = [
-      "I understand. What else would you like to discuss?",
-      "That's interesting. Tell me more.",
-      "I see. How else can I help you today?",
-      "Got it. Is there something specific you'd like to know?"
+      'I understand. Tell me more about that.',
+      'That\'s interesting. How does that make you feel?',
+      'I see. What else would you like to discuss?',
+      'Thanks for sharing that with me. What would you like to talk about next?',
+      'I appreciate your perspective. Is there anything else on your mind?'
     ];
     
     return responses[Math.floor(Math.random() * responses.length)];
   }
 
   /**
-   * Simple intent detection function
+   * Generate suggested actions based on conversation
    * @param {string} message - User message
-   * @returns {Array} - Array of detected intents
+   * @param {Object} context - Conversation context
+   * @param {Array} intents - Detected intents
+   * @returns {Array} - Suggested actions
+   */
+  generateSuggestedActions(message, context, intents) {
+    const suggestions = [];
+    
+    // Add different suggestions based on context
+    if (context.messageCount <= 2) {
+      suggestions.push({
+        type: 'suggestion',
+        label: 'What can you do?',
+        value: 'tell_me_about_capabilities'
+      });
+    }
+    
+    if (intents.includes('research') || intents.includes('question')) {
+      suggestions.push({
+        type: 'suggestion',
+        label: 'Find more information',
+        value: 'research_this_topic'
+      });
+    }
+    
+    if (context.messageCount > 5) {
+      suggestions.push({
+        type: 'suggestion',
+        label: 'End conversation',
+        value: 'end_conversation'
+      });
+    }
+    
+    return suggestions;
+  }
+
+  /**
+   * Detect intents from user message
+   * @param {string} message - User message
+   * @returns {Array} - Detected intents
    */
   detectIntents(message) {
     const intents = [];
     const lowerMessage = message.toLowerCase();
     
     // Simple rule-based intent detection
-    if (/^(hi|hello|hey|greetings)/i.test(lowerMessage)) {
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.match(/^(hey|greetings).*/)) {
       intents.push('greeting');
     }
     
-    if (/^(bye|goodbye|farewell|see you)/i.test(lowerMessage)) {
+    if (lowerMessage.includes('bye') || lowerMessage.includes('goodbye') || lowerMessage.includes('see you')) {
       intents.push('farewell');
     }
     
-    if (/what can you do|capabilities|features|what are you able to/i.test(lowerMessage)) {
-      intents.push('capabilities');
-    }
-    
-    if (/help( me)?|assist( me)?|how do I/i.test(lowerMessage)) {
+    if (lowerMessage.includes('help') || lowerMessage.includes('what can you do')) {
       intents.push('help');
     }
     
-    if (/prefer|settings|adjust|change|set|make (responses|it) (shorter|longer|more detailed|more concise|formal|informal|casual)/i.test(lowerMessage)) {
+    if (lowerMessage.includes('capabilities') || lowerMessage.includes('features')) {
+      intents.push('capabilities');
+    }
+    
+    if (lowerMessage.includes('prefer') || lowerMessage.includes('concise') || 
+        lowerMessage.includes('detailed') || lowerMessage.includes('formal') || 
+        lowerMessage.includes('casual')) {
       intents.push('preference_change');
     }
     
-    if (intents.length === 0) {
-      intents.push('general');
+    if (lowerMessage.endsWith('?') || lowerMessage.includes('who') || 
+        lowerMessage.includes('what') || lowerMessage.includes('where') || 
+        lowerMessage.includes('when') || lowerMessage.includes('why') || 
+        lowerMessage.includes('how')) {
+      intents.push('question');
+    }
+    
+    if (lowerMessage.includes('research') || lowerMessage.includes('find information') || 
+        lowerMessage.includes('look up') || lowerMessage.includes('search for')) {
+      intents.push('research');
     }
     
     return intents;
   }
 
   /**
-   * Simple sentiment analysis function
+   * Analyze sentiment from user message
    * @param {string} message - User message
    * @returns {string} - Detected sentiment
    */
   analyzeSentiment(message) {
     const lowerMessage = message.toLowerCase();
     
-    // Simple keyword-based sentiment analysis
-    const positiveWords = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'happy', 'thanks', 'thank you', 'love', 'like'];
-    const negativeWords = ['bad', 'terrible', 'awful', 'horrible', 'sad', 'angry', 'upset', 'hate', 'dislike'];
+    // Simple rule-based sentiment analysis
+    // In a real implementation, this would use an NLP model
+    
+    const positiveWords = [
+      'good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic',
+      'happy', 'glad', 'pleased', 'love', 'like', 'enjoy', 'thanks', 'thank'
+    ];
+    
+    const negativeWords = [
+      'bad', 'terrible', 'awful', 'horrible', 'poor', 'sad', 'unhappy',
+      'disappointed', 'hate', 'dislike', 'annoyed', 'angry', 'upset', 'not'
+    ];
     
     let positiveScore = 0;
     let negativeScore = 0;
@@ -543,9 +650,9 @@ class ConversationAgent extends Agent {
   }
 
   /**
-   * Format duration in milliseconds to human-readable string
+   * Format duration in a human-readable format
    * @param {number} durationMs - Duration in milliseconds
-   * @returns {string} - Formatted duration string
+   * @returns {string} - Formatted duration
    */
   formatDuration(durationMs) {
     const seconds = Math.floor(durationMs / 1000);
@@ -562,75 +669,113 @@ class ConversationAgent extends Agent {
   }
 
   /**
-   * Check if a message is a research-related query
+   * Check if a message is a research query
    * @param {string} message - User message
-   * @returns {boolean} - True if the message is a research query
+   * @returns {boolean} - Whether the message is a research query
    */
   isResearchQuery(message) {
     const lowerMessage = message.toLowerCase();
     
-    // Check for research-related keywords and question patterns
-    const researchKeywords = [
-      'research', 'find', 'search', 'look up', 'information', 
-      'data', 'article', 'paper', 'study', 'report',
-      'what is', 'who is', 'when did', 'where is', 'why does',
-      'how does', 'tell me about'
-    ];
+    // Check for explicit research indicators
+    if (lowerMessage.includes('research') || 
+        lowerMessage.includes('find information') ||
+        lowerMessage.includes('look up') ||
+        lowerMessage.includes('search for')) {
+      return true;
+    }
     
-    return researchKeywords.some(keyword => lowerMessage.includes(keyword)) &&
-           (lowerMessage.includes('?') || 
-            lowerMessage.startsWith('find') || 
-            lowerMessage.startsWith('search') ||
-            lowerMessage.startsWith('research'));
+    // Check for question patterns that often require research
+    if ((lowerMessage.includes('what is') || 
+         lowerMessage.includes('who is') ||
+         lowerMessage.includes('how does') ||
+         lowerMessage.includes('why is')) &&
+         lowerMessage.endsWith('?')) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**
-   * Format a response that includes research results
-   * @param {Object} researchResult - Results from research agent
+   * Format research response from a research agent
+   * @param {Object} researchResult - Research results
    * @param {Object} context - Conversation context
-   * @returns {string} - Formatted response with research information
+   * @returns {string} - Formatted research response
    */
   formatResearchResponse(researchResult, context) {
-    const formality = context.preferences.formality;
-    const verbosity = context.preferences.verbosity;
+    if (!researchResult || researchResult.error) {
+      return "I tried to research that, but couldn't find any relevant information. " +
+             "Would you like to try a different question?";
+    }
     
-    let intro;
-    if (formality === 'formal') {
-      intro = "Based on my research, I've found the following information: ";
-    } else if (formality === 'casual') {
-      intro = "Hey, I looked that up and found this: ";
+    let response = "Here's what I found based on your query:\n\n";
+    
+    if (researchResult.summary) {
+      response += researchResult.summary;
+    } else if (researchResult.results && Array.isArray(researchResult.results)) {
+      // Format results into a readable response
+      researchResult.results.forEach((item, index) => {
+        response += `${index + 1}. ${item.title || 'Result'}: ${item.snippet || item.description || 'No details available'}\n`;
+      });
+    } else if (researchResult.query && researchResult.sources) {
+      // Format source-based research results
+      response += `Query: "${researchResult.query}"\n\n`;
+      
+      researchResult.sources.forEach(source => {
+        response += `From ${source.source} (${source.resultCount} results):\n`;
+        
+        if (source.results && Array.isArray(source.results)) {
+          source.results.forEach((result, index) => {
+            response += `${index + 1}. ${result.title}: ${result.snippet}\n`;
+          });
+        }
+        
+        response += '\n';
+      });
     } else {
-      intro = "I found some information for you: ";
+      // Generic fallback if the format is unknown
+      response += JSON.stringify(researchResult);
     }
     
-    // Extract the main content from research results
-    let content = '';
-    if (typeof researchResult === 'string') {
-      content = researchResult;
-    } else if (researchResult.answer) {
-      content = researchResult.answer;
-    } else if (researchResult.content) {
-      content = researchResult.content;
-    } else if (researchResult.results) {
-      // Format research results as a list if appropriate
-      content = Array.isArray(researchResult.results)
-        ? researchResult.results.map((item, i) => `${i+1}. ${item}`).join('\n')
-        : researchResult.results;
+    return response;
+  }
+
+  /**
+   * Handle simple chat task for backward compatibility
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleChatTask(task, metadata) {
+    this.logger.info('Received legacy chat task, converting to conversation:message format');
+    
+    const { message, conversationId = uuidv4(), messageHistory = [] } = task;
+    
+    if (!message) {
+      throw new Error('Missing required field: message');
     }
     
-    // Add source information if available
-    let sources = '';
-    if (researchResult.sources && researchResult.sources.length > 0) {
-      if (verbosity !== 'concise') {
-        sources = "\n\nSources:\n" + researchResult.sources
-          .slice(0, verbosity === 'detailed' ? 5 : 2)
-          .map(source => `- ${source.title || source.url}`)
-          .join('\n');
-      }
+    // Check if conversation exists, if not initialize it
+    if (!this.conversations.has(conversationId)) {
+      this.logger.info(`Initializing new conversation for legacy chat task: ${conversationId}`);
+      await this.handleConversationStart({ 
+        conversationId,
+        context: {
+          userData: {
+            clientId: metadata.clientId || 'unknown',
+            preferences: { formality: 'balanced', verbosity: 'balanced' }
+          }
+        }
+      });
     }
     
-    return intro + content + sources;
+    // Convert to conversation:message format and delegate
+    return this.handleConversationMessage({
+      conversationId,
+      message,
+      context: { messageHistory }
+    }, metadata);
   }
 }
 
-module.exports = { ConversationAgent }; 
+module.exports = ConversationAgent; 
