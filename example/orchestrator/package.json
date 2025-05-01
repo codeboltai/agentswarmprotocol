@@ -4,7 +4,7 @@
   "description": "Example implementation of the Agent Swarm Protocol (ASP) Orchestrator",
   "main": "example-usage.js",
   "scripts": {
-    "start": "node example-usage.js",
+    "start": "node core/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -12,8 +12,16 @@
     "swarm",
     "protocol",
     "orchestrator",
-    "ASP"
+    "ASP",
+    "MCP"
   ],
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.7",
+    "uuid": "^9.0.0",
+    "ws": "^8.12.0"
+  }
 } 

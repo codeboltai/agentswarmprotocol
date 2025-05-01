@@ -1,12 +1,13 @@
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const EventEmitter = require('events');
-const { setupServices } = require('../utils/services/services');
+const { setupServices } = require('./utils/services/services');
 const { AgentRegistry } = require('../agent/agent-registry');
-const { TaskRegistry } = require('../utils/tasks/task-registry');
+const { TaskRegistry } = require('./utils/tasks/task-registry');
 const { AgentServer } = require('../agent/agent-server');
 const { ClientServer } = require('../client/client-server');
 const { MessageHandler } = require('./message-handler');
+const mcp = require('./utils/mcp');
 
 // Load environment variables
 require('dotenv').config({ path: '../.env' });
@@ -28,12 +29,16 @@ class Orchestrator {
     // Create event bus for communication between components
     this.eventBus = new EventEmitter();
     
+    // Set up MCP support
+    this.mcp = mcp.setup(this.eventBus);
+    
     // Create message handler to centralize business logic
     this.messageHandler = new MessageHandler({
       agents: this.agents,
       tasks: this.tasks,
       services: this.services,
-      eventBus: this.eventBus
+      eventBus: this.eventBus,
+      mcp: this.mcp
     });
     
     // Create servers with specific dependencies rather than passing the entire orchestrator
@@ -164,6 +169,16 @@ class Orchestrator {
         callback({ error: error.message });
       }
     });
+    
+    // Handle client MCP server list requests
+    this.eventBus.on('client.mcp.server.list', (filters, callback) => {
+      try {
+        const result = this.mcp.listMCPServers(filters || {});
+        callback(result);
+      } catch (error) {
+        callback({ error: error.message });
+      }
+    });
   }
 
   async start() {
@@ -252,20 +267,37 @@ class Orchestrator {
 
   // Forward task result to client
   forwardTaskResultToClient(clientId, taskId, content) {
-    this.eventBus.emit('task.result', clientId, taskId, content);
+    this.clientServer.sendMessage(clientId, {
+      type: 'task.result',
+      taskId,
+      content
+    });
   }
 
   // Forward task error to client
   forwardTaskErrorToClient(clientId, message) {
-    this.eventBus.emit('task.error', clientId, message);
+    this.clientServer.sendMessage(clientId, message);
   }
 
-  stop() {
+  // Gracefully stop the orchestrator
+  async stop() {
+    // Stop MCP servers
+    const mcpServers = this.mcp.listMCPServers();
+    for (const server of mcpServers) {
+      if (server.status === 'online') {
+        try {
+          await this.mcp.disconnectMCPServer(server.id);
+        } catch (error) {
+          console.error(`Error disconnecting MCP server ${server.name}:`, error);
+        }
+      }
+    }
+    
     // Stop agent server
-    this.agentServer.stop();
+    await this.agentServer.stop();
     
     // Stop client server
-    this.clientServer.stop();
+    await this.clientServer.stop();
     
     console.log('Agent Swarm Protocol Orchestrator stopped');
   }

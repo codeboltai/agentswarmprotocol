@@ -10,6 +10,7 @@ The ASP Orchestrator is a component designed to manage services and tasks within
 - **Agent-Task Matching**: Find suitable agents for tasks based on capabilities
 - **Service Recommendations**: Suggest services based on task requirements
 - **System Statistics**: Monitor usage and performance metrics
+- **MCP Support**: Integrate with Model Context Protocol servers for expanded tool capabilities
 
 ## Components
 
@@ -21,6 +22,7 @@ The main controller that integrates all aspects of the system:
 - Manages the service registry
 - Handles task creation and assignment
 - Provides system-wide statistics
+- Manages MCP server connections
 
 ### Service Registry
 
@@ -37,6 +39,14 @@ Tracks all tasks in the system:
 - Task status monitoring
 - Assignment tracking
 - Result storage
+
+### MCP Integration
+
+Manages Model Context Protocol servers:
+
+- MCP server registration and connection
+- Tool discovery and execution
+- Protocol-compliant communication
 
 ## Usage
 
@@ -115,6 +125,78 @@ orchestrator.updateTaskStatus(task.id, 'completed', {
 });
 ```
 
+### Working with MCP Servers
+
+MCP (Model Context Protocol) servers provide additional tool capabilities to agents through a standardized protocol. Agents can use these tools through the orchestrator's MCP service.
+
+#### Registering an MCP Server
+
+```javascript
+// Agent requests to register a new MCP server
+const mcpServer = await agent.sendServiceRequest('mcp-service', {
+  action: 'register-server',
+  name: 'weather-server',
+  path: '/path/to/weather-server.js',
+  type: 'node'
+});
+
+// Get the server ID for future reference
+const serverId = mcpServer.serverId;
+```
+
+#### Connecting to an MCP Server
+
+```javascript
+// Connect to the registered server
+const connection = await agent.sendServiceRequest('mcp-service', {
+  action: 'connect-server',
+  serverId: serverId // Or use server name with: mcpServerName: 'weather-server'
+});
+
+// The server tools are available in the response
+const tools = connection.tools;
+```
+
+#### Listing Available Tools
+
+```javascript
+// Get tools provided by a specific MCP server
+const toolList = await agent.sendServiceRequest('mcp-service', {
+  action: 'list-tools',
+  serverId: serverId
+});
+
+// Tools include name, description and input schema
+console.log(toolList.tools);
+```
+
+#### Executing an MCP Tool
+
+```javascript
+// Execute a tool from the MCP server
+const taskExecution = await agent.sendServiceRequest('mcp-service', {
+  action: 'execute-tool',
+  serverId: serverId,
+  toolName: 'get-weather',
+  toolArgs: {
+    location: 'San Francisco',
+    units: 'metric'
+  }
+});
+
+// Get the task ID to track progress
+const taskId = taskExecution.taskId;
+
+// Check task status later
+const taskStatus = await agent.getTaskStatus(taskId);
+
+// Process the result when task is completed
+if (taskStatus.status === 'completed') {
+  const result = taskStatus.result;
+  console.log(`Weather in San Francisco: ${result.data.temperature}°C`);
+}
+```
+
 ### Getting Recommended Services
 
 ```javascript
@@ -135,6 +217,8 @@ console.log(stats);
 
 See [example-usage.js](./example-usage.js) for a complete example of how to use the Orchestrator.
 
+For MCP integration examples, see [mcp/example-usage.js](./utils/mcp/example-usage.js).
+
 ## Integration with ASP
 
 The Orchestrator is designed to work within the Agent Swarm Protocol ecosystem, providing service and task management capabilities to enhance coordination among multiple agents. It can be used by controller agents to:
@@ -143,4 +227,5 @@ The Orchestrator is designed to work within the Agent Swarm Protocol ecosystem, 
 2. Assign tasks to specialized agents
 3. Monitor task progress
 4. Collect and distribute results
-5. Optimize resource allocation based on agent capabilities and availability 
+5. Optimize resource allocation based on agent capabilities and availability
+6. Access external tools through MCP servers 
