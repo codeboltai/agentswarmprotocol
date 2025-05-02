@@ -2,10 +2,10 @@
   "name": "file-management-service",
   "version": "1.0.0",
   "description": "File Management Service for the Agent Swarm Protocol",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "dotenv": "^10.0.0",
