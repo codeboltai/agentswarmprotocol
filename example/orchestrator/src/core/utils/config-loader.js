@@ -60,7 +60,8 @@ class ConfigLoader {
       // Log the MCP servers and agents found
       const mcpServerCount = Object.keys(this.config.mcpServers || {}).length;
       const agentCount = Object.keys(this.config.agents || {}).length;
-      console.log(`Configuration contains ${mcpServerCount} MCP server(s) and ${agentCount} agent(s)`);
+      const serviceCount = Object.keys(this.config.services || {}).length;
+      console.log(`Configuration contains ${mcpServerCount} MCP server(s), ${agentCount} agent(s), and ${serviceCount} service(s)`);
       
       if (mcpServerCount > 0) {
         console.log(`MCP Servers found: ${Object.keys(this.config.mcpServers || {}).join(', ')}`);
@@ -98,6 +99,17 @@ class ConfigLoader {
   }
 
   /**
+   * Get service configurations
+   * @returns {Object} Service configurations
+   */
+  getServices() {
+    if (!this.config) {
+      this.loadConfig();
+    }
+    return this.config.services || {};
+  }
+
+  /**
    * Get orchestrator settings
    * @returns {Object} Orchestrator settings
    */
@@ -116,6 +128,7 @@ class ConfigLoader {
     return {
       mcpServers: {},
       agents: {},
+      services: {},
       orchestrator: {
         agentPort: 3000,
         clientPort: 3001,
@@ -158,6 +171,14 @@ class ConfigLoader {
       merged.agents = {
         ...merged.agents,
         ...options.agents
+      };
+    }
+
+    // Merge services (adding new ones and updating existing)
+    if (options.services) {
+      merged.services = {
+        ...merged.services,
+        ...options.services
       };
     }
 

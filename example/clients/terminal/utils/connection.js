@@ -3,7 +3,7 @@
  * Handles connecting to the orchestrator and setting up event handlers
  */
 
-const SwarmClientSDK = require('../../sdk/clientsdk');
+const SwarmClientSDK = require('../../../sdk/clientsdk');
 const state = require('../models/state');
 const { rl, ask, displayPrompt } = require('./helpers');
 const { displayAgentList, displayMCPServersList, displayTaskStatus } = require('./display');
