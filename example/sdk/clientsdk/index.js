@@ -126,10 +126,6 @@ class SwarmClientSDK extends EventEmitter {
         this.emit('mcp-server-list', message.content.servers);
         break;
         
-      case 'mcp.server.registered':
-        this.emit('mcp-server-registered', message.content);
-        break;
-        
       case 'task.result':
         this.emit('task-result', message.content);
         break;
@@ -140,6 +136,12 @@ class SwarmClientSDK extends EventEmitter {
         
       case 'task.created':
         this.emit('task-created', message.content);
+        break;
+        
+      case 'task.notification':
+        // Handle task notifications
+        console.log(`Received task notification: ${message.content.message} (${message.content.notificationType})`);
+        this.emit('task-notification', message.content);
         break;
         
       case 'error':
@@ -311,23 +313,6 @@ class SwarmClientSDK extends EventEmitter {
   }
 
   /**
-   * Register an MCP server with the orchestrator
-   * @param {Object} serverInfo - MCP server information
-   * @param {string} serverInfo.name - Name of the MCP server
-   * @param {string} serverInfo.path - Path to the MCP server
-   * @param {Object} serverInfo.metadata - Additional metadata
-   * @returns {Promise<Object>} - Registration result
-   */
-  async registerMCPServer(serverInfo) {
-    const response = await this.sendAndWaitForResponse({
-      type: 'mcp.server.register',
-      content: serverInfo
-    });
-    
-    return response.content;
-  }
-  
-  /**
    * List available MCP servers
    * @param {Object} filters - Optional filters
    * @returns {Promise<Array>} - List of MCP servers
@@ -350,6 +335,52 @@ class SwarmClientSDK extends EventEmitter {
       this.ws.close();
       console.log('Disconnected from orchestrator');
     }
+  }
+
+  /**
+   * Subscribe to task notifications
+   * @param {Object} options - Subscription options
+   * @param {string} options.taskId - Filter notifications for specific task (optional)
+   * @param {string} options.agentId - Filter notifications from specific agent (optional)
+   * @param {string} options.notificationType - Filter notifications by type (optional)
+   * @param {Function} callback - Callback function that receives notifications
+   * @returns {Function} Function to unsubscribe from notifications
+   */
+  subscribeToNotifications(options, callback) {
+    if (typeof options === 'function') {
+      callback = options;
+      options = {};
+    }
+    
+    if (typeof callback !== 'function') {
+      throw new Error('Callback must be a function');
+    }
+    
+    const handler = (notification) => {
+      // Apply filters if provided
+      if (options.taskId && notification.taskId !== options.taskId) {
+        return; // Skip if task ID doesn't match
+      }
+      
+      if (options.agentId && notification.agentId !== options.agentId) {
+        return; // Skip if agent ID doesn't match
+      }
+      
+      if (options.notificationType && notification.notificationType !== options.notificationType) {
+        return; // Skip if notification type doesn't match
+      }
+      
+      // Call the callback with the notification
+      callback(notification);
+    };
+    
+    // Register the handler
+    this.on('task-notification', handler);
+    
+    // Return unsubscribe function
+    return () => {
+      this.removeListener('task-notification', handler);
+    };
   }
 }
 

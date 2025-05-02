@@ -1,6 +1,6 @@
 # SwarmAgentSDK
 
-The SwarmAgentSDK provides a simple way to create agents that connect to and communicate with the Agent Swarm Protocol orchestrator.
+The SwarmAgentSDK provides a simple way for agents to connect to and interact with the Agent Swarm Protocol orchestrator.
 
 ## Installation
 
@@ -11,35 +11,67 @@ npm install @agent-swarm/agent-sdk
 ## Basic Usage
 
 ```javascript
-const SwarmAgentSDK = require('@agent-swarm/agent-sdk');
+const { SwarmAgentSDK } = require('@agent-swarm/agent-sdk');
 
 // Create a new agent
 const agent = new SwarmAgentSDK({
-  name: 'My Agent',
-  capabilities: ['text-processing', 'data-analysis'],
-  description: 'An example agent',
-  orchestratorUrl: 'ws://localhost:3000'
+  name: 'MyAgent',
+  description: 'A simple agent built with SwarmAgentSDK',
+  capabilities: ['text-processing']
 });
 
 // Connect to the orchestrator
 agent.connect()
   .then(() => {
-    console.log('Connected to the orchestrator');
+    console.log('Connected to orchestrator');
   })
   .catch(error => {
-    console.error('Failed to connect:', error.message);
+    console.error('Error:', error.message);
   });
 
 // Register a task handler
-agent.registerTaskHandler('text-processing', async (input, metadata) => {
-  // Process the task
-  const result = { processed: input.text };
-  return result;
+agent.onMessage('text-processing', async (taskData, metadata) => {
+  console.log('Received text processing task:', taskData);
+  
+  // Process the text
+  const processedText = taskData.text.toUpperCase();
+  
+  // Send task notifications to update the client on progress
+  await agent.sendTaskNotification({
+    taskId: metadata.taskId,
+    notificationType: 'progress',
+    message: 'Starting text processing...',
+    data: { progress: 0 }
+  });
+  
+  // Simulate some processing time
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  await agent.sendTaskNotification({
+    taskId: metadata.taskId,
+    notificationType: 'progress',
+    message: 'Processing text...',
+    data: { progress: 50 }
+  });
+  
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  await agent.sendTaskNotification({
+    taskId: metadata.taskId,
+    notificationType: 'progress',
+    message: 'Finalizing results...',
+    data: { progress: 90 }
+  });
+  
+  // Return the result
+  return {
+    processedText
+  };
 });
 
 // Listen for events
-agent.on('task', (task) => {
-  console.log('New task received:', task);
+agent.on('error', (error) => {
+  console.error('Agent error:', error.message);
 });
 ```
 
@@ -49,57 +81,60 @@ The SwarmAgentSDK constructor accepts a configuration object with the following 
 
 | Property | Type | Description | Default |
 |----------|------|-------------|---------|
-| name | string | Name of the agent | 'Generic Agent' |
-| agentId | string | Unique identifier for the agent | Auto-generated UUID |
-| agentType | string | Type of the agent | 'generic' |
-| capabilities | array | List of agent capabilities | [] |
-| description | string | Description of the agent | 'Generic Agent' |
-| manifest | object | Additional agent metadata | {} |
-| orchestratorUrl | string | URL of the orchestrator | 'ws://localhost:3000' |
+| name | string | Name of the agent | Required |
+| description | string | Agent description | '' |
+| orchestratorUrl | string | WebSocket URL of the orchestrator | 'ws://localhost:3000' |
+| capabilities | Array<string> | Agent capabilities | [] |
 | autoReconnect | boolean | Whether to auto-reconnect | true |
 | reconnectInterval | number | Reconnect interval in ms | 5000 |
 
-## Methods
+## Key Features
+
+### Task Handling
+
+- **onMessage(taskType, handler)**: Register a handler for a specific task type
+- **onMessage('*', handler)**: Register a default handler for all task types
+- **sendTaskResult(taskId, result)**: Send a task result back to the client
+
+### Task Notifications
+
+- **sendTaskNotification(notification)**: Send a notification to inform clients about task progress
+- **onNotification(handler)**: Register a handler for receiving notifications from the orchestrator
+
+### Agent Communication
+
+- **getAgentList(filters)**: Get a list of all available agents
+- **executeAgentTask(targetAgentName, taskType, taskData)**: Ask another agent to execute a task
+
+### MCP Integration
+
+- **getMCPServers(filters)**: Get a list of available MCP servers
+- **getMCPTools(serverId)**: Get a list of tools available on an MCP server
+- **executeMCPTool(serverId, toolName, parameters)**: Execute an MCP tool
+- **executeTool(toolName, parameters)**: Simplified method to execute an MCP tool
 
 ### Connection Management
 
 - **connect()**: Connect to the orchestrator
 - **disconnect()**: Disconnect from the orchestrator
 
-### Task Handling
+### Service Communication
 
-- **registerTaskHandler(taskType, handler)**: Register a handler for a specific task type
-- **registerDefaultTaskHandler(handler)**: Register a default handler for unspecified task types
-- **sendTaskResult(taskId, result)**: Send a task result back to the orchestrator
-
-### Communication
-
-- **send(message)**: Send a message to the orchestrator
-- **sendAndWaitForResponse(message, timeout)**: Send a message and wait for a response
-- **requestAgentTask(targetAgentName, taskData, timeout)**: Request a task from another agent
-- **requestService(serviceName, params, timeout)**: Request a service from the orchestrator
-- **requestMCPService(params, timeout)**: Request an MCP service from the orchestrator
-- **getAgentList(filters)**: Get a list of available agents
-- **setStatus(status)**: Update the agent's status
+- **executeServiceTask(serviceId, functionName, params, options)**: Execute a task on a service
+  - Allows agents to call functions provided by services with real-time notification updates
+  - The `options.onNotification` callback receives progress updates during execution
+- **getServiceList(filters)**: Get a list of available services
 
 ## Events
 
 The SDK emits the following events:
 
 - **connected**: Emitted when connected to the orchestrator
+- **registered**: Emitted when the agent is registered with the orchestrator
 - **disconnected**: Emitted when disconnected from the orchestrator
-- **registered**: Emitted when successfully registered with the orchestrator
 - **error**: Emitted when an error occurs
-- **welcome**: Emitted when a welcome message is received from the orchestrator
-- **task**: Emitted when a task is received
 - **message**: Emitted for all received messages
-- **agent-response**: Emitted when a response is received from another agent
-- **agent-request-accepted**: Emitted when an agent request is accepted
-- **service-response**: Emitted when a service response is received
-
-## Example
-
-Check out [example-agent.js](./example-agent.js) for a complete example of how to use the SDK.
+- **task**: Emitted when a task is received
 
 ## License
 

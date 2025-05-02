@@ -92,6 +92,56 @@ class MCPAdapter {
         callback({ error: error.message });
       }
     });
+    
+    // Agent MCP Servers List Request
+    this.eventBus.on('agent.mcp.servers.list', async (message, callback) => {
+      try {
+        const servers = this.listMCPServers(message.filters || {});
+        callback({
+          servers
+        });
+      } catch (error) {
+        callback({ error: error.message });
+      }
+    });
+    
+    // Agent MCP Tools List Request
+    this.eventBus.on('agent.mcp.tools.list', async (message, callback) => {
+      try {
+        const tools = await this.listMCPTools(message.serverId);
+        callback({
+          serverId: message.serverId,
+          serverName: this.mcpManager.getServerById(message.serverId)?.name || 'unknown',
+          tools
+        });
+      } catch (error) {
+        callback({ error: error.message });
+      }
+    });
+    
+    // Agent MCP Tool Execute Request
+    this.eventBus.on('agent.mcp.tool.execute', async (message, callback) => {
+      try {
+        const result = await this.executeMCPTool(
+          message.serverId,
+          message.toolName,
+          message.parameters
+        );
+        callback({
+          serverId: message.serverId,
+          toolName: message.toolName,
+          result,
+          status: 'success'
+        });
+      } catch (error) {
+        callback({
+          serverId: message.serverId,
+          toolName: message.toolName,
+          status: 'error',
+          error: error.message
+        });
+      }
+    });
   }
 
   /**
@@ -202,108 +252,121 @@ class MCPAdapter {
    * @param {string} serverId - ID of the server
    * @param {string} toolName - Name of the tool to execute
    * @param {Object} toolArgs - Arguments for the tool
-   * @returns {Object} Tool execution result
+   * @returns {Promise<Object>} Tool execution result
    */
   async executeMCPTool(serverId, toolName, toolArgs) {
-    const client = this.activeClients.get(serverId);
-    if (!client) {
-      throw new Error(`No active connection to MCP Server: ${serverId}`);
+    const server = this.mcpManager.getServerById(serverId);
+    if (!server) {
+      throw new Error(`MCP Server not found: ${serverId}`);
     }
     
-    const result = await client.callTool(toolName, toolArgs);
+    // Connect to the server if not already connected
+    if (!this.activeClients.has(serverId)) {
+      await this.connectToMCPServer(serverId);
+    }
     
-    return {
-      serverId,
-      toolName,
-      result: result.result,
-      metadata: result.metadata
-    };
+    const client = this.activeClients.get(serverId);
+    
+    return await client.executeTool(toolName, toolArgs);
   }
 
   /**
-   * List all registered MCP servers
-   * @param {Object} filters - Optional filters
-   * @returns {Array} Array of server objects
+   * Get a list of registered MCP servers
+   * @param {Object} filters - Optional filters for servers
+   * @returns {Array} Server list
    */
   listMCPServers(filters = {}) {
-    const servers = this.mcpManager.getServers(filters);
+    let servers = this.mcpManager.getAllServers();
     
-    const result = servers.map(server => ({
+    // Apply filters
+    if (filters.type) {
+      servers = servers.filter(server => server.type === filters.type);
+    }
+    if (filters.status) {
+      servers = servers.filter(server => server.status === filters.status);
+    }
+    if (filters.capabilities && filters.capabilities.length > 0) {
+      servers = servers.filter(server => {
+        return filters.capabilities.every(cap => server.capabilities.includes(cap));
+      });
+    }
+    
+    return servers.map(server => ({
       id: server.id,
       name: server.name,
       type: server.type,
       status: server.status,
       capabilities: server.capabilities
     }));
-    
-    console.log(`Returning ${result.length} MCP servers:`, JSON.stringify(result, null, 2));
-    return result;
   }
 
   /**
-   * List tools available on an MCP server
+   * Get a list of tools available on an MCP server
    * @param {string} serverId - ID of the server
-   * @returns {Array} Array of tool objects
+   * @returns {Promise<Array>} List of tools
    */
   async listMCPTools(serverId) {
-    const client = this.activeClients.get(serverId);
-    if (!client) {
-      throw new Error(`No active connection to MCP Server: ${serverId}`);
+    const server = this.mcpManager.getServerById(serverId);
+    if (!server) {
+      throw new Error(`MCP Server not found: ${serverId}`);
     }
     
-    return client.tools || [];
+    // Connect to the server if not already connected
+    if (!this.activeClients.has(serverId)) {
+      await this.connectToMCPServer(serverId);
+    }
+    
+    const client = this.activeClients.get(serverId);
+    return client.getTools();
   }
 
   /**
-   * Handle an MCP request from an agent
-   * @param {Object} message - The agent's request message
-   * @param {string} agentId - ID of the requesting agent
-   * @returns {Object} Response to the agent
+   * Handle MCP requests from agents
+   * @param {Object} message - MCP request message
+   * @param {string} agentId - Requesting agent ID
+   * @returns {Promise<Object>} MCP operation result
    */
   async handleAgentMCPRequest(message, agentId) {
-    const { mcpServerName, toolName, toolArgs } = message.content;
+    const { action, mcpServerName, serverId, toolName, toolArgs } = message;
     
-    if (!mcpServerName) {
-      throw new Error('MCP server name is required');
+    if (!action) {
+      throw new Error('MCP action is required');
     }
     
-    if (!toolName) {
-      throw new Error('Tool name is required');
+    switch (action) {
+      case 'list-servers':
+        return {
+          servers: this.listMCPServers(message.filters || {})
+        };
+        
+      case 'list-tools':
+        const serverIdForTools = serverId || this.mcpManager.getServerIdByName(mcpServerName);
+        if (!serverIdForTools) {
+          throw new Error('Server ID or name is required to list tools');
+        }
+        return {
+          serverId: serverIdForTools,
+          tools: await this.listMCPTools(serverIdForTools)
+        };
+        
+      case 'execute-tool':
+        const serverIdForExecution = serverId || this.mcpManager.getServerIdByName(mcpServerName);
+        if (!serverIdForExecution) {
+          throw new Error('Server ID or name is required to execute a tool');
+        }
+        if (!toolName) {
+          throw new Error('Tool name is required');
+        }
+        
+        return {
+          serverId: serverIdForExecution,
+          toolName,
+          result: await this.executeMCPTool(serverIdForExecution, toolName, toolArgs || {})
+        };
+        
+      default:
+        throw new Error(`Unknown MCP action: ${action}`);
     }
-    
-    // Find the server by name
-    const server = this.mcpManager.getServerByName(mcpServerName);
-    if (!server) {
-      throw new Error(`MCP Server not found: ${mcpServerName}`);
-    }
-    
-    // Check if the server is connected, connect if needed
-    let client = this.activeClients.get(server.id);
-    if (!client) {
-      console.log(`Automatically connecting to MCP server ${mcpServerName}`);
-      await this.connectToMCPServer(server.id);
-      client = this.activeClients.get(server.id);
-    }
-    
-    // Validate that the tool exists
-    const toolExists = client.tools.some(tool => tool.name === toolName);
-    if (!toolExists) {
-      throw new Error(`Tool not found on MCP server ${mcpServerName}: ${toolName}`);
-    }
-    
-    // Execute the tool
-    const result = await client.callTool(toolName, toolArgs);
-    
-    return {
-      mcpServerName,
-      toolName,
-      result: result.result,
-      metadata: {
-        ...result.metadata,
-        serverId: server.id,
-        agentId
-      }
-    };
   }
 }
 

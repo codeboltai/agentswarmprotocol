@@ -57,60 +57,11 @@ class ConversationAgent extends SwarmAgentSDK {
   }
 
   /**
-   * Handle default tasks or try to convert to supported format
-   * @param {Object} task - The task data
-   * @param {Object} metadata - Task metadata
-   * @returns {Promise<Object>} Task result
-   */
-  async handleDefaultOrConvertTask(task, metadata) {
-    this.logger.warn(`Trying to determine task type from payload: ${JSON.stringify(task)}`);
-    
-    // Check if this is a conversation message task but the type is missing or in a different field
-    if (task.taskType === 'conversation:message' || 
-        (task.input && task.input.taskType === 'conversation:message') ||
-        (task.message && task.conversationId)) {
-      
-      this.logger.info('Recognized conversation:message pattern, handling as conversation message');
-      return this.handleConversationMessage(task, metadata);
-    }
-    
-    // Otherwise fall back to the default handler
-    return this.handleDefaultTask(task, metadata);
-  }
-
-  /**
-   * Handle default tasks
-   * @param {Object} task - The task data
-   * @param {Object} metadata - Task metadata
-   * @returns {Promise<Object>} Task result
-   */
-  async handleDefaultTask(task, metadata) {
-    this.logger.warn(`Received unknown task type: ${task.taskType || 'undefined'}`);
-    this.logger.warn(`Task debug info: ${JSON.stringify({
-      taskType: task.taskType,
-      input: task.input ? typeof task.input : 'undefined',
-      conversationId: task.conversationId,
-      hasMessage: !!task.message,
-      metadata: metadata,
-      fullTask: JSON.stringify(task)
-    })}`);
-    
-    return {
-      message: `Unsupported task type: ${task.taskType || 'undefined'}`,
-      supportedTaskTypes: [
-        'conversation:start',
-        'conversation:message',
-        'conversation:end'
-      ]
-    };
-  }
-
-  /**
-   * Handle conversation start task
-   * @param {Object} task - The task object
-   * @param {Object} metadata - Task metadata
-   * @returns {Object} - Result with greeting and initialized context
-   */
+       * Handle conversation start task
+       * @param {Object} task - The task object
+       * @param {Object} metadata - Task metadata
+       * @returns {Object} - Result with greeting and initialized context
+       */
   async handleConversationStart(task, metadata) {
     this.logger.info(`Handling conversation:start task`);
     this.logger.info(`Task debug info: ${JSON.stringify({
@@ -166,11 +117,11 @@ class ConversationAgent extends SwarmAgentSDK {
   }
 
   /**
-   * Handle message in an ongoing conversation
-   * @param {Object} task - The task object
-   * @param {Object} metadata - Task metadata
-   * @returns {Object} - Result with response and updated context
-   */
+ * Handle message in an ongoing conversation
+ * @param {Object} task - The task object
+ * @param {Object} metadata - Task metadata
+ * @returns {Object} - Result with response and updated context
+ */
   async handleConversationMessage(task, metadata) {
     this.logger.info(`Handling conversation:message task`);
     this.logger.info(`Task debug info: ${JSON.stringify({
@@ -290,11 +241,11 @@ class ConversationAgent extends SwarmAgentSDK {
   }
 
   /**
-   * Handle conversation end task
-   * @param {Object} task - The task object
-   * @param {Object} metadata - Task metadata
-   * @returns {Object} - Result with conversation statistics
-   */
+ * Handle conversation end task
+ * @param {Object} task - The task object
+ * @param {Object} metadata - Task metadata
+ * @returns {Object} - Result with conversation statistics
+ */
   async handleConversationEnd(task, metadata) {
     const { conversationId } = task || {};
     
@@ -332,6 +283,96 @@ class ConversationAgent extends SwarmAgentSDK {
     this.logger.info(`Ended conversation ${conversationId} (duration: ${summary.duration})`);
     
     return summary;
+  }
+
+  /**
+ * Handle simple chat task for backward compatibility
+ * @param {Object} task - The task data
+ * @param {Object} metadata - Task metadata
+ * @returns {Promise<Object>} Task result
+ */
+  async handleChatTask(task, metadata) {
+    this.logger.info('Received legacy chat task, converting to conversation:message format');
+    
+    const { message, conversationId = uuidv4(), messageHistory = [] } = task;
+    
+    if (!message) {
+      throw new Error('Missing required field: message');
+    }
+    
+    // Check if conversation exists, if not initialize it
+    if (!this.conversations.has(conversationId)) {
+      this.logger.info(`Initializing new conversation for legacy chat task: ${conversationId}`);
+      await this.handleConversationStart({ 
+        conversationId,
+        context: {
+          userData: {
+            clientId: metadata.clientId || 'unknown',
+            preferences: { formality: 'balanced', verbosity: 'balanced' }
+          }
+        }
+      });
+    }
+    
+    // Convert to conversation:message format and delegate
+    return this.handleConversationMessage({
+      conversationId,
+      message,
+      context: { messageHistory }
+    }, metadata);
+  }
+
+  /**
+   * Handle default tasks or try to convert to supported format
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleDefaultOrConvertTask(task, metadata) {
+    this.logger.warn(`Trying to determine task type from payload: ${JSON.stringify(task)}`);
+    
+    // Check if this is a conversation message task but the type is missing or in a different field
+    if (task.taskType === 'conversation:message' || 
+        (task.input && task.input.taskType === 'conversation:message') ||
+        (task.message && task.conversationId)) {
+      
+      this.logger.info('Recognized conversation:message pattern, handling as conversation message');
+      return this.handleConversationMessage(task, metadata);
+    }
+    
+    // Otherwise fall back to the default handler
+    return this.handleDefaultTask(task, metadata);
+  }
+
+
+
+
+
+  /**
+   * Handle default tasks
+   * @param {Object} task - The task data
+   * @param {Object} metadata - Task metadata
+   * @returns {Promise<Object>} Task result
+   */
+  async handleDefaultTask(task, metadata) {
+    this.logger.warn(`Received unknown task type: ${task.taskType || 'undefined'}`);
+    this.logger.warn(`Task debug info: ${JSON.stringify({
+      taskType: task.taskType,
+      input: task.input ? typeof task.input : 'undefined',
+      conversationId: task.conversationId,
+      hasMessage: !!task.message,
+      metadata: metadata,
+      fullTask: JSON.stringify(task)
+    })}`);
+    
+    return {
+      message: `Unsupported task type: ${task.taskType || 'undefined'}`,
+      supportedTaskTypes: [
+        'conversation:start',
+        'conversation:message',
+        'conversation:end'
+      ]
+    };
   }
 
   /**
@@ -764,42 +805,7 @@ class ConversationAgent extends SwarmAgentSDK {
     return response;
   }
 
-  /**
-   * Handle simple chat task for backward compatibility
-   * @param {Object} task - The task data
-   * @param {Object} metadata - Task metadata
-   * @returns {Promise<Object>} Task result
-   */
-  async handleChatTask(task, metadata) {
-    this.logger.info('Received legacy chat task, converting to conversation:message format');
-    
-    const { message, conversationId = uuidv4(), messageHistory = [] } = task;
-    
-    if (!message) {
-      throw new Error('Missing required field: message');
-    }
-    
-    // Check if conversation exists, if not initialize it
-    if (!this.conversations.has(conversationId)) {
-      this.logger.info(`Initializing new conversation for legacy chat task: ${conversationId}`);
-      await this.handleConversationStart({ 
-        conversationId,
-        context: {
-          userData: {
-            clientId: metadata.clientId || 'unknown',
-            preferences: { formality: 'balanced', verbosity: 'balanced' }
-          }
-        }
-      });
-    }
-    
-    // Convert to conversation:message format and delegate
-    return this.handleConversationMessage({
-      conversationId,
-      message,
-      context: { messageHistory }
-    }, metadata);
-  }
+
 }
 
 module.exports = ConversationAgent; 

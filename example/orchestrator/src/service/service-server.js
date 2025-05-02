@@ -3,73 +3,73 @@ const http = require('http');
 const { v4: uuidv4 } = require('uuid');
 
 /**
- * AgentServer - Handles WebSocket communication with agents
+ * ServiceServer - Handles WebSocket communication with services
  * Responsible only for communication layer, not business logic
  */
-class AgentServer {
-  constructor({ agents }, eventBus, config = {}) {
-    this.agents = agents; // Only needed for connection tracking
+class ServiceServer {
+  constructor({ services }, eventBus, config = {}) {
+    this.services = services; // For connection tracking
     this.eventBus = eventBus;
-    this.port = config.port || process.env.PORT || 3000;
+    this.port = config.port || process.env.SERVICE_PORT || 3002;
     this.pendingResponses = {}; // Track pending responses
   }
 
   async start() {
-    // Create HTTP server for agents
+    // Create HTTP server for services
     this.server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('Agent Swarm Protocol Orchestrator is running');
+      res.end('Agent Swarm Protocol Service Interface is running');
     });
 
-    // Create WebSocket server for agents
+    // Create WebSocket server for services
     this.wss = new WebSocket.Server({ server: this.server });
     
-    // Handle WebSocket connections from agents
+    // Handle WebSocket connections from services
     this.wss.on('connection', (ws) => {
       // Generate unique ID for the connection
       const connectionId = uuidv4();
       ws.id = connectionId;
       
-      console.log(`New agent connection established: ${connectionId}`);
+      console.log(`New service connection established: ${connectionId}`);
       
-      // Handle incoming messages from agents
+      // Handle incoming messages from services
       ws.on('message', async (message) => {
         try {
           const parsedMessage = JSON.parse(message);
           await this.handleMessage(parsedMessage, ws);
         } catch (error) {
-          console.error('Error handling message:', error);
+          console.error('Error handling message from service:', error);
           this.sendError(ws, 'Error processing message', error);
         }
       });
       
       // Handle disconnections
       ws.on('close', () => {
-        console.log(`Agent connection closed: ${connectionId}`);
+        console.log(`Service connection closed: ${connectionId}`);
         // Emit event for disconnection, let the message handler deal with it
-        this.eventBus.emit('agent.disconnected', connectionId);
+        this.eventBus.emit('service.disconnected', connectionId);
       });
       
       // Send welcome message
       this.send(ws, {
         type: 'orchestrator.welcome',
         content: {
-          message: 'Connected to ASP Orchestrator',
+          message: 'Connected to ASP Orchestrator Service Interface',
           orchestratorVersion: '1.0.0'
         }
       });
     });
     
-    // Start HTTP server for agents
+    // Start HTTP server for services
     this.server.listen(this.port, () => {
-      console.log(`ASP Orchestrator running on port ${this.port} (for agents)`);
+      console.log(`ASP Orchestrator Service Interface running on port ${this.port}`);
     });
 
     return this;
   }
 
   async handleMessage(message, ws) {
-    console.log(`Received agent message: ${JSON.stringify(message)}`);
+    console.log(`Received service message: ${JSON.stringify(message)}`);
     
     if (!message.type) {
       return this.sendError(ws, 'Invalid message format: type is required', message.id);
@@ -77,108 +77,83 @@ class AgentServer {
     
     try {
       switch (message.type) {
-        case 'agent.register':
+        case 'service.register':
           // Emit registration event and wait for response
-          this.eventBus.emit('agent.register', message, ws.id, (registrationResult) => {
+          this.eventBus.emit('service.register', message, ws.id, (registrationResult) => {
             if (registrationResult.error) {
               this.sendError(ws, registrationResult.error, message.id);
               return;
             }
             
-            // Store connection object with the agent
-            const agent = this.agents.getAgentById(registrationResult.agentId);
-            if (agent) {
-              agent.connection = ws;
-              this.agents.registerAgent(agent);
+            // Store connection object with the service
+            const service = this.services.getServiceById(registrationResult.serviceId);
+            if (service) {
+              service.connection = ws;
+              this.services.updateService(service);
             }
             
             // Send confirmation
             this.send(ws, {
-              type: 'agent.registered',
+              type: 'service.registered',
               content: registrationResult,
               requestId: message.id
             });
           });
           break;
           
-        case 'service.request':
-          // Emit service request event
-          this.eventBus.emit('service.request', message, ws.id, (serviceResult) => {
-            if (serviceResult.error) {
-              this.sendError(ws, serviceResult.error, message.id);
-              return;
-            }
-            
-            // Send the result back
-            this.send(ws, {
-              type: 'service.response',
-              content: serviceResult,
-              requestId: message.id
-            });
-          });
-          break;
-          
-        case 'agent.request':
-          // Emit agent request event
-          this.eventBus.emit('agent.request.received', message, ws.id, (result) => {
+        case 'service.status.update':
+          // Emit service status update event
+          this.eventBus.emit('service.status.update', message, ws.id, (result) => {
             if (result.error) {
               this.sendError(ws, result.error, message.id);
               return;
             }
             
-            // The actual communication will be handled by event listeners in the orchestrator
-            // This just returns a task ID for tracking
+            // Send confirmation
             this.send(ws, {
-              type: 'agent.request.accepted',
+              type: 'service.status.updated',
               content: result,
               requestId: message.id
             });
           });
           break;
           
-        case 'task.result':
+        case 'service.task.result':
           // Emit task result event
-          this.eventBus.emit('task.result.received', message);
+          this.eventBus.emit('service.task.result.received', message);
           this.eventBus.emit('response.message', message);
           break;
           
-        case 'task.error':
-          // Emit task error event
-          this.eventBus.emit('task.error.received', message);
-          this.eventBus.emit('response.message', message);
-          break;
+        case 'service.task.notification':
+          // Handle task notification from service
+          const serviceId = this.services.getServiceIdByConnectionId(ws.id);
           
-        case 'task.notification':
-          // Handle task notification from agent
-          // Get the agent information from the connection
-          const agentId = this.agents.getAgentIdByConnectionId(ws.id);
-          
-          if (!agentId) {
-            this.sendError(ws, 'Agent not registered or unknown', message.id);
+          if (!serviceId) {
+            this.sendError(ws, 'Service not registered or unknown', message.id);
             return;
           }
           
-          const agent = this.agents.getAgentById(agentId);
+          const service = this.services.getServiceById(serviceId);
           
-          if (!agent) {
-            this.sendError(ws, 'Agent not found', message.id);
+          if (!service) {
+            this.sendError(ws, 'Service not found', message.id);
             return;
           }
           
-          // Enhance the notification with agent information
+          // Enhance the notification with service information
           const enhancedNotification = {
             ...message,
             content: {
               ...message.content,
-              agentId: agent.id,
-              agentName: agent.name
+              serviceId: service.id,
+              serviceName: service.name
             }
           };
           
           // Emit the notification event for the orchestrator to handle
-          this.eventBus.emit('task.notification.received', enhancedNotification);
+          this.eventBus.emit('service.task.notification.received', enhancedNotification);
           
-          // Confirm receipt (optional)
+          // Confirm receipt
           this.send(ws, {
             type: 'notification.received',
             content: {
@@ -189,12 +164,21 @@ class AgentServer {
           });
           break;
           
+        case 'service.error':
+          // Emit service error event
+          this.eventBus.emit('service.error.received', message);
+          break;
+          
+        case 'pong':
+          // Handle ping response
+          break;
+          
         default:
-          console.warn(`Unhandled message type: ${message.type}`);
+          console.warn(`Unhandled message type from service: ${message.type}`);
           this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error('Error handling service message:', error);
       this.sendError(ws, error.message, message.id);
     }
   }
@@ -211,7 +195,7 @@ class AgentServer {
       ws.send(JSON.stringify(message));
       return message.id;
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error sending message to service:', error);
       throw error;
     }
   }
@@ -232,7 +216,7 @@ class AgentServer {
     try {
       ws.send(JSON.stringify(message));
     } catch (error) {
-      console.error('Error sending error message:', error);
+      console.error('Error sending error message to service:', error);
     }
   }
 
@@ -304,9 +288,9 @@ class AgentServer {
   stop() {
     if (this.server) {
       this.server.close();
-      console.log('Agent WebSocket server closed');
+      console.log('Service WebSocket server closed');
     }
   }
 }
 
-module.exports = { AgentServer }; 
+module.exports = { ServiceServer }; 

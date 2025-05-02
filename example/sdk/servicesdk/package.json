@@ -1,0 +1,21 @@
+{
+  "name": "@agentswarmprotocol/servicesdk",
+  "version": "1.0.0",
+  "description": "The SwarmServiceSDK provides a simple way for services to connect to and interact with the Agent Swarm Protocol orchestrator. Services can register functions that agents can call, and they can send notifications to clients about task progress.",
+  "main": "index.js",
+  "keywords": [
+    "agent",
+    "swarm",
+    "protocol",
+    "service",
+    "sdk",
+    "ASP"
+  ],
+  "author": "",
+  "license": "MIT",
+  "type": "commonjs",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}

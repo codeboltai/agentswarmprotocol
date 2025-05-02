@@ -121,10 +121,6 @@ class ClientServer {
           await this.handleClientMCPServerList(message, ws);
           break;
           
-        case 'mcp.server.register':
-          await this.handleClientMCPServerRegister(message, ws);
-          break;
-          
         default:
           this.sendToClient(ws, {
             type: 'error',
@@ -247,34 +243,6 @@ class ClientServer {
         content: {
           servers: result
         }
-      });
-    });
-  }
-  
-  // Handle MCP server registration request from client
-  async handleClientMCPServerRegister(message, ws) {
-    console.log(`Processing MCP server registration request: ${JSON.stringify(message)}`);
-    
-    // Emit MCP server registration request event
-    this.eventBus.emit('client.mcp.server.register', message.content, (result) => {
-      console.log(`Received MCP server registration result: ${JSON.stringify(result)}`);
-      
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id, // Use id for consistency
-          content: {
-            error: 'Error registering MCP server',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
-      this.sendToClient(ws, {
-        type: 'mcp.server.registered',
-        id: message.id, // Use id for consistency
-        content: result
       });
     });
   }

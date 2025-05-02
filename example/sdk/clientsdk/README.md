@@ -42,6 +42,17 @@ client.connect()
 client.on('task-result', (result) => {
   console.log('Task completed:', result);
 });
+
+// Subscribe to task notifications to get real-time updates
+const unsubscribe = client.subscribeToNotifications((notification) => {
+  console.log(`Notification: ${notification.message}`);
+  console.log(`Type: ${notification.notificationType}`);
+  console.log(`From: ${notification.agentName}`);
+  console.log(`Data:`, notification.data);
+});
+
+// Later, when you no longer want to receive notifications
+// unsubscribe();
 ```
 
 ## Configuration Options
@@ -67,10 +78,18 @@ The SwarmClientSDK constructor accepts a configuration object with the following
 - **sendTask(agentName, taskData, options)**: Send a task to an agent
 - **getTaskStatus(taskId)**: Get the status of a task
 
-### MCP Server Management
+### Task Notifications
 
-- **registerMCPServer(serverInfo)**: Register an MCP server with the orchestrator
+- **subscribeToNotifications(options, callback)**: Subscribe to real-time task notifications
+  - **options.taskId**: Filter notifications for a specific task
+  - **options.agentId**: Filter notifications from a specific agent
+  - **options.notificationType**: Filter notifications by type
+
+### MCP Server Information
+
 - **listMCPServers(filters)**: List available MCP servers
+
+> **Note:** MCP operations (like executing tools) can only be performed by agents, not clients. Clients can view available MCP servers but cannot register new servers or execute MCP tools directly. Instead, clients should send tasks to agents that have MCP capabilities.
 
 ### Communication
 
@@ -90,6 +109,7 @@ The SDK emits the following events:
 - **task-result**: Emitted when a task result is received
 - **task-status**: Emitted when task status information is received
 - **task-created**: Emitted when a task is created
+- **task-notification**: Emitted when a task notification is received from an agent
 - **orchestrator-error**: Emitted when the orchestrator reports an error
 
 ## Example
@@ -98,4 +118,4 @@ For a complete example of how to use the SwarmClientSDK, check out the [terminal
 
 ## License
 
-MIT 
+MIT

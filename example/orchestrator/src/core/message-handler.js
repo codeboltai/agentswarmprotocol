@@ -471,6 +471,144 @@ class MessageHandler {
       }
     }
   }
+
+  /**
+   * Process a message from an agent
+   * @param {Object} message - The message to process
+   * @param {string} connectionId - Agent's connection ID
+   * @returns {Promise<Object>} Processing result
+   */
+  async processAgentMessage(message, connectionId) {
+    if (!message || !message.type) {
+      throw new Error('Invalid message format');
+    }
+    
+    // Get the agent for this connection
+    const agent = this.agents.getAgentByConnectionId(connectionId);
+    
+    // Handle different message types
+    switch (message.type) {
+      case 'agent.register':
+        return this.handleAgentRegistration(message, connectionId);
+        
+      case 'task.result':
+        return this.handleTaskResult(message);
+        
+      case 'service.request':
+        return this.handleServiceRequest(message, connectionId);
+        
+      case 'agent.request':
+        return this.handleAgentRequest(message, connectionId);
+        
+      case 'agent.response':
+        return this.handleAgentResponse(message, connectionId);
+        
+      case 'agent.status.update':
+        return this.handleAgentStatusUpdate(message, connectionId);
+        
+      case 'mcp.servers.list.request':
+        return this.handleMCPServersListRequest(message, agent);
+        
+      case 'mcp.tools.list.request':
+        return this.handleMCPToolsListRequest(message, agent);
+        
+      case 'mcp.tool.execute.request':
+        return this.handleMCPToolExecuteRequest(message, agent);
+        
+      case 'pong':
+        // Just acknowledge pongs without further processing
+        return { acknowledged: true };
+        
+      default:
+        throw new Error(`Unsupported message type from agent: ${message.type}`);
+    }
+  }
+
+  /**
+   * Handle request for listing available MCP servers
+   * @param {Object} message - The request message
+   * @param {Object} agent - The requesting agent
+   * @returns {Promise<Object>} MCP servers list
+   */
+  async handleMCPServersListRequest(message, agent) {
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+    
+    const result = await new Promise((resolve, reject) => {
+      this.eventBus.emit('agent.mcp.servers.list', message.content, response => {
+        if (response.error) {
+          reject(new Error(response.error));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
+    return result;
+  }
+  
+  /**
+   * Handle request for listing tools available on an MCP server
+   * @param {Object} message - The request message
+   * @param {Object} agent - The requesting agent
+   * @returns {Promise<Object>} MCP tools list
+   */
+  async handleMCPToolsListRequest(message, agent) {
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+    
+    if (!message.content || !message.content.serverId) {
+      throw new Error('Server ID is required to list MCP tools');
+    }
+    
+    const result = await new Promise((resolve, reject) => {
+      this.eventBus.emit('agent.mcp.tools.list', message.content, response => {
+        if (response.error) {
+          reject(new Error(response.error));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
+    return result;
+  }
+  
+  /**
+   * Handle request to execute an MCP tool
+   * @param {Object} message - The request message
+   * @param {Object} agent - The requesting agent
+   * @returns {Promise<Object>} Execution result
+   */
+  async handleMCPToolExecuteRequest(message, agent) {
+    if (!agent) {
+      throw new Error('Agent not found');
+    }
+    
+    const { serverId, toolName, parameters } = message.content;
+    
+    if (!serverId) {
+      throw new Error('Server ID is required to execute an MCP tool');
+    }
+    
+    if (!toolName) {
+      throw new Error('Tool name is required to execute an MCP tool');
+    }
+    
+    const result = await new Promise((resolve, reject) => {
+      this.eventBus.emit('agent.mcp.tool.execute', message.content, response => {
+        if (response.error) {
+          reject(new Error(response.error));
+        } else {
+          resolve(response);
+        }
+      });
+    });
+    
+    return result;
+  }
 }
 
 module.exports = { MessageHandler }; 

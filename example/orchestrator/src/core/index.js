@@ -1,11 +1,13 @@
 const WebSocket = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const EventEmitter = require('events');
-const { setupServices } = require('./utils/services/services');
 const { AgentRegistry } = require('../agent/agent-registry');
 const { TaskRegistry } = require('./utils/tasks/task-registry');
+const { ServiceRegistry } = require('../service/service-registry');
+const { ServiceTaskRegistry } = require('../service/service-task-registry');
 const { AgentServer } = require('../agent/agent-server');
 const { ClientServer } = require('../client/client-server');
+const { ServiceServer } = require('../service/service-server');
 const { MessageHandler } = require('./message-handler');
 const mcp = require('./utils/mcp');
 const ConfigLoader = require('./utils/config-loader');
@@ -60,6 +62,10 @@ class Orchestrator {
       config.clientPort = parseInt(cliArgs.clientPort, 10);
     }
     
+    if (cliArgs.servicePort) {
+      config.servicePort = parseInt(cliArgs.servicePort, 10);
+    }
+    
     if (cliArgs.logLevel) {
       config.logLevel = cliArgs.logLevel;
     }
@@ -75,10 +81,13 @@ class Orchestrator {
     
     this.port = config.port || orchestratorSettings.agentPort || process.env.PORT || 3000;
     this.clientPort = config.clientPort || orchestratorSettings.clientPort || process.env.CLIENT_PORT || 3001;
+    this.servicePort = config.servicePort || orchestratorSettings.servicePort || process.env.SERVICE_PORT || 3002;
     this.logLevel = config.logLevel || orchestratorSettings.logLevel || process.env.LOG_LEVEL || 'info';
+    
     this.agents = new AgentRegistry();
-    this.services = setupServices(config);
     this.tasks = new TaskRegistry();
+    this.services = new ServiceRegistry();
+    this.serviceTasks = new ServiceTaskRegistry();
     this.pendingResponses = {}; // Track pending responses
     
     // Create event bus for communication between components
@@ -92,6 +101,7 @@ class Orchestrator {
       agents: this.agents,
       tasks: this.tasks,
       services: this.services,
+      serviceTasks: this.serviceTasks,
       eventBus: this.eventBus,
       mcp: this.mcp
     });
@@ -106,6 +116,12 @@ class Orchestrator {
     this.clientServer = new ClientServer(
       this.eventBus, 
       { clientPort: this.clientPort }
+    );
+    
+    this.serviceServer = new ServiceServer(
+      { services: this.services },
+      this.eventBus,
+      { port: this.servicePort }
     );
     
     // Set up event listeners
@@ -153,6 +169,47 @@ class Orchestrator {
       }
     });
     
+    // Listen for service task created events
+    this.eventBus.on('service.task.created', (taskId, serviceId, agentId, clientId, taskData) => {
+      console.log(`Service task ${taskId} created for service ${serviceId} by agent ${agentId}`);
+      
+      // Get the service connection
+      const service = this.services.getServiceById(serviceId);
+      if (service && service.connection) {
+        // Create a task message to send to the service
+        const taskMessage = {
+          id: taskId,
+          type: 'service.task.execute',
+          content: {
+            ...taskData,
+            functionName: taskData.functionName,
+            params: taskData.params || {},
+            metadata: {
+              agentId: agentId,
+              clientId: clientId,
+              timestamp: new Date().toISOString()
+            }
+          }
+        };
+        
+        // Send the task to the service
+        this.sendAndWaitForResponse(service.connection, taskMessage)
+          .then(response => {
+            // Task completed by service
+            this.serviceTasks.updateTaskStatus(taskId, 'completed', response);
+            this.eventBus.emit('response.message', response);
+          })
+          .catch(error => {
+            // Task failed
+            console.error(`Error sending task to service: ${error.message}`);
+            this.serviceTasks.updateTaskStatus(taskId, 'failed', { error: error.message });
+          });
+      } else {
+        console.error(`Cannot send task ${taskId} to service ${serviceId}: Service not connected`);
+        this.serviceTasks.updateTaskStatus(taskId, 'failed', { error: 'Service not connected' });
+      }
+    });
+    
     // Listen for agent-to-agent request events
     this.eventBus.on('agent.request', (taskId, targetAgentId, requestingAgentId, taskMessage) => {
       console.log(`Agent ${requestingAgentId} requesting task ${taskId} from agent ${targetAgentId}`);
@@ -185,6 +242,16 @@ class Orchestrator {
       }
     });
     
+    // Handle service registration
+    this.eventBus.on('service.register', (message, connectionId, callback) => {
+      try {
+        const result = this.messageHandler.handleServiceRegistration(message, connectionId);
+        callback(result);
+      } catch (error) {
+        callback({ error: error.message });
+      }
+    });
+    
     // Handle service requests
     this.eventBus.on('service.request', async (message, connectionId, callback) => {
       try {
@@ -192,6 +259,35 @@ class Orchestrator {
         callback(result);
       } catch (error) {
         callback({ error: error.message });
+      }
+    });
+    
+    // Handle service task requests from agents
+    this.eventBus.on('service.task.request', async (message, agentId, callback) => {
+      try {
+        const result = await this.messageHandler.handleServiceTaskRequest(message, agentId);
+        callback(result);
+      } catch (error) {
+        callback({ error: error.message });
+      }
+    });
+    
+    // Handle service task results
+    this.eventBus.on('service.task.result.received', (message) => {
+      this.messageHandler.handleServiceTaskResult(message);
+    });
+    
+    // Handle service task notifications
+    this.eventBus.on('service.task.notification.received', (message) => {
+      this.forwardServiceTaskNotificationToClient(message);
+      
+      // Also forward to the requesting agent
+      const taskId = message.content.taskId;
+      if (taskId) {
+        const task = this.serviceTasks.getTaskById(taskId);
+        if (task && task.agentId) {
+          this.forwardServiceTaskNotificationToAgent(task.agentId, message);
+        }
       }
     });
     
@@ -215,14 +311,29 @@ class Orchestrator {
       this.messageHandler.handleTaskError(message);
     });
     
+    // Handle task notifications
+    this.eventBus.on('task.notification.received', (message) => {
+      this.forwardTaskNotificationToClient(message);
+    });
+    
     // Listen for agent disconnection events
     this.eventBus.on('agent.disconnected', (connectionId) => {
       this.messageHandler.handleAgentDisconnected(connectionId);
     });
     
+    // Listen for service disconnection events
+    this.eventBus.on('service.disconnected', (connectionId) => {
+      this.messageHandler.handleServiceDisconnected(connectionId);
+    });
+    
     // Listen for agent status changes
     this.eventBus.on('agent.status_changed', (agentId, status) => {
       console.log(`Agent ${agentId} status changed to ${status}`);
+    });
+    
+    // Listen for service status changes
+    this.eventBus.on('service.status_changed', (serviceId, status) => {
+      console.log(`Service ${serviceId} status changed to ${status}`);
     });
     
     // Listen for response messages
@@ -260,20 +371,20 @@ class Orchestrator {
       }
     });
     
-    // Handle client MCP server list requests
-    this.eventBus.on('client.mcp.server.list', (filters, callback) => {
+    // Handle client service list requests
+    this.eventBus.on('client.service.list', (filters, callback) => {
       try {
-        const result = this.mcp.listMCPServers(filters || {});
+        const result = this.messageHandler.getServiceList(filters);
         callback(result);
       } catch (error) {
         callback({ error: error.message });
       }
     });
     
-    // Handle client MCP server registration requests
-    this.eventBus.on('client.mcp.server.register', async (content, callback) => {
+    // Handle client MCP server list requests
+    this.eventBus.on('client.mcp.server.list', (filters, callback) => {
       try {
-        const result = await this.mcp.registerMCPServer(content);
+        const result = this.mcp.listMCPServers(filters || {});
         callback(result);
       } catch (error) {
         callback({ error: error.message });
@@ -286,7 +397,7 @@ class Orchestrator {
     
     // Load configuration
     const config = this.configLoader.loadConfig();
-    console.log(`Loaded configuration with ${Object.keys(config.mcpServers || {}).length} MCP server(s) and ${Object.keys(config.agents || {}).length} agent(s)`);
+    console.log(`Loaded configuration with ${Object.keys(config.mcpServers || {}).length} MCP server(s), ${Object.keys(config.agents || {}).length} agent(s), and ${Object.keys(config.services || {}).length} service(s)`);
     
     // Initialize preconfigured MCP servers from config
     await this.initMCPServersFromConfig();
@@ -294,11 +405,17 @@ class Orchestrator {
     // Initialize preconfigured agents from config
     await this.initAgentsFromConfig();
     
+    // Initialize preconfigured services from config
+    await this.initServicesFromConfig();
+    
     // Start agent server
     await this.agentServer.start();
     
     // Start client server
     await this.clientServer.start();
+    
+    // Start service server
+    await this.serviceServer.start();
     
     console.log('Agent Swarm Protocol Orchestrator fully started');
     return this;
@@ -310,7 +427,6 @@ class Orchestrator {
   async initMCPServersFromConfig() {
     const mcpServers = this.configLoader.getMCPServers();
     console.log(`Initializing ${Object.keys(mcpServers).length} preconfigured MCP servers...`);
-    console.log('MCP server configurations:', JSON.stringify(mcpServers, null, 2));
     
     for (const [id, server] of Object.entries(mcpServers)) {
       try {
@@ -345,6 +461,26 @@ class Orchestrator {
         name: agentConfig.name,
         capabilities: agentConfig.capabilities || [],
         metadata: agentConfig.metadata || {}
+      });
+    }
+  }
+
+  /**
+   * Initialize services from configuration
+   */
+  async initServicesFromConfig() {
+    const serviceConfigs = this.configLoader.getServices() || {};
+    console.log(`Found ${Object.keys(serviceConfigs).length} preconfigured services...`);
+    
+    // Note: This just prepares configurations. Actual service registration
+    // happens when services connect to the orchestrator.
+    for (const [id, serviceConfig] of Object.entries(serviceConfigs)) {
+      console.log(`Prepared configuration for service: ${serviceConfig.name}`);
+      // Store service configuration for when the service connects
+      this.services.setServiceConfiguration(id, {
+        name: serviceConfig.name,
+        capabilities: serviceConfig.capabilities || [],
+        metadata: serviceConfig.metadata || {}
       });
     }
   }
@@ -431,9 +567,132 @@ class Orchestrator {
     });
   }
 
+  // Forward service task result to agent
+  forwardServiceTaskResultToAgent(agentId, taskId, content) {
+    const agent = this.agents.getAgentById(agentId);
+    if (agent && agent.connection) {
+      const message = {
+        type: 'service.task.result',
+        taskId,
+        content
+      };
+      
+      try {
+        agent.connection.send(JSON.stringify(message));
+      } catch (error) {
+        console.error(`Error forwarding service task result to agent: ${error.message}`);
+      }
+    }
+  }
+
   // Forward task error to client
   forwardTaskErrorToClient(clientId, message) {
     this.clientServer.sendMessage(clientId, message);
+  }
+
+  // Forward a task notification from an agent to the appropriate client
+  forwardTaskNotificationToClient(message) {
+    const notification = message.content;
+    console.log(`Forwarding task notification: ${notification.message} (${notification.notificationType})`);
+    
+    let clientId = notification.clientId;
+    
+    // If no specific client ID is provided, try to find the client from the task
+    if (!clientId && notification.taskId) {
+      const task = this.tasks.getTaskById(notification.taskId);
+      if (task && task.clientId) {
+        clientId = task.clientId;
+      }
+    }
+    
+    // If we have a specific client to send to
+    if (clientId) {
+      if (this.clientServer.hasClientConnection(clientId)) {
+        const clientWs = this.clientServer.getClientConnection(clientId);
+        this.clientServer.sendToClient(clientWs, {
+          type: 'task.notification',
+          content: notification
+        });
+      } else {
+        console.warn(`Cannot forward notification: Client ${clientId} not connected`);
+      }
+    } else {
+      // Broadcast to all clients if no specific client is targeted
+      console.log('Broadcasting notification to all connected clients');
+      let clientCount = 0;
+      
+      // Get all client connections and send the notification to each
+      for (const [id, clientWs] of this.clientServer.clientConnections.entries()) {
+        this.clientServer.sendToClient(clientWs, {
+          type: 'task.notification',
+          content: notification
+        });
+        clientCount++;
+      }
+      
+      console.log(`Notification broadcasted to ${clientCount} clients`);
+    }
+  }
+
+  // Forward a service task notification to the appropriate client
+  forwardServiceTaskNotificationToClient(message) {
+    const notification = message.content;
+    console.log(`Forwarding service task notification: ${notification.message} (${notification.notificationType})`);
+    
+    let clientId = notification.clientId;
+    
+    // If no specific client ID is provided, try to find the client from the task
+    if (!clientId && notification.taskId) {
+      const task = this.serviceTasks.getTaskById(notification.taskId);
+      if (task && task.clientId) {
+        clientId = task.clientId;
+      }
+    }
+    
+    // If we have a specific client to send to
+    if (clientId) {
+      if (this.clientServer.hasClientConnection(clientId)) {
+        const clientWs = this.clientServer.getClientConnection(clientId);
+        this.clientServer.sendToClient(clientWs, {
+          type: 'service.notification',
+          content: notification
+        });
+      } else {
+        console.warn(`Cannot forward service notification: Client ${clientId} not connected`);
+      }
+    } else {
+      // Broadcast to all clients if no specific client is targeted
+      console.log('Broadcasting service notification to all connected clients');
+      let clientCount = 0;
+      
+      // Get all client connections and send the notification to each
+      for (const [id, clientWs] of this.clientServer.clientConnections.entries()) {
+        this.clientServer.sendToClient(clientWs, {
+          type: 'service.notification',
+          content: notification
+        });
+        clientCount++;
+      }
+      
+      console.log(`Service notification broadcasted to ${clientCount} clients`);
+    }
+  }
+
+  // Forward a service task notification to the requesting agent
+  forwardServiceTaskNotificationToAgent(agentId, message) {
+    const agent = this.agents.getAgentById(agentId);
+    if (agent && agent.connection) {
+      const notification = message.content;
+      
+      try {
+        agent.connection.send(JSON.stringify({
+          type: 'service.notification',
+          content: notification
+        }));
+      } catch (error) {
+        console.error(`Error forwarding service notification to agent: ${error.message}`);
+      }
+    }
   }
 
   // Gracefully stop the orchestrator
@@ -455,6 +714,9 @@ class Orchestrator {
     
     // Stop client server
     await this.clientServer.stop();
+    
+    // Stop service server
+    await this.serviceServer.stop();
     
     console.log('Agent Swarm Protocol Orchestrator stopped');
   }
