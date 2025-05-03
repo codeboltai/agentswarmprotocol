@@ -5,10 +5,10 @@ import { AgentRegistry } from '../agent/agent-registry';
 import { TaskRegistry } from './utils/tasks/task-registry';
 import { ServiceRegistry } from '../service/service-registry';
 import { ServiceTaskRegistry } from '../service/service-task-registry';
-import { AgentServer } from '../agent/agent-server';
-import { ClientServer } from '../client/client-server';
-import { ServiceServer } from '../service/service-server';
-import { MessageHandler } from './message-handler';
+import AgentServer from '../agent/agent-server';
+import ClientServer from '../client/client-server';
+import ServiceServer from '../service/service-server';
+import MessageHandler from './message-handler';
 import * as mcp from './utils/mcp';
 import ConfigLoader from './utils/config-loader';
 import dotenv from 'dotenv';
@@ -17,7 +17,7 @@ import {
   PendingResponse,
   WebSocketWithId,
   SendOptions
-} from '@agentswarmprotocol/types/common';
+} from '@agentswarmprotocol/types/dist/common';
 
 // Load environment variables
 dotenv.config({ path: '../.env' });
@@ -159,7 +159,7 @@ class Orchestrator {
       
       // Get the agent connection
       const agent = this.agents.getAgentById(agentId);
-      if (agent && agent.connection) {
+      if (agent && agent.connectionId) {
         // Create a task message to send to the agent
         const taskMessage = {
           id: taskId,
@@ -176,7 +176,7 @@ class Orchestrator {
         };
         
         // Send the task to the agent
-        this.sendAndWaitForResponse(agent.connection, taskMessage)
+        this.sendAndWaitForResponse(agent.connectionId, taskMessage)
           .then(response => {
             // Task completed by agent
             this.tasks.updateTaskStatus(taskId, 'completed', response);
@@ -199,7 +199,7 @@ class Orchestrator {
       
       // Get the service connection
       const service = this.services.getServiceById(serviceId);
-      if (service && service.connection) {
+      if (service && service.connectionId) {
         // Create a task message to send to the service
         const taskMessage = {
           id: taskId,
@@ -217,7 +217,7 @@ class Orchestrator {
         };
         
         // Send the task to the service
-        this.sendAndWaitForResponse(service.connection, taskMessage)
+        this.sendAndWaitForResponse(service.connectionId, taskMessage)
           .then(response => {
             // Task completed by service
             this.serviceTasks.updateTaskStatus(taskId, 'completed', response);
@@ -240,9 +240,9 @@ class Orchestrator {
       
       // Get the connections needed
       const targetAgent = this.agents.getAgentById(targetAgentId);
-      if (targetAgent && targetAgent.connection) {
+      if (targetAgent && targetAgent.connectionId) {
         // Send the task to the target agent
-        this.sendAndWaitForResponse(targetAgent.connection, taskMessage)
+        this.sendAndWaitForResponse(targetAgent.connectionId, taskMessage)
           .then(response => {
             // Task completed by target agent
             this.tasks.updateTaskStatus(taskId, 'completed', response);
@@ -262,17 +262,17 @@ class Orchestrator {
         const result = this.messageHandler.handleAgentRegistration(message, connectionId);
         callback(result);
       } catch (error) {
-        callback({ error: error.message });
+        callback({ error: error instanceof Error ? error.message : String(error) });
       }
     });
     
     // Handle service registration
-    this.eventBus.on('service.register', (message: any, connectionId: string, callback: Function) => {
+    this.eventBus.on('service.register', async (message: any, connectionId: string, callback: Function) => {
       try {
-        const result = this.messageHandler.handleServiceRegistration(message, connectionId);
+        const result = this.messageHandler.handleAgentRegistration(message, connectionId);
         callback(result);
       } catch (error) {
-        callback({ error: error.message });
+        callback({ error: error instanceof Error ? error.message : String(error) });
       }
     });
     
@@ -398,16 +398,46 @@ class Orchestrator {
       
       for (const [serviceName, config] of Object.entries(serviceConfigs)) {
         // This just preloads the configurations, services still need to connect
-        this.services.addServiceConfiguration(serviceName, config);
+        this.services.setServiceConfiguration(serviceName, config);
       }
     }
   }
 
   /**
-   * Send a message to a WebSocket connection and wait for a response
+   * Send a message to a WebSocket connection or to a connection ID and wait for a response
+   * @param wsOrConnectionId - WebSocket object or connection ID
+   * @param message - Message to send
+   * @param options - Send options
+   * @returns Promise resolving with the response
    */
-  async sendAndWaitForResponse(ws: WebSocketWithId, message: any, options: SendOptions = {}): Promise<any> {
+  async sendAndWaitForResponse(
+    wsOrConnectionId: WebSocketWithId | string, 
+    message: any, 
+    options: SendOptions = {}
+  ): Promise<any> {
     return new Promise((resolve, reject) => {
+      let ws: WebSocketWithId;
+      
+      // If a connection ID was provided, try to find the WebSocket
+      if (typeof wsOrConnectionId === 'string') {
+        // Try to find agent connection
+        const agentConnection = this.agents.getAgentConnection(wsOrConnectionId);
+        if (agentConnection) {
+          ws = agentConnection;
+        } else {
+          // If not an agent, check if it's a service
+          const service = this.services.getServiceByConnectionId(wsOrConnectionId);
+          if (service && (service as any).connection) {
+            ws = (service as any).connection;
+          } else {
+            return reject(new Error(`Connection not found for ID: ${wsOrConnectionId}`));
+          }
+        }
+      } else {
+        // WebSocket object was directly provided
+        ws = wsOrConnectionId;
+      }
+      
       const messageId = message.id || uuidv4();
       
       // Ensure message has an ID
@@ -436,7 +466,7 @@ class Orchestrator {
       
       // Send the message
       try {
-        ws.send(messageString, (error) => {
+        ws.send(messageString, (error: Error | undefined) => {
           if (error) {
             clearTimeout(timer);
             delete this.pendingResponses[messageId];
@@ -487,13 +517,18 @@ class Orchestrator {
   private forwardServiceTaskResultToAgent(agentId: string, taskId: string, content: any): void {
     const agent = this.agents.getAgentById(agentId);
     
-    if (agent && agent.connection) {
-      agent.connection.send(JSON.stringify({
-        id: uuidv4(),
-        type: 'service.task.result',
-        taskId,
-        content
-      }));
+    if (agent && agent.connectionId) {
+      const ws = this.agents.getAgentConnection(agent.connectionId);
+      if (ws) {
+        ws.send(JSON.stringify({
+          id: uuidv4(),
+          type: 'service.task.result',
+          taskId,
+          content
+        }));
+      } else {
+        console.error(`Cannot forward service task result to agent ${agentId}: Agent not connected`);
+      }
     } else {
       console.error(`Cannot forward service task result to agent ${agentId}: Agent not connected`);
     }
@@ -524,7 +559,7 @@ class Orchestrator {
           clientId = task.clientId;
         }
       } catch (error) {
-        console.error(`Error looking up task for notification: ${error.message}`);
+        console.error(`Error looking up task for notification: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     
@@ -562,7 +597,7 @@ class Orchestrator {
           clientId = task.clientId;
         }
       } catch (error) {
-        console.error(`Error looking up service task for notification: ${error.message}`);
+        console.error(`Error looking up service task for notification: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     
@@ -588,17 +623,22 @@ class Orchestrator {
   private forwardServiceTaskNotificationToAgent(agentId: string, message: any): void {
     const agent = this.agents.getAgentById(agentId);
     
-    if (agent && agent.connection) {
-      // Create notification message for agent
-      const notificationMessage = {
-        id: uuidv4(),
-        type: 'service.notification',
-        taskId: message.taskId,
-        content: message.content
-      };
-      
-      // Send notification to agent
-      agent.connection.send(JSON.stringify(notificationMessage));
+    if (agent && agent.connectionId) {
+      const ws = this.agents.getAgentConnection(agent.connectionId);
+      if (ws) {
+        // Create notification message for agent
+        const notificationMessage = {
+          id: uuidv4(),
+          type: 'service.notification',
+          taskId: message.taskId,
+          content: message.content
+        };
+        
+        // Send notification to agent
+        ws.send(JSON.stringify(notificationMessage));
+      } else {
+        console.warn(`Cannot forward service notification to agent ${agentId}: Agent not connected`);
+      }
     } else {
       console.warn(`Cannot forward service notification to agent ${agentId}: Agent not connected`);
     }

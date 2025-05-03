@@ -22,7 +22,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@agentswarmprotocol/types": "^1.0.0",
+    "@agentswarmprotocol/types": "file:../../types",
     "uuid": "^9.0.0",
     "ws": "^8.12.0"
   },

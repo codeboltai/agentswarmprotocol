@@ -29,6 +29,9 @@ class ClientServer {
     this.clientPort = config.clientPort || parseInt(process.env.CLIENT_PORT || '3001', 10);
     this.clientConnections = new Map(); // Store client connections
     this.pendingResponses = {}; // Track pending responses
+    // Initialize clientServer and clientWss to null as they'll be set in start()
+    this.clientServer = null as unknown as http.Server;
+    this.clientWss = null as unknown as WebSocket.Server;
     
     // Set up event listeners for client communication
     this.setupEventListeners();
@@ -511,6 +514,21 @@ class ClientServer {
       // Send the message
       this.sendToClient(ws, message);
     });
+  }
+
+  // Add the new method here
+  /**
+   * Send a message to a client by ID
+   * @param clientId - ID of the client to send the message to
+   * @param message - The message to send
+   */
+  sendMessageToClient(clientId: string, message: any): void {
+    const clientWs = this.getClientConnection(clientId);
+    if (clientWs) {
+      this.sendToClient(clientWs, message);
+    } else {
+      console.warn(`Cannot send message to client ${clientId}: Client not connected`);
+    }
   }
 }
 

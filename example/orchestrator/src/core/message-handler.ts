@@ -19,7 +19,7 @@ import {
   AgentMessages,
   ClientMessages,
   ServiceMessages
-} from '@agentswarmprotocol/types/messages';
+} from '@agentswarmprotocol/types/dist/messages';
 import { EventEmitter } from 'events';
 
 // Core interfaces for the orchestrator
@@ -115,15 +115,19 @@ class MessageHandler {
       throw new Error('Invalid task status request: Task ID is required');
     }
     
-    const task = this.tasks.getTask(taskId);
-    
-    return {
-      taskId,
-      status: task.status,
-      result: task.result,
-      createdAt: task.createdAt,
-      completedAt: task.completedAt
-    };
+    try {
+      const task = this.tasks.getTask(taskId);
+      
+      return {
+        taskId,
+        status: task.status,
+        result: task.result,
+        createdAt: task.createdAt,
+        completedAt: task.completedAt
+      };
+    } catch (error) {
+      throw new Error(`Task not found: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**

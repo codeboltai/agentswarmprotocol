@@ -295,10 +295,14 @@ export class ServiceRegistry implements IServiceRegistry {
    * Get all service configurations
    * @returns {Array<ServiceConfiguration>} Array of service configurations
    */
-  getAllServiceConfigurations(): (ServiceConfiguration & { id: string })[] {
-    return Array.from(this.serviceConfigurations.entries()).map(([id, config]) => ({
-      id,
-      ...config
-    }));
+  getAllServiceConfigurations(): ServiceConfiguration[] {
+    return Array.from(this.serviceConfigurations.entries()).map(([id, config]) => {
+      // Create a copy of the config without the id property to avoid duplication
+      const { id: _, ...configWithoutId } = config;
+      return {
+        id,
+        ...configWithoutId
+      };
+    });
   }
 } 

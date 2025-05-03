@@ -9,9 +9,12 @@ export interface WebSocketClientConfig {
     autoReconnect?: boolean;
     /** Interval in ms to attempt reconnection */
     reconnectInterval?: number;
+    /** Force the use of browser WebSocket implementation */
+    forceBrowserWebSocket?: boolean;
 }
 /**
  * WebSocketClient - Handles WebSocket connection to the orchestrator
+ * Works in both browser and Node.js environments
  */
 export declare class WebSocketClient extends EventEmitter {
     private orchestratorUrl;
@@ -20,6 +23,8 @@ export declare class WebSocketClient extends EventEmitter {
     private connected;
     private clientId;
     private ws;
+    private forceBrowserWebSocket;
+    private isNodeEnvironment;
     /**
      * Create a new WebSocketClient instance
      * @param config - Configuration options

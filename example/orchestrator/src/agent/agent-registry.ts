@@ -88,7 +88,19 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns {Agent|undefined} The agent object or undefined if not found
    */
   getAgentByConnectionId(connectionId: string): Agent | undefined {
-    return this.agentsByConnectionId.get(connectionId);
+    return Array.from(this.agents.values()).find(
+      agent => agent.connectionId === connectionId
+    );
+  }
+
+  /**
+   * Get agent WebSocket connection by connection ID
+   * @param connectionId - The connection ID of the agent
+   * @returns The WebSocket connection object or undefined if not found
+   */
+  getAgentConnection(connectionId: string): any {
+    const agent = this.getAgentByConnectionId(connectionId);
+    return agent ? (agent as any).connection : undefined;
   }
 
   /**

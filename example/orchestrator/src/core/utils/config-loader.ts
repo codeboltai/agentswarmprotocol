@@ -5,7 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { ConfigLoaderOptions, OrchestratorSettings } from '@agentswarmprotocol/types/common';
+import { ConfigLoaderOptions, OrchestratorSettings } from '@agentswarmprotocol/types/dist/common';
 
 interface Config {
   mcpServers: Record<string, any>;

@@ -1,6 +1,17 @@
-# Agent Swarm Protocol Client SDK
+# Agent Swarm Protocol - Universal Client SDK
 
-Client SDK for connecting to and interacting with Agent Swarm Protocol orchestrators.
+This client SDK for Agent Swarm Protocol supports both browser and Node.js environments, allowing you to use the same SDK code in any JavaScript/TypeScript environment.
+
+## Features
+
+- Universal compatibility: Works in both browser and Node.js environments
+- Automatic environment detection
+- Consistent API across platforms
+- TypeScript support
+- Event-based communication with orchestrator
+- Task management
+- Agent discovery and interaction
+- MCP (Master Control Program) integration
 
 ## Installation
 
@@ -10,81 +21,130 @@ npm install @agentswarmprotocol/clientsdk
 
 ## Usage
 
-```javascript
-const SwarmClientSDK = require('@agentswarmprotocol/clientsdk');
+### Browser Environment
 
-// Create a new SDK instance
-const client = new SwarmClientSDK({
-  orchestratorUrl: 'ws://localhost:3001', // WebSocket URL of the orchestrator client interface
-  autoReconnect: true, // Automatically reconnect on disconnection
-  reconnectInterval: 5000 // Interval in ms to attempt reconnection
+```typescript
+import { SwarmClientSDK } from '@agentswarmprotocol/clientsdk';
+
+// Create SDK instance
+const sdk = new SwarmClientSDK({
+  orchestratorUrl: 'ws://localhost:3001',
+  autoConnect: true
 });
 
-// Connect to the orchestrator
-await client.connect();
+// Listen for events
+sdk.on('connected', () => {
+  console.log('Connected to orchestrator!');
+});
 
-// Get a list of registered agents
-const agents = await client.getAgents();
-console.log('Available agents:', agents);
+// Get available agents
+sdk.getAgents().then(agents => {
+  console.log('Available agents:', agents);
+});
 
 // Send a task to an agent
-const result = await client.sendTask('example-agent', {
-  taskType: 'example',
-  prompt: 'Hello, world!'
+sdk.sendTask('research-agent', {
+  query: 'Find information about AI agent swarms'
+})
+.then(task => {
+  console.log('Task created:', task);
 });
-console.log('Task result:', result);
-
-// Subscribe to task notifications
-const unsubscribe = client.subscribeToNotifications(notification => {
-  console.log('Received notification:', notification);
-});
-
-// Later, when done
-client.disconnect();
 ```
 
-## Modules
+### Node.js Environment
 
-The SDK is organized into several modules:
+```typescript
+import { SwarmClientSDK } from '@agentswarmprotocol/clientsdk';
 
-- **WebSocketClient**: Handles WebSocket connection to the orchestrator
-- **MessageHandler**: Processes messages from the orchestrator
-- **TaskManager**: Handles task-related operations
-- **AgentManager**: Handles agent-related operations
-- **MCPManager**: Handles MCP-related operations
+// Create SDK instance
+const sdk = new SwarmClientSDK({
+  orchestratorUrl: 'ws://localhost:3001'
+});
+
+// Connect to orchestrator
+await sdk.connect();
+
+// Get available agents
+const agents = await sdk.getAgents();
+console.log('Available agents:', agents);
+
+// Send a task
+const task = await sdk.sendTask('research-agent', {
+  query: 'Find information about AI agent swarms'
+});
+console.log('Task created:', task);
+```
+
+## Environment Detection
+
+The SDK automatically detects the environment and uses the appropriate WebSocket implementation:
+
+- In browsers: Uses the native browser WebSocket API
+- In Node.js: Uses the 'ws' package
+
+## Configuration Options
+
+```typescript
+const sdk = new SwarmClientSDK({
+  // WebSocket URL of the orchestrator client interface
+  orchestratorUrl: 'ws://localhost:3001',
+  
+  // Whether to automatically reconnect on disconnection (default: true)
+  autoReconnect: true,
+  
+  // Interval in ms to attempt reconnection (default: 5000)
+  reconnectInterval: 5000,
+  
+  // Default timeout for requests in milliseconds (default: 30000)
+  defaultTimeout: 30000,
+  
+  // Auto-connect on initialization (default: false)
+  autoConnect: false,
+  
+  // Force the use of browser WebSocket implementation even in Node.js (default: false)
+  forceBrowserWebSocket: false
+});
+```
 
 ## API Reference
 
-### SwarmClientSDK
+### Main SDK Methods
 
-Main SDK class that provides access to all functionality.
+- `connect()` - Connect to the orchestrator
+- `disconnect()` - Disconnect from the orchestrator
+- `isConnected()` - Check if connected to the orchestrator
+- `getClientId()` - Get the client ID
+- `sendRequest(message, options)` - Send a request to the orchestrator
+- `sendTask(agentName, taskData, options)` - Send a task to an agent
+- `getAgents(filters)` - Get a list of all registered agents
+- `listMCPServers(filters)` - List available MCP servers
 
-#### Methods
+### Task Manager Methods
 
-- `connect()`: Connect to the orchestrator
-- `disconnect()`: Disconnect from the orchestrator
-- `getAgents(filters)`: Get a list of all registered agents
-- `sendTask(agentName, taskData, options)`: Send a task to an agent
-- `getTaskStatus(taskId)`: Get the status of a task
-- `listMCPServers(filters)`: List available MCP servers
-- `subscribeToNotifications(options, callback)`: Subscribe to task notifications
-- `getClientId()`: Get the client ID
-- `isConnected()`: Check if client is connected
+- `sendTask(agentName, taskData, options)` - Send a task to an agent
+- `getTaskStatus(taskId)` - Get the status of a task
+- `getTaskResult(taskId)` - Get the result of a task
+- `cancelTask(taskId)` - Cancel a task
+- `listTasks(filters)` - List all tasks
 
-#### Events
+### Agent Manager Methods
 
-- `connected`: Emitted when connected to the orchestrator
-- `disconnected`: Emitted when disconnected from the orchestrator
-- `error`: Emitted when an error occurs
-- `welcome`: Emitted when a welcome message is received from the orchestrator
-- `message`: Emitted for all messages received from the orchestrator
-- `task-result`: Emitted when a task result is received
-- `task-status`: Emitted when a task status update is received
-- `task-created`: Emitted when a task is created
-- `task-notification`: Emitted when a task notification is received
-- `agent-list`: Emitted when an agent list is received
-- `mcp-server-list`: Emitted when an MCP server list is received
-- `orchestrator-error`: Emitted when an error is received from the orchestrator
+- `getAgents(filters)` - Get a list of all registered agents
+- `getAgentInfo(agentId)` - Get information about a specific agent
+- `getAgentCapabilities(agentId)` - Get the capabilities of a specific agent
+
+### Events
+
+- `connected` - Emitted when connected to the orchestrator
+- `disconnected` - Emitted when disconnected from the orchestrator
+- `error` - Emitted when an error occurs
+- `welcome` - Emitted when receiving the welcome message from the orchestrator
+- `task-created` - Emitted when a task is created
+- `task-status` - Emitted when a task status changes
+- `task-result` - Emitted when a task result is received
+- `task-notification` - Emitted when a task notification is received
+- `agent-list` - Emitted when an agent list is received
+- `orchestrator-error` - Emitted when an error is received from the orchestrator
 
 ## License
 

@@ -4,6 +4,10 @@
   "description": "Client SDK for Agent Swarm Protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "browser": {
+    "./dist/index.js": "./dist/index.js",
+    "ws": false
+  },
   "scripts": {
     "build": "tsc",
     "test": "jest",
@@ -26,7 +30,9 @@
   },
   "dependencies": {
     "@agentswarmprotocol/types": "file:../../types",
-    "uuid": "^9.0.0",
+    "uuid": "^9.0.0"
+  },
+  "optionalDependencies": {
     "ws": "^8.13.0"
   },
   "devDependencies": {

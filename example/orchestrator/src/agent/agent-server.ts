@@ -43,6 +43,9 @@ class AgentServer {
     this.eventBus = eventBus;
     this.port = config.port || parseInt(process.env.PORT || '3000', 10);
     this.pendingResponses = {}; // Track pending responses
+    // Initialize server and wss to null as they'll be set in start()
+    this.server = null as unknown as http.Server;
+    this.wss = null as unknown as WebSocket.Server;
   }
 
   async start(): Promise<AgentServer> {

@@ -8,8 +8,31 @@ import {
   ChatBubbleIcon,
   InfoCircledIcon
 } from "@radix-ui/react-icons";
-import { BrowserClientSDK } from "../../lib/browser-client-sdk";
 import { AgentSelector } from "./agent-selector";
+import { AgentInfo } from "@agentswarmprotocol/types";
+
+// Define message and error types for the SimpleClient interface
+interface AgentMessage {
+  type: string;
+  content: { text?: string; [key: string]: unknown };
+  agentId?: string;
+}
+
+interface ClientError {
+  message: string;
+}
+
+// Use the SimpleClient interface consistent with App.tsx
+interface SimpleClient {
+  getAgents: () => Promise<AgentInfo[]>;
+  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  on(event: 'connected' | 'disconnected', listener: () => void): void;
+  on(event: 'message', listener: (message: AgentMessage) => void): void;
+  on(event: 'error', listener: (error: ClientError) => void): void;
+  on(event: string, listener: (...args: unknown[]) => void): void;
+}
 
 interface ChatMessage {
   id: string;
@@ -25,7 +48,7 @@ interface ChatContainerProps {
   messages: ChatMessage[];
   isConnected: boolean;
   isLoading?: boolean;
-  client: BrowserClientSDK | null;
+  client: SimpleClient | null;
   selectedAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
   agentNames: Record<string, string>;

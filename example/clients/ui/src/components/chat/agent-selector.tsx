@@ -6,19 +6,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { BrowserClientSDK } from "../../lib/browser-client-sdk";
 import { RefreshCwIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { AgentInfo } from "@agentswarmprotocol/types";
 
-interface Agent {
-  id: string;
-  name: string;
-  capabilities: string[];
-  status: string;
+// Define message types
+interface AgentMessage {
+  type: string;
+  content: { text?: string; [key: string]: unknown };
+  agentId?: string;
+}
+
+interface ClientError {
+  message: string;
+}
+
+// Simple client interface that matches App.tsx
+interface SimpleClient {
+  getAgents: () => Promise<AgentInfo[]>;
+  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  on(event: 'connected' | 'disconnected', listener: () => void): void;
+  on(event: 'message', listener: (message: AgentMessage) => void): void;
+  on(event: 'error', listener: (error: ClientError) => void): void;
+  on(event: string, listener: (...args: unknown[]) => void): void;
 }
 
 interface AgentSelectorProps {
-  client: BrowserClientSDK | null;
+  client: SimpleClient | null;
   isConnected: boolean;
   selectedAgentId: string | null;
   onAgentChange: (agentId: string) => void;
@@ -32,7 +48,7 @@ export function AgentSelector({
   onAgentChange,
   className = "",
 }: AgentSelectorProps) {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchAgents = async () => {
@@ -43,7 +59,7 @@ export function AgentSelector({
       const agentList = await client.getAgents();
       // Only include online agents with chat capability
       const availableAgents = agentList.filter(
-        (agent: Agent) => 
+        (agent: AgentInfo) => 
           agent.status === 'online' && 
           agent.capabilities?.includes('chat')
       );

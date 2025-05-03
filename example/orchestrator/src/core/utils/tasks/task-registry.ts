@@ -1,6 +1,8 @@
 /**
  * Task interfaces for the ASP Orchestrator
  */
+import { TaskStatus } from '@agentswarmprotocol/types/dist/common';
+
 interface TaskHistoryEntry {
   status: string;
   timestamp: string;
@@ -17,17 +19,25 @@ interface TaskData {
   requesterId?: string;
   assigneeId?: string;
   clientId?: string;
-  status?: string;
+  status?: TaskStatus;
   result?: any;
   [key: string]: any;
 }
 
-interface Task extends TaskData {
+interface Task {
   id: string;
-  status: string;
+  status: TaskStatus;
   createdAt: string;
   updatedAt: string;
   history: TaskHistoryEntry[];
+  agentId: string;      // Required by the types package
+  taskData: any;        // Required by the types package
+  clientId?: string;
+  completedAt?: string;
+  result?: any;
+  error?: any;
+  assigneeId?: string;  // Added to handle existing code references
+  [key: string]: any;   // Allow string indexing
 }
 
 interface TaskUpdateOptions {
@@ -87,14 +97,16 @@ class TaskRegistry {
     const task: Task = {
       id: taskId,
       ...taskData,
-      status: taskData.status || 'pending',
+      status: (taskData.status as TaskStatus) || 'pending',
       createdAt: taskData.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       history: [{
         status: taskData.status || 'pending',
         timestamp: new Date().toISOString(),
         note: 'Task registered'
-      }]
+      }],
+      agentId: taskData.assigneeId || taskData.agentId || '',
+      taskData: taskData
     };
     
     this.tasks.set(taskId, task);
@@ -138,7 +150,9 @@ class TaskRegistry {
         status: 'pending',
         timestamp: new Date().toISOString(),
         note: 'Task created'
-      }]
+      }],
+      agentId: taskData.assigneeId || taskData.agentId || '',
+      taskData: taskData
     };
     
     this.tasks.set(taskId, task);
@@ -163,27 +177,30 @@ class TaskRegistry {
    * @returns {Task|null} The updated task or null if task not found
    */
   assignTask(taskId: string, agentId: string): Task | null {
-    const task = this.getTask(taskId);
-    if (!task) {
+    try {
+      const task = this.getTask(taskId);
+      
+      // Update the task's assignee
+      task.assigneeId = agentId;
+      task.agentId = agentId;
+      task.status = 'in_progress' as TaskStatus;
+      task.updatedAt = new Date().toISOString();
+      
+      // Add status update to history
+      task.history.push({
+        status: 'assigned',
+        timestamp: new Date().toISOString(),
+        note: `Assigned to agent ${agentId}`
+      });
+      
+      // Update the task assignment tracking
+      this._assignTaskToAgent(taskId, agentId);
+      
+      return task;
+    } catch (error) {
+      console.warn(`Failed to assign task ${taskId} to agent ${agentId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
-    
-    // Update the task's assignee
-    task.assigneeId = agentId;
-    task.status = 'assigned';
-    task.updatedAt = new Date().toISOString();
-    
-    // Add status update to history
-    task.history.push({
-      status: 'assigned',
-      timestamp: new Date().toISOString(),
-      note: `Assigned to agent ${agentId}`
-    });
-    
-    // Update the task assignment tracking
-    this._assignTaskToAgent(taskId, agentId);
-    
-    return task;
   }
 
   /**
@@ -223,18 +240,33 @@ class TaskRegistry {
   /**
    * Get a task by ID
    * @param {string} taskId - ID of the task to get
+   * @returns {Task} The task object
+   * @throws {Error} If task is not found
+   */
+  getTask(taskId: string): Task {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+    return task;
+  }
+
+  /**
+   * Get a task by ID with null fallback
+   * @param {string} taskId - ID of the task to get
    * @returns {Task|null} The task object or null if not found
    */
-  getTask(taskId: string): Task | null {
+  getTaskOrNull(taskId: string): Task | null {
     return this.tasks.get(taskId) || null;
   }
 
   /**
    * Alias for backward compatibility
    * @param {string} taskId - ID of the task to get
-   * @returns {Task|null} The task object or null if not found
+   * @returns {Task} The task object
+   * @throws {Error} If task is not found
    */
-  getTaskById(taskId: string): Task | null {
+  getTaskById(taskId: string): Task {
     return this.getTask(taskId);
   }
 
@@ -246,49 +278,82 @@ class TaskRegistry {
    * @returns {Task|null} The updated task or null if task not found
    */
   updateTaskStatus(taskId: string, status: string, options: TaskUpdateOptions = {}): Task | null {
-    const task = this.getTask(taskId);
-    if (!task) {
+    try {
+      const task = this.getTask(taskId);
+      
+      // Update task status - ensure it's a valid TaskStatus
+      const validStatus = this.validateTaskStatus(status);
+      task.status = validStatus;
+      task.updatedAt = new Date().toISOString();
+      
+      // Process additionalresult data if provided
+      if (options.result !== undefined) {
+        task.result = options.result;
+      }
+      
+      // If error is provided, add it to the result
+      if (options.error) {
+        task.result = task.result || {};
+        task.result.error = options.error;
+      }
+      
+      // If additional metadata is provided, add it to the result
+      if (options.metadata) {
+        task.result = task.result || {};
+        task.result.metadata = { ...task.result.metadata, ...options.metadata };
+      }
+      
+      // Add history entry
+      const historyEntry: TaskHistoryEntry = {
+        status,
+        timestamp: new Date().toISOString(),
+        note: options.note || `Status updated to ${status}`
+      };
+      
+      // Add agent ID to history entry if provided
+      if (options.agentId) {
+        historyEntry.agentId = options.agentId;
+      }
+      
+      task.history.push(historyEntry);
+      
+      return task;
+    } catch (error) {
+      console.warn(`Failed to update task ${taskId} status: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
+  }
+
+  /**
+   * Validate and convert a string status to a valid TaskStatus
+   * @private
+   * @param {string} status - Status string to validate
+   * @returns {TaskStatus} A valid TaskStatus
+   */
+  private validateTaskStatus(status: string): TaskStatus {
+    const validStatuses: TaskStatus[] = ['pending', 'in_progress', 'completed', 'failed'];
     
-    // Update task with new status and timestamp
-    task.status = status;
-    task.updatedAt = new Date().toISOString();
-    
-    // Add task result if provided
-    if (options.result !== undefined) {
-      task.result = options.result;
+    if (validStatuses.includes(status as TaskStatus)) {
+      return status as TaskStatus;
     }
     
-    // Add task error if provided
-    if (options.error !== undefined) {
-      task.error = options.error;
+    // Map custom statuses to valid TaskStatus values
+    switch (status) {
+      case 'assigned':
+      case 'started':
+        return 'in_progress';
+      case 'error':
+        return 'failed';
+      case 'done':
+      case 'success':
+        return 'completed';
+      case 'waiting':
+      case 'new':
+        return 'pending';
+      default:
+        console.warn(`Invalid task status '${status}', defaulting to 'pending'`);
+        return 'pending';
     }
-    
-    // Add task metadata if provided
-    if (options.metadata) {
-      task.metadata = {
-        ...(task.metadata || {}),
-        ...options.metadata
-      };
-    }
-    
-    // Create history entry
-    const historyEntry: TaskHistoryEntry = {
-      status,
-      timestamp: new Date().toISOString(),
-      note: options.note || `Status updated to ${status}`
-    };
-    
-    // Add agent ID to history entry if provided
-    if (options.agentId) {
-      historyEntry.agentId = options.agentId;
-    }
-    
-    // Add the history entry
-    task.history.push(historyEntry);
-    
-    return task;
   }
 
   /**
@@ -413,27 +478,32 @@ class TaskRegistry {
    * @returns {Task|null} The updated task or null if task not found
    */
   addTaskNote(taskId: string, note: string, agentId: string | null = null): Task | null {
-    const task = this.getTask(taskId);
-    if (!task) {
+    try {
+      const task = this.getTask(taskId);
+      
+      // Create history entry for the note
+      const historyEntry: TaskHistoryEntry = {
+        status: task.status, // Maintain current status
+        timestamp: new Date().toISOString(),
+        note: note
+      };
+      
+      // Add agent ID if provided
+      if (agentId) {
+        historyEntry.agentId = agentId;
+      }
+      
+      // Add to history
+      task.history.push(historyEntry);
+      
+      // Update last modified time
+      task.updatedAt = new Date().toISOString();
+      
+      return task;
+    } catch (error) {
+      console.warn(`Failed to add note to task ${taskId}: ${error instanceof Error ? error.message : String(error)}`);
       return null;
     }
-    
-    // Create a history entry with just the note
-    const historyEntry: TaskHistoryEntry = {
-      status: task.status, // Keep the current status
-      timestamp: new Date().toISOString(),
-      note
-    };
-    
-    // Add agent ID if provided
-    if (agentId) {
-      historyEntry.agentId = agentId;
-    }
-    
-    task.history.push(historyEntry);
-    task.updatedAt = new Date().toISOString();
-    
-    return task;
   }
 
   /**
@@ -443,6 +513,25 @@ class TaskRegistry {
    */
   getTaskCount(filters: Record<string, any> = {}): number {
     return this.getAllTasks(filters).length;
+  }
+
+  // Add missing getTasks method
+  getTasks(filters?: any): any[] {
+    const tasksArray = Array.from(this.tasks.values());
+    
+    if (!filters) {
+      return tasksArray;
+    }
+    
+    return tasksArray.filter(task => {
+      // Apply filters
+      for (const [key, value] of Object.entries(filters)) {
+        if (task[key] !== value) {
+          return false;
+        }
+      }
+      return true;
+    });
   }
 }
 

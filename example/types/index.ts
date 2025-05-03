@@ -8,4 +8,7 @@
 export * from './common';
 
 // Export message types
-export * from './messages'; 
+export * from './messages';
+
+// Export SDK types
+export * from './sdk'; 

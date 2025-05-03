@@ -45,6 +45,9 @@ class ServiceServer {
     this.eventBus = eventBus;
     this.port = config.port || parseInt(process.env.SERVICE_PORT || '3002', 10);
     this.pendingResponses = {}; // Track pending responses
+    // Initialize server and wss to null as they'll be set in start()
+    this.server = null as unknown as http.Server;
+    this.wss = null as unknown as WebSocket.Server;
   }
 
   async start(): Promise<ServiceServer> {
@@ -289,7 +292,7 @@ class ServiceServer {
         // Check if we still have callbacks for this message
         if (this.pendingResponses[messageId]) {
           // Remove this specific callback
-          const index = this.pendingResponses[messageId].findIndex(cb => cb === responseCallback);
+          const index = this.pendingResponses[messageId].findIndex(entry => entry.timer === timeoutId);
           if (index !== -1) {
             this.pendingResponses[messageId].splice(index, 1);
           }

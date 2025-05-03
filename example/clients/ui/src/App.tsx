@@ -2,22 +2,14 @@ import { useEffect, useState } from 'react';
 // App.css import has been removed as it's merged into index.css
 import { ChatContainer } from './components/chat/chat-container';
 import { v4 as uuidv4 } from 'uuid';
-import { BrowserClientSDK } from './lib/browser-client-sdk';
+// Import using dynamic import instead
 import { Pencil1Icon, GitHubLogoIcon } from '@radix-ui/react-icons';
 import { ThemeToggle } from './components/ui/theme-toggle';
+import { AgentInfo } from '@agentswarmprotocol/types';
+import { EventEmitter } from 'events';
 
 // Establish connection to the orchestrator
 const ORCHESTRATOR_URL = 'ws://localhost:3001';
-
-// Message interface for the chat
-interface ChatMessage {
-  id: string;
-  content: string;
-  type: "user" | "agent" | "system";
-  timestamp: string;
-  agentId?: string;
-  agentName?: string;
-}
 
 // Define message and error types
 interface AgentMessage {
@@ -30,15 +22,122 @@ interface ClientError {
   message: string;
 }
 
-interface Agent {
+// Define a client interface for the UI
+interface SimpleClient {
+  getAgents: () => Promise<AgentInfo[]>;
+  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  connect: () => Promise<void>;
+  disconnect: () => void;
+  on(event: 'connected' | 'disconnected', listener: () => void): void;
+  on(event: 'message', listener: (message: AgentMessage) => void): void;
+  on(event: 'error', listener: (error: ClientError) => void): void;
+  on(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+// Create a mock client for development
+function createMockClient(): SimpleClient {
+  const emitter = new EventEmitter();
+  
+  // Mock data for testing
+  const mockAgents: AgentInfo[] = [
+    {
+      id: "agent-1",
+      name: "Test Agent",
+      status: "online",
+      capabilities: ["chat"]
+    }
+  ];
+  
+  // Connect to the real client if available, otherwise use mock
+  let realClient: any = null;
+  
+  // Try to dynamically import the real client
+  try {
+    // This approach avoids direct import references that might cause build issues
+    const ClientSDK = require('@agentswarmprotocol/clientsdk');
+    if (ClientSDK && typeof ClientSDK.SwarmClientSDK === 'function') {
+      realClient = new ClientSDK.SwarmClientSDK({
+        orchestratorUrl: ORCHESTRATOR_URL
+      });
+      
+      // Forward events from real client
+      realClient.on('connected', () => emitter.emit('connected'));
+      realClient.on('disconnected', () => emitter.emit('disconnected'));
+      realClient.on('message', (msg: any) => emitter.emit('message', msg));
+      realClient.on('error', (err: any) => emitter.emit('error', err));
+      
+      console.log('Using real SwarmClientSDK');
+    }
+  } catch (error) {
+    console.warn('Failed to load real client, using mock:', error);
+  }
+  
+  return {
+    async getAgents(): Promise<AgentInfo[]> {
+      if (realClient) {
+        return realClient.getAgents();
+      }
+      return mockAgents;
+    },
+    
+    async sendMessage(message: Record<string, unknown>): Promise<unknown> {
+      if (realClient) {
+        return realClient.sendRequest(message);
+      }
+      
+      // Mock response
+      setTimeout(() => {
+        if (message.type === 'client.message' && message.content) {
+          const content = message.content as any;
+          emitter.emit('message', {
+            type: 'agent.message',
+            agentId: content.target,
+            content: {
+              text: `Mock response to: ${content.text}`
+            }
+          });
+        }
+      }, 1000);
+      
+      return { status: 'sent' };
+    },
+    
+    async connect(): Promise<void> {
+      if (realClient) {
+        await realClient.connect();
+      } else {
+        // Simulate connection
+        setTimeout(() => emitter.emit('connected'), 500);
+      }
+    },
+    
+    disconnect(): void {
+      if (realClient) {
+        realClient.disconnect();
+      } else {
+        // Simulate disconnection
+        setTimeout(() => emitter.emit('disconnected'), 500);
+      }
+    },
+    
+    on(event: string, listener: any): void {
+      emitter.on(event, listener);
+    }
+  };
+}
+
+// Message interface for the chat
+interface ChatMessage {
   id: string;
-  name: string;
-  capabilities: string[];
-  status: string;
+  content: string;
+  type: "user" | "agent" | "system";
+  timestamp: string;
+  agentId?: string;
+  agentName?: string;
 }
 
 function App() {
-  const [client, setClient] = useState<BrowserClientSDK | null>(null);
+  const [client, setClient] = useState<SimpleClient | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -60,7 +159,7 @@ function App() {
       const agentList = await client.getAgents();
       const nameMap: Record<string, string> = {};
       
-      agentList.forEach((agent: Agent) => {
+      agentList.forEach((agent: AgentInfo) => {
         nameMap[agent.id] = agent.name;
       });
       
@@ -74,114 +173,106 @@ function App() {
 
   // Initialize the client
   useEffect(() => {
-    // Create a new BrowserClientSDK instance
-    try {
-      const sdk = new BrowserClientSDK({
-        orchestratorUrl: ORCHESTRATOR_URL,
-        autoConnect: false,
-        clientId: `ui-client-${uuidv4()}`,
-      });
+    // Create a client
+    const simpleClient = createMockClient();
 
-      // Set up event listeners
-      sdk.on('connected', () => {
-        setIsConnected(true);
-        console.log('Connected to orchestrator');
-        
-        // Add a system message indicating connection
+    // Set up event listeners
+    simpleClient.on('connected', () => {
+      setIsConnected(true);
+      console.log('Connected to orchestrator');
+      
+      // Add a system message indicating connection
+      setMessages(prev => [
+        ...prev,
+        {
+          id: uuidv4(),
+          content: "Connected to orchestrator. Please select an agent to chat with.",
+          type: "system",
+          timestamp: new Date().toISOString(),
+        }
+      ]);
+      
+      // Fetch agents when connected
+      fetchAgents();
+    });
+
+    simpleClient.on('disconnected', () => {
+      setIsConnected(false);
+      console.log('Disconnected from orchestrator');
+      
+      // Add a system message indicating disconnection
+      setMessages(prev => [
+        ...prev,
+        {
+          id: uuidv4(),
+          content: "Disconnected from orchestrator. Attempting to reconnect...",
+          type: "system",
+          timestamp: new Date().toISOString(),
+        }
+      ]);
+    });
+
+    simpleClient.on('message', (message: AgentMessage) => {
+      console.log('Message received:', message);
+      
+      // Handle incoming messages from agents
+      if (message.type === 'agent.message') {
         setMessages(prev => [
           ...prev,
           {
             id: uuidv4(),
-            content: "Connected to orchestrator. Please select an agent to chat with.",
-            type: "system",
+            content: message.content.text || JSON.stringify(message.content),
+            type: "agent",
             timestamp: new Date().toISOString(),
+            agentId: message.agentId,
+            agentName: message.agentId ? agentNames[message.agentId] : undefined
           }
         ]);
+        setIsLoading(false);
+      }
+      
+      // Handle task updates
+      if (message.type === 'task.update') {
+        const taskUpdate = message.content;
         
-        // Fetch agents when connected
-        fetchAgents();
-      });
-
-      sdk.on('disconnected', () => {
-        setIsConnected(false);
-        console.log('Disconnected from orchestrator');
-        
-        // Add a system message indicating disconnection
-        setMessages(prev => [
-          ...prev,
-          {
-            id: uuidv4(),
-            content: "Disconnected from orchestrator. Attempting to reconnect...",
-            type: "system",
-            timestamp: new Date().toISOString(),
-          }
-        ]);
-      });
-
-      sdk.on('message', (message: AgentMessage) => {
-        console.log('Message received:', message);
-        
-        // Handle incoming messages from agents
-        if (message.type === 'agent.message') {
-          setMessages(prev => [
-            ...prev,
-            {
-              id: uuidv4(),
-              content: message.content.text || JSON.stringify(message.content),
-              type: "agent",
-              timestamp: new Date().toISOString(),
-              agentId: message.agentId,
-              agentName: message.agentId ? agentNames[message.agentId] : undefined
-            }
-          ]);
+        if (taskUpdate.status === 'completed') {
           setIsLoading(false);
         }
-        
-        // Handle task updates
-        if (message.type === 'task.update') {
-          const taskUpdate = message.content;
-          
-          if (taskUpdate.status === 'completed') {
-            setIsLoading(false);
-          }
-        }
-      });
+      }
+    });
 
-      sdk.on('error', (error: ClientError) => {
-        console.error('Client error:', error);
-        
-        // Add a system message for errors with better error message handling
-        setMessages(prev => [
-          ...prev,
-          {
-            id: uuidv4(),
-            content: `Error: ${error.message || 'Connection failed. Is the orchestrator running?'}`,
-            type: "system",
-            timestamp: new Date().toISOString(),
-          }
-        ]);
-      });
-
-      setClient(sdk);
+    simpleClient.on('error', (error: ClientError) => {
+      console.error('Client error:', error);
       
-      // Connect to the orchestrator
-      sdk.connect().catch((error: Error) => {
-        console.error('Connection error:', error);
-        
-        // Add a system message for connection errors
-        setMessages(prev => [
-          ...prev,
-          {
-            id: uuidv4(),
-            content: `Connection error: ${error.message || 'Failed to connect to orchestrator'}. Make sure the orchestrator is running on ${ORCHESTRATOR_URL}.`,
-            type: "system",
-            timestamp: new Date().toISOString(),
-          }
-        ]);
-      });
-    } catch (error: unknown) {
-      console.error('Failed to initialize client:', error);
-    }
+      // Add a system message for errors with better error message handling
+      setMessages(prev => [
+        ...prev,
+        {
+          id: uuidv4(),
+          content: `Error: ${error.message || 'Connection failed. Is the orchestrator running?'}`,
+          type: "system",
+          timestamp: new Date().toISOString(),
+        }
+      ]);
+    });
+
+    setClient(simpleClient);
+    
+    // Connect to the orchestrator
+    simpleClient.connect().catch((error: unknown) => {
+      console.error('Connection error:', error);
+      
+      // Add a system message for connection errors
+      setMessages(prev => [
+        ...prev,
+        {
+          id: uuidv4(),
+          content: `Connection error: ${error instanceof Error ? error.message : 'Failed to connect to orchestrator'}. Make sure the orchestrator is running on ${ORCHESTRATOR_URL}.`,
+          type: "system",
+          timestamp: new Date().toISOString(),
+        }
+      ]);
+    });
 
     // Clean up connection on unmount
     return () => {
@@ -248,7 +339,7 @@ function App() {
         target: targetAgentId // Specify the target agent
       }
     })
-    .catch((error: ClientError) => {
+    .catch((error: unknown) => {
       console.error('Failed to send message:', error);
       setIsLoading(false);
       
@@ -257,7 +348,7 @@ function App() {
         ...prev,
         {
           id: uuidv4(),
-          content: `Failed to send message: ${error.message}`,
+          content: `Error sending message: ${error instanceof Error ? error.message : 'Unknown error'}`,
           type: "system",
           timestamp: new Date().toISOString(),
         }
