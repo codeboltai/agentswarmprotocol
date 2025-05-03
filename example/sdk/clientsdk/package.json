@@ -2,7 +2,13 @@
   "name": "@agentswarmprotocol/clientsdk",
   "version": "1.0.0",
   "description": "Client SDK for Agent Swarm Protocol",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
   "keywords": [
     "agent",
     "swarm",
@@ -17,5 +23,16 @@
   "private": false,
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@agentswarmprotocol/types": "file:../../types",
+    "uuid": "^9.0.0",
+    "ws": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/uuid": "^9.0.8",
+    "@types/ws": "^8.5.4",
+    "typescript": "^5.0.0"
   }
 }

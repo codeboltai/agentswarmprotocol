@@ -16,6 +16,7 @@ interface ChatMessage {
   type: "user" | "agent" | "system";
   timestamp: string;
   agentId?: string;
+  agentName?: string;
 }
 
 // Define message and error types
@@ -29,18 +30,47 @@ interface ClientError {
   message: string;
 }
 
+interface Agent {
+  id: string;
+  name: string;
+  capabilities: string[];
+  status: string;
+}
+
 function App() {
   const [client, setClient] = useState<BrowserClientSDK | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: uuidv4(),
-      content: "Welcome to Agent Swarm Protocol! Type a message to get started.",
+      content: "Welcome to Agent Swarm Protocol! Select an agent and type a message to get started.",
       type: "system",
       timestamp: new Date().toISOString(),
     },
   ]);
+
+  // Fetch agents and build ID to name mapping
+  const fetchAgents = async () => {
+    if (!client || !isConnected) return;
+    
+    try {
+      const agentList = await client.getAgents();
+      const nameMap: Record<string, string> = {};
+      
+      agentList.forEach((agent: Agent) => {
+        nameMap[agent.id] = agent.name;
+      });
+      
+      setAgentNames(nameMap);
+      return agentList;
+    } catch (error) {
+      console.error('Failed to fetch agents:', error);
+      return [];
+    }
+  };
 
   // Initialize the client
   useEffect(() => {
@@ -62,11 +92,14 @@ function App() {
           ...prev,
           {
             id: uuidv4(),
-            content: "Connected to orchestrator.",
+            content: "Connected to orchestrator. Please select an agent to chat with.",
             type: "system",
             timestamp: new Date().toISOString(),
           }
         ]);
+        
+        // Fetch agents when connected
+        fetchAgents();
       });
 
       sdk.on('disconnected', () => {
@@ -98,6 +131,7 @@ function App() {
               type: "agent",
               timestamp: new Date().toISOString(),
               agentId: message.agentId,
+              agentName: message.agentId ? agentNames[message.agentId] : undefined
             }
           ]);
           setIsLoading(false);
@@ -157,9 +191,42 @@ function App() {
     };
   }, []);
 
+  // Handle agent selection
+  const handleAgentChange = (agentId: string) => {
+    setSelectedAgentId(agentId);
+    
+    // Add a system message indicating the agent selection
+    setMessages(prev => [
+      ...prev,
+      {
+        id: uuidv4(),
+        content: `Now chatting with: ${agentNames[agentId] || `Agent (${agentId.substring(0, 8)}...)`}`,
+        type: "system",
+        timestamp: new Date().toISOString(),
+      }
+    ]);
+  };
+
   // Send a message to the orchestrator
-  const handleSendMessage = (content: string) => {
+  const handleSendMessage = (content: string, agentId?: string) => {
     if (!client || !isConnected) return;
+    
+    // Get the target agent
+    const targetAgentId = agentId || selectedAgentId;
+    
+    if (!targetAgentId) {
+      // Add system message if no agent is selected
+      setMessages(prev => [
+        ...prev,
+        {
+          id: uuidv4(),
+          content: "Please select an agent to chat with first.",
+          type: "system",
+          timestamp: new Date().toISOString(),
+        }
+      ]);
+      return;
+    }
     
     // Add user message to chat
     const userMessage: ChatMessage = {
@@ -172,12 +239,13 @@ function App() {
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
     
-    // Send message to orchestrator
+    // Send message to orchestrator with the specific agent target
     client.sendMessage({
       type: 'client.message',
       content: {
         text: content,
-        role: 'user'
+        role: 'user',
+        target: targetAgentId // Specify the target agent
       }
     })
     .catch((error: ClientError) => {
@@ -229,6 +297,10 @@ function App() {
             messages={messages}
             isConnected={isConnected}
             isLoading={isLoading}
+            client={client}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={handleAgentChange}
+            agentNames={agentNames}
           />
         </div>
       </main>

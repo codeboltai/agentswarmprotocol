@@ -1,4 +1,3 @@
-import React from "react";
 import { cn } from "../../lib/utils";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { PersonIcon, RocketIcon, InfoCircledIcon } from "@radix-ui/react-icons";
@@ -10,6 +9,7 @@ export interface MessageProps {
   type: MessageType;
   timestamp?: string;
   agentId?: string;
+  agentName?: string;
   isLoading?: boolean;
 }
 
@@ -18,6 +18,7 @@ export function Message({
   type,
   timestamp,
   agentId,
+  agentName,
   isLoading,
 }: MessageProps) {
   // Define styles based on message type
@@ -32,9 +33,12 @@ export function Message({
   };
 
   // Get initial for avatar
-  const getInitial = (messageType: MessageType, agentId?: string) => {
+  const getInitial = (messageType: MessageType, name?: string) => {
     if (messageType === "user") return "U";
-    if (messageType === "agent") return agentId?.charAt(0).toUpperCase() || "A";
+    if (messageType === "agent") {
+      if (name) return name.charAt(0).toUpperCase();
+      return agentId?.charAt(0).toUpperCase() || "A";
+    }
     return "S";
   };
 
@@ -44,6 +48,9 @@ export function Message({
     if (messageType === "agent") return <RocketIcon className="h-5 w-5" />;
     return <InfoCircledIcon className="h-5 w-5" />;
   };
+
+  // Get agent display name
+  const displayName = agentName || (agentId ? `Agent ${agentId.substring(0, 8)}...` : "Agent");
 
   return (
     <div
@@ -58,7 +65,7 @@ export function Message({
           "h-8 w-8 mr-3",
           isSystem ? "bg-muted text-muted-foreground" : "bg-secondary text-secondary-foreground"
         )}>
-          <AvatarFallback>{getInitial(type, agentId)}</AvatarFallback>
+          <AvatarFallback>{getInitial(type, agentName)}</AvatarFallback>
           {getIcon(type)}
         </Avatar>
       )}
@@ -73,10 +80,10 @@ export function Message({
             : "bg-muted/50 text-muted-foreground text-sm w-fit max-w-full text-center shadow-sm"
         )}
       >
-        {/* Show agent ID as a badge/tag */}
-        {isAgent && agentId && (
+        {/* Show agent name as a badge/tag */}
+        {isAgent && (agentId || agentName) && (
           <div className="text-xs font-medium bg-secondary/30 px-2 py-0.5 rounded-full inline-block mb-2">
-            {agentId}
+            {displayName}
           </div>
         )}
         

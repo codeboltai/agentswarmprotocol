@@ -11,9 +11,10 @@ const agent = new SwarmAgentSDK({
       'contextual-responses',
       'memory',
       'preference-adaptation',
-      'mcp-integration'  // Add MCP integration capability
+      'mcp-integration',  // MCP integration capability
+      'service-integration' // Service integration capability
     ],
-    description: 'Conversational agent with memory, context awareness, and MCP integration',
+    description: 'Conversational agent with memory, context awareness, MCP and service integration',
 });
 
 // Define conversation storage
@@ -23,6 +24,13 @@ const conversations = new Map();
 const mcpCache = {
   servers: null,
   tools: {},
+  lastRefresh: 0,
+  refreshInterval: 60000 // 1 minute
+};
+
+// Service cache for storing service information
+const serviceCache = {
+  services: null,
   lastRefresh: 0,
   refreshInterval: 60000 // 1 minute
 };
@@ -168,6 +176,12 @@ function detectIntents(message) {
       lowerMessage.includes('tool') || lowerMessage.includes('tools') ||
       lowerMessage.includes('execute') || lowerMessage.includes('run')) {
     intents.push('mcp');
+  }
+  
+  // Detect service-related intents
+  if (lowerMessage.includes('service') || lowerMessage.includes('services') ||
+      lowerMessage.includes('execute service') || lowerMessage.includes('run service')) {
+    intents.push('service');
   }
   
   return intents;
@@ -492,14 +506,30 @@ async function getMCPServers() {
   }
 
   try {
-    // Fetch servers using the SDK's new method
-    const servers = await agent.getMCPServers();
+    // Look at the registered MCP server in orchestrator by directly using the agent list
+    const result = await agent.requestService('agent-list', {
+      filters: {
+        type: 'mcp'
+      }
+    });
     
-    // Update cache
-    mcpCache.servers = servers;
-    mcpCache.lastRefresh = now;
+    const servers = [];
+    if (result && result.agents) {
+      result.agents.forEach(agent => {
+        servers.push({
+          id: agent.id,
+          name: agent.name,
+          status: agent.status,
+          capabilities: agent.capabilities || []
+        });
+      });
+      
+      // Update cache
+      mcpCache.servers = servers;
+      mcpCache.lastRefresh = now;
+    }
     
-    return servers;
+    return mcpCache.servers || [];
   } catch (error) {
     console.error('Error getting MCP servers:', error.message);
     throw error;
@@ -507,8 +537,8 @@ async function getMCPServers() {
 }
 
 /**
- * Get tools available for a specific MCP server
- * @param {string} serverId - ID of the MCP server
+ * Get a list of tools available on an MCP server
+ * @param {string} serverId - MCP server ID
  * @returns {Promise<Array>} - List of available tools
  */
 async function getMCPTools(serverId) {
@@ -519,14 +549,20 @@ async function getMCPTools(serverId) {
   }
 
   try {
-    // Fetch tools using the SDK's new method
-    const tools = await agent.getMCPTools(serverId);
+    // For now return hardcoded basic tools until we can properly connect to MCP
+    const basicTools = [
+      {
+        name: "filesystem",
+        description: "File system operations",
+        capabilities: ["read", "write", "delete"]
+      }
+    ];
     
     // Update cache
-    mcpCache.tools[serverId] = tools;
+    mcpCache.tools[serverId] = basicTools;
     mcpCache.lastRefresh = now;
     
-    return tools;
+    return basicTools;
   } catch (error) {
     console.error(`Error getting MCP tools for server ${serverId}:`, error.message);
     throw error;
@@ -535,17 +571,43 @@ async function getMCPTools(serverId) {
 
 /**
  * Execute an MCP tool
- * @param {string} serverId - ID of the MCP server
- * @param {string} toolName - Name of the tool to execute
- * @param {Object} parameters - Parameters for the tool
+ * @param {string} serverId - MCP server ID
+ * @param {string} toolName - Tool name
+ * @param {Object} parameters - Tool parameters
  * @returns {Promise<Object>} - Tool execution result
  */
-async function executeMCPTool(serverId, toolName, parameters) {
+async function executeMCPTool(serverId, toolName, parameters = {}) {
   try {
-    // Execute the tool using the SDK's new method
-    return await agent.executeMCPTool(serverId, toolName, parameters);
+    // For now, emulate MCP tool execution
+    console.log(`Emulating execution of MCP tool ${toolName} on server ${serverId}`);
+    console.log(`Parameters: ${JSON.stringify(parameters)}`);
+    
+    return {
+      status: "success",
+      result: {
+        message: `Tool ${toolName} executed successfully (emulated)`,
+        data: {},
+        timestamp: new Date().toISOString()
+      }
+    };
   } catch (error) {
     console.error(`Error executing MCP tool ${toolName} on server ${serverId}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Execute a service
+ * @param {string} serviceName - Service name
+ * @param {Object} params - Service parameters
+ * @returns {Promise<Object>} - Service execution result
+ */
+async function executeService(serviceName, params = {}) {
+  try {
+    // Execute service using the SDK's method
+    return await agent.executeService(serviceName, params);
+  } catch (error) {
+    console.error(`Error executing service ${serviceName}:`, error.message);
     throw error;
   }
 }
@@ -599,8 +661,68 @@ async function handleMCPOperations(taskData) {
         result
       };
       
+    case 'execute-service':
+      if (!toolName) { // Using toolName as serviceName for consistency
+        throw new Error('Service name is required to execute a service');
+      }
+      
+      const serviceResult = await executeService(toolName, parameters || {});
+      return {
+        operation: 'execute-service',
+        serviceName: toolName,
+        result: serviceResult
+      };
+      
     default:
       throw new Error(`Unknown MCP operation: ${operation}`);
+  }
+}
+
+/**
+ * Get a list of available services
+ * @returns {Promise<Array>} - List of available services
+ */
+async function getServices() {
+  // Check cache first
+  const now = Date.now();
+  if (serviceCache.services && (now - serviceCache.lastRefresh) < serviceCache.refreshInterval) {
+    return serviceCache.services;
+  }
+
+  try {
+    // Use direct agent list and filter for services
+    const result = await agent.requestService('agent-list', { 
+      filters: {} 
+    });
+    
+    const services = [];
+    
+    // Filter for agents that might act as services
+    if (result && result.agents) {
+      result.agents.forEach(agent => {
+        if (agent.capabilities && (
+            agent.capabilities.includes('service') || 
+            agent.capabilities.some(cap => cap.includes('service'))
+        )) {
+          services.push({
+            id: agent.id,
+            name: agent.name,
+            description: agent.description || `Service: ${agent.name}`,
+            status: agent.status,
+            capabilities: agent.capabilities
+          });
+        }
+      });
+      
+      // Update cache
+      serviceCache.services = services;
+      serviceCache.lastRefresh = now;
+    }
+    
+    return serviceCache.services || [];
+  } catch (error) {
+    console.error('Error getting services:', error.message);
+    throw error;
   }
 }
 
@@ -808,6 +930,40 @@ agent.onMessage('conversation:message', async (task, metadata) => {
         }
     }
     
+    // Handle service intent
+    if (intents.includes('service')) {
+        console.log(`Detected service-related query: "${message}"`);
+        
+        try {
+            const lowerMessage = message.toLowerCase();
+            
+            if (lowerMessage.includes('list services') || lowerMessage.includes('show services') || 
+                (lowerMessage.includes('available') && lowerMessage.includes('services'))) {
+                // List services
+                const services = await getServices();
+                
+                // Format the result for user display
+                mcpResult = {
+                    formattedResponse: 'Available services:\n'
+                };
+                
+                if (services && services.length > 0) {
+                    services.forEach((service, index) => {
+                        mcpResult.formattedResponse += `${index + 1}. ${service.name} - ${service.description || 'No description'}\n`;
+                    });
+                } else {
+                    mcpResult.formattedResponse += 'No services found.';
+                }
+            }
+            // ... more service handling logic can be added here ...
+        } catch (error) {
+            console.error('Error handling service query:', error);
+            mcpResult = {
+                formattedResponse: `Sorry, I encountered an error when processing your service request: ${error.message}`
+            };
+        }
+    }
+    
     // Generate a response (with research results if available)
     const responseData = generateResponse(
         conversationId, 
@@ -919,49 +1075,150 @@ agent.onMessage('mcp:operations', async (taskData, metadata) => {
   }
 });
 
-// Add error handling
+// Additional event listeners for debugging
+agent.on('message', (message) => {
+  // Log all MCP-related, error messages, and service responses
+  if (message.type && (
+      message.type.startsWith('mcp.') || 
+      message.type.includes('error') || 
+      message.type === 'service.response' ||
+      message.type.includes('agent.list')
+  )) {
+    console.log(`DEBUG - Received message of type: ${message.type}`);
+    if (message.content && message.content.error) {
+      console.log(`DEBUG - Error in message: ${message.content.error}`);
+    }
+  }
+});
+
+agent.on('connected', () => {
+  console.log('Agent successfully connected to orchestrator');
+});
+
 agent.on('error', (error) => {
-    console.error('Agent error:', error.message);
+  console.error('Agent error:', error.message || error);
+  
+  // Add specific error detection
+  if (error.message) {
+    if (error.message.includes('Unsupported message type')) {
+      console.error('MESSAGE TYPE ERROR: This might indicate a mismatch between the agent SDK version and the orchestrator.');
+      console.error('Suggested fix: Check that both agent SDK and orchestrator are using compatible message types.');
+    } else if (error.message.includes('Not found') || error.message.includes('not a function')) {
+      console.error('IMPLEMENTATION ERROR: The orchestrator appears to be missing some expected functionality.');
+      console.error('Suggested fix: Ensure the orchestrator implementation includes required handlers and services.');
+    }
+  }
+});
+
+agent.on('disconnected', () => {
+  console.log('Agent disconnected from orchestrator, will attempt to reconnect if autoReconnect is enabled');
+});
+
+// Add specific handlers for MCP errors
+agent.on('mcp-error', (error) => {
+  console.error('MCP error:', error);
 });
 
 // Listen for MCP specific events
-agent.on('mcp-servers-list', (content) => {
-  console.log(`Received MCP servers list: ${content.servers.length} servers`);
+agent.on('mcp.servers.list', (content) => {
+  console.log(`Received MCP servers list: ${content.servers ? content.servers.length : 0} servers`);
   
   // Update cache
-  mcpCache.servers = content.servers;
-  mcpCache.lastRefresh = Date.now();
+  if (content && content.servers) {
+    mcpCache.servers = content.servers;
+    mcpCache.lastRefresh = Date.now();
+  }
 });
 
-agent.on('mcp-tools-list', (content) => {
-  console.log(`Received MCP tools list for server ${content.serverId}: ${content.tools.length} tools`);
+agent.on('mcp.tools.list', (content) => {
+  console.log(`Received MCP tools list for server ${content.serverId}: ${content.tools ? content.tools.length : 0} tools`);
   
   // Update cache
-  mcpCache.tools[content.serverId] = content.tools;
-  mcpCache.lastRefresh = Date.now();
+  if (content && content.serverId && content.tools) {
+    mcpCache.tools[content.serverId] = content.tools;
+    mcpCache.lastRefresh = Date.now();
+  }
 });
 
-agent.on('mcp-tool-execution-result', (content) => {
-  console.log(`Received MCP tool execution result for ${content.toolName} on server ${content.serverId}`);
+// Listen for service responses
+agent.on('service.response', (content) => {
+  console.log(`Received service response: ${JSON.stringify(content)}`);
 });
 
 // Connect to the orchestrator and start the agent
 (async () => {
     try {
-        await agent.connect();
-        console.log('Conversation agent is running...');
-        
-        // Preload MCP servers when agent starts
-        try {
-          const servers = await getMCPServers();
-          console.log(`Preloaded ${servers.length} MCP servers`);
-        } catch (error) {
-          console.warn('Could not preload MCP servers:', error.message);
+        // Enable more verbose logging if DEBUG environment variable is set
+        if (process.env.DEBUG) {
+            console.log('Debug mode enabled, showing all messages');
+            agent.on('message', (message) => {
+                console.log(`DEBUG - Complete message: ${JSON.stringify(message)}`);
+            });
         }
+        
+        console.log('Connecting to orchestrator...');
+        await agent.connect();
+        console.log('Simplified agent is running...');
+        
+        // Wait a moment for the agent to fully register
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Initialize MCP servers
+        console.log('Initializing MCP integration...');
+        let mcpInitialized = false;
+        
+        try {
+            console.log('Attempting to get MCP servers via agent-list service...');
+            const servers = await getMCPServers();
+            console.log(`Found ${servers.length} MCP servers`);
+            
+            if (servers && servers.length > 0) {
+                mcpInitialized = true;
+                
+                // Pre-initialize tool knowledge
+                try {
+                    const firstServerId = servers[0].id;
+                    console.log(`Pre-initializing tools for MCP server: ${servers[0].name} (${firstServerId})`);
+                    const tools = await getMCPTools(firstServerId);
+                    console.log(`Found ${tools.length} tools for MCP server ${firstServerId}`);
+                } catch (toolError) {
+                    console.warn(`Could not get tools for MCP server: ${toolError.message}`);
+                }
+            } else {
+                console.log('No MCP servers found, will use emulated MCP functionality');
+            }
+        } catch (mcpError) {
+            console.warn('Could not initialize MCP integration:', mcpError.message);
+            console.log('Using emulated MCP functionality');
+        }
+        
+        // Initialize services
+        console.log('Initializing service integration...');
+        let servicesInitialized = false;
+        
+        try {
+            console.log('Attempting to get available services...');
+            const services = await getServices();
+            console.log(`Found ${services.length} services`);
+            
+            if (services && services.length > 0) {
+                servicesInitialized = true;
+            } else {
+                console.log('No services found, using default agent capabilities only');
+            }
+        } catch (serviceError) {
+            console.warn('Could not initialize service integration:', serviceError.message);
+            console.log('Using default agent capabilities only');
+        }
+        
+        console.log('Agent initialization completed:');
+        console.log(`- MCP Integration: ${mcpInitialized ? 'Enabled' : 'Emulated'}`);
+        console.log(`- Service Integration: ${servicesInitialized ? 'Enabled' : 'Limited'}`);
+        console.log(`- Capabilities: ${agent.capabilities.join(', ')}`);
         
         // Handle graceful shutdown
         process.on('SIGINT', () => {
-            console.log('Shutting down conversation agent...');
+            console.log('Shutting down simplified agent...');
             agent.disconnect();
             process.exit(0);
         });

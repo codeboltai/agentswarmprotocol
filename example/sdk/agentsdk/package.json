@@ -1,8 +1,13 @@
 {
   "name": "@agentswarmprotocol/agentsdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "SDK for building agents compatible with Agent Swarm Protocol",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
   "keywords": [
     "agent",
     "swarm",
@@ -12,8 +17,18 @@
   ],
   "author": "",
   "license": "MIT",
-  "type": "commonjs",
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@agentswarmprotocol/types": "^1.0.0",
+    "uuid": "^9.0.0",
+    "ws": "^8.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/uuid": "^9.0.1",
+    "@types/ws": "^8.5.4",
+    "typescript": "^5.0.0"
   }
 }

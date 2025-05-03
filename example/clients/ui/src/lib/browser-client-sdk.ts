@@ -15,6 +15,13 @@ interface ClientMessage {
   [key: string]: unknown;
 }
 
+interface Agent {
+  id: string;
+  name: string;
+  capabilities: string[];
+  status: string;
+}
+
 /**
  * Browser-compatible version of the SwarmClientSDK
  */
@@ -263,5 +270,24 @@ export class BrowserClientSDK extends EventEmitter {
    */
   async sendMessage(message: ClientMessage): Promise<unknown> {
     return this.send(message);
+  }
+
+  /**
+   * Get a list of available agents
+   * @param filters Optional filters to apply to the agent list
+   * @returns Array of agent objects
+   */
+  async getAgents(filters: Record<string, unknown> = {}): Promise<Agent[]> {
+    try {
+      const response = await this.sendAndWaitForResponse({
+        type: 'agent.list',
+        content: { filters }
+      });
+      
+      return response.content.agents as Agent[] || [];
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+      return [];
+    }
   }
 } 

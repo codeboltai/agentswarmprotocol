@@ -1,0 +1,32 @@
+{
+  "name": "@agentswarmprotocol/types",
+  "version": "1.0.0",
+  "description": "Type definitions for Agent Swarm Protocol",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "agent",
+    "swarm",
+    "protocol",
+    "types",
+    "typescript",
+    "ASP"
+  ],
+  "author": "",
+  "license": "MIT",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "ws": "^8.12.0"
+  }
+} 

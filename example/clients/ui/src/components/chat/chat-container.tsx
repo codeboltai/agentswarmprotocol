@@ -8,6 +8,8 @@ import {
   ChatBubbleIcon,
   InfoCircledIcon
 } from "@radix-ui/react-icons";
+import { BrowserClientSDK } from "../../lib/browser-client-sdk";
+import { AgentSelector } from "./agent-selector";
 
 interface ChatMessage {
   id: string;
@@ -15,13 +17,18 @@ interface ChatMessage {
   type: "user" | "agent" | "system";
   timestamp: string;
   agentId?: string;
+  agentName?: string;
 }
 
 interface ChatContainerProps {
-  onSendMessage: (message: string) => void;
+  onSendMessage: (message: string, agentId?: string) => void;
   messages: ChatMessage[];
   isConnected: boolean;
   isLoading?: boolean;
+  client: BrowserClientSDK | null;
+  selectedAgentId: string | null;
+  onSelectAgent: (agentId: string) => void;
+  agentNames: Record<string, string>;
 }
 
 export function ChatContainer({
@@ -29,6 +36,10 @@ export function ChatContainer({
   messages,
   isConnected,
   isLoading = false,
+  client,
+  selectedAgentId,
+  onSelectAgent,
+  agentNames = {}
 }: ChatContainerProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -42,7 +53,7 @@ export function ChatContainer({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (input.trim() && isConnected) {
-      onSendMessage(input);
+      onSendMessage(input, selectedAgentId || undefined);
       setInput("");
     }
   };
@@ -86,17 +97,26 @@ export function ChatContainer({
           </div>
         </div>
         
-        {/* Collapsible info panel */}
-        {showInfo && (
-          <div className="mt-3 text-sm p-3 bg-muted/50 rounded shadow-sm">
-            <div className="font-medium mb-1">Chat Statistics</div>
-            <div className="grid grid-cols-3 gap-2 text-muted-foreground">
-              <div>User messages: {getUserMessages}</div>
-              <div>Agent messages: {getAgentMessages}</div>
-              <div>System messages: {getSystemMessages}</div>
+        {/* Agent selector and info panel */}
+        <div className="mt-3 flex flex-col gap-3">
+          <AgentSelector 
+            client={client}
+            isConnected={isConnected}
+            selectedAgentId={selectedAgentId}
+            onAgentChange={onSelectAgent}
+          />
+          
+          {showInfo && (
+            <div className="text-sm p-3 bg-muted/50 rounded shadow-sm">
+              <div className="font-medium mb-1">Chat Statistics</div>
+              <div className="grid grid-cols-3 gap-2 text-muted-foreground">
+                <div>User messages: {getUserMessages}</div>
+                <div>Agent messages: {getAgentMessages}</div>
+                <div>System messages: {getSystemMessages}</div>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Messages area with improved styling */}
@@ -117,6 +137,7 @@ export function ChatContainer({
               type={message.type}
               timestamp={message.timestamp}
               agentId={message.agentId}
+              agentName={message.agentName || (message.agentId ? agentNames[message.agentId] : undefined)}
             />
           ))
         )}
@@ -139,8 +160,8 @@ export function ChatContainer({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your message..."
-              disabled={!isConnected || isLoading}
+              placeholder={selectedAgentId ? `Message ${agentNames[selectedAgentId] || 'the selected agent'}...` : "Select an agent first..."}
+              disabled={!isConnected || isLoading || !selectedAgentId}
               className="pr-12 min-h-[50px] bg-background focus-visible:ring-primary/50 shadow-sm border-0"
             />
             {isLoading && (
@@ -149,7 +170,7 @@ export function ChatContainer({
           </div>
           <Button 
             type="submit" 
-            disabled={!isConnected || !input.trim() || isLoading}
+            disabled={!isConnected || !input.trim() || isLoading || !selectedAgentId}
             className="min-h-[50px] px-5 shadow-sm"
           >
             <PaperPlaneIcon className="h-4 w-4 mr-2" />
@@ -157,9 +178,11 @@ export function ChatContainer({
           </Button>
         </div>
         <div className="mt-2 text-xs text-center text-muted-foreground">
-          {isConnected 
-            ? "Connected to the orchestrator" 
-            : "Trying to reconnect to the orchestrator... (Make sure it's running on port 3001)"}
+          {!isConnected 
+            ? "Trying to reconnect to the orchestrator... (Make sure it's running on port 3001)"
+            : !selectedAgentId
+            ? "Please select an agent to start chatting"
+            : `Sending messages to: ${agentNames[selectedAgentId] || 'Selected agent'}`}
         </div>
       </form>
     </div>

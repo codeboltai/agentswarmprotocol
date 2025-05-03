@@ -2,7 +2,7 @@
  * File Management Service using SwarmServiceSDK
  * Provides file system operations with real-time progress notifications
  */
-const { SwarmServiceSDK } = require('../../sdk/servicesdk/index');
+const SwarmServiceSDK = require('servicesdk');
 const fs = require('fs').promises;
 const path = require('path');
 const util = require('util');
