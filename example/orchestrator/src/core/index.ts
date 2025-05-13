@@ -16,7 +16,8 @@ import {
   OrchestratorConfig,
   PendingResponse,
   WebSocketWithId,
-  SendOptions
+  SendOptions,
+  TaskStatus
 } from '@agentswarmprotocol/types/dist/common';
 
 // Load environment variables
@@ -165,22 +166,25 @@ class Orchestrator {
           id: taskId,
           type: 'task.execute',
           content: {
-            ...taskData,
-            taskType: taskData.taskType,
-            input: taskData.input || taskData,
-            metadata: {
-              clientId: clientId,
-              timestamp: new Date().toISOString()
+            taskId: taskId,
+            type: taskData.taskType,
+            data: {
+              conversationId: taskData.conversationId,
+              message: taskData.message,
+              role: taskData.role,
+              context: taskData.context
             }
           }
         };
         
         // Send the task to the agent
-        this.sendAndWaitForResponse(agent.connectionId, taskMessage)
+        this.sendAndWaitForResponse(agent.connectionId, taskMessage, { timeout: 60000 })
           .then(response => {
             // Task completed by agent
-            this.tasks.updateTaskStatus(taskId, 'completed', response);
-            this.eventBus.emit('response.message', response);
+            if (response.type === 'task.result') {
+              this.tasks.updateTaskStatus(taskId, 'completed', response.content);
+              this.eventBus.emit('response.message', response);
+            }
           })
           .catch(error => {
             // Task failed
@@ -312,6 +316,77 @@ class Orchestrator {
         if (agentId) {
           this.forwardServiceTaskNotificationToAgent(agentId, message);
         }
+      }
+    });
+
+    // Handle client agent list requests
+    this.eventBus.on('client.agent.list', (filters: any, callback: Function) => {
+      try {
+        const agents = this.messageHandler.getAgentList(filters);
+        callback(agents);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    // Handle client messages to agents
+    this.eventBus.on('client.message.agent', async (message: any, targetAgentId: string, callback: Function) => {
+      try {
+        // Create a task for the agent
+        const taskId = uuidv4();
+        const conversationId = uuidv4(); // Generate a conversation ID if not provided
+        
+        const taskData = {
+          taskType: 'conversation:message',
+          conversationId,
+          message: message.content.text,
+          role: message.content.role || 'user',
+          context: {
+            messageHistory: [],
+            metadata: {
+              clientId: message.content.sender.id,
+              timestamp: message.timestamp || new Date().toISOString()
+            }
+          }
+        };
+
+        // Register task in task registry
+        this.tasks.registerTask(taskId, {
+          type: 'agent.task',
+          name: 'Client Message',
+          severity: 'normal',
+          agentId: targetAgentId,
+          clientId: message.content.sender.id,
+          status: 'pending' as TaskStatus,
+          createdAt: new Date().toISOString(),
+          taskData
+        });
+
+        // Emit task created event
+        this.eventBus.emit('task.created', taskId, targetAgentId, message.content.sender.id, taskData);
+
+        callback({
+          taskId,
+          status: 'pending'
+        });
+      } catch (error) {
+        console.error('Error handling client message:', error);
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    // Handle task status updates
+    this.eventBus.on('task.status', (message: any) => {
+      const { taskId, status, agentId } = message.content;
+      console.log(`Received task status update for task ${taskId}: ${status}`);
+      
+      // Update task status in registry
+      this.tasks.updateTaskStatus(taskId, status, message.content);
+      
+      // Handle task completion
+      if (status === 'completed') {
+        // Emit task result event
+        this.eventBus.emit('task.result', message);
       }
     });
   }

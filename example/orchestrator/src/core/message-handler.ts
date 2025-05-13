@@ -10,7 +10,7 @@ import {
   TaskStatus,
   AgentRegistry, 
   TaskRegistry, 
-  ServiceRegistry, 
+  ServiceRegistry as IServiceRegistry, 
   MCPInterface, 
   BaseMessage,
   MessageHandlerConfig
@@ -21,6 +21,7 @@ import {
   ServiceMessages
 } from '@agentswarmprotocol/types/dist/messages';
 import { EventEmitter } from 'events';
+import { ServiceRegistry } from '../service/service-registry';
 
 // Core interfaces for the orchestrator
 interface ServiceTaskRegistry {
@@ -45,7 +46,7 @@ class MessageHandler {
   constructor(config: MessageHandlerConfig) {
     this.agents = config.agents;
     this.tasks = config.tasks;
-    this.services = config.services;
+    this.services = config.services as ServiceRegistry;
     this.serviceTasks = config.serviceTasks;
     this.eventBus = config.eventBus;
     this.mcp = config.mcp;
@@ -377,6 +378,92 @@ class MessageHandler {
       console.log(`Agent disconnected: ${agent.name}`);
       this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
     }
+  }
+
+  /**
+   * Handle an incoming message
+   * @param message The message to handle
+   * @param connectionId ID of the connection that sent the message
+   * @returns Response message if needed
+   */
+  handleMessage(message: any, connectionId: string): any {
+    const { type } = message;
+
+    switch (type) {
+      case 'agent.register':
+        return this.handleAgentRegistration(message, connectionId);
+      
+      case 'service.register':
+        return this.handleServiceRegistration(message, connectionId);
+      
+      case 'task.result':
+        this.eventBus.emit('task.result', message);
+        return;
+      
+      case 'task.status':
+        // Update task status in registry
+        if (message.content && message.content.taskId) {
+          const { taskId, status } = message.content;
+          this.tasks.updateTaskStatus(taskId, status);
+          // Emit event for status update
+          this.eventBus.emit('task.status', message);
+        }
+        return;
+      
+      case 'task.notification':
+        this.eventBus.emit('task.notification', message);
+        return;
+      
+      case 'service.task.result':
+        this.eventBus.emit('service.task.result', message);
+        return;
+      
+      case 'service.notification':
+        this.eventBus.emit('service.notification', message);
+        return;
+      
+      default:
+        console.warn(`Unhandled message type: ${type}`);
+        return;
+    }
+  }
+
+  /**
+   * Handle service registration
+   * @param message Registration message
+   * @param connectionId Connection ID
+   * @returns Registration response
+   */
+  handleServiceRegistration(message: any, connectionId: string): any {
+    const { content } = message;
+    const { name, capabilities = [], manifest = {} } = content;
+
+    if (!name) {
+      throw new Error('Service registration missing required field: name');
+    }
+
+    const now = new Date().toISOString();
+
+    // Register the service
+    const service = this.services.registerService({
+      id: uuidv4(),
+      name,
+      capabilities,
+      manifest,
+      connectionId,
+      status: 'online',
+      registeredAt: now
+    } as Service);
+
+    return {
+      type: 'service.registered',
+      content: {
+        serviceId: service.id,
+        name: service.name,
+        capabilities: service.capabilities,
+        manifest: service.manifest
+      }
+    };
   }
 }
 

@@ -1,7 +1,6 @@
 /**
  * Client SDK Type Definitions for Agent Swarm Protocol
  */
-/// <reference types="node" />
 import { BaseMessage } from '../common';
 /**
  * Configuration options for SwarmClientSDK

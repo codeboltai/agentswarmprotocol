@@ -316,12 +316,16 @@ class Orchestrator {
         if (mcpServers && mcpServers.length > 0) {
             for (const serverConfig of mcpServers) {
                 try {
+                    // Include command and args from the config
                     await this.mcp.registerMCPServer({
                         id: serverConfig.id || (0, uuid_1.v4)(),
                         name: serverConfig.name,
-                        type: serverConfig.type,
+                        type: serverConfig.type || 'node',
                         capabilities: serverConfig.capabilities || [],
-                        path: serverConfig.path
+                        path: serverConfig.path,
+                        command: serverConfig.command,
+                        args: serverConfig.args,
+                        metadata: serverConfig.metadata || {}
                     });
                     console.log(`Registered MCP server: ${serverConfig.name}`);
                 }

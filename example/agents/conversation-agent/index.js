@@ -4,7 +4,7 @@
  */
 
 // Load environment variables
-require('dotenv').config({ path: '../../.env' });
+require('dotenv').config({ path: '.env' });
 
 // Import the Conversation Agent
 const ConversationAgent = require('./conversation-agent');

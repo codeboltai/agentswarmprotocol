@@ -1,8 +1,6 @@
 /**
  * Orchestrator Types for Agent Swarm Protocol
  */
-/// <reference types="node" />
-/// <reference types="node" />
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
 import { Agent, Service, Task, TaskStatus, ServiceStatus, AgentStatus, MCPServer, MCPTool } from './index';

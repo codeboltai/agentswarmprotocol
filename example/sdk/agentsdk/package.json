@@ -2,8 +2,8 @@
   "name": "@agentswarmprotocol/agentsdk",
   "version": "1.0.1",
   "description": "SDK for building agents compatible with Agent Swarm Protocol",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && tsc",

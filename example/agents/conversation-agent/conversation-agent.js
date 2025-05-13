@@ -3,7 +3,7 @@
  * Provides conversational capabilities with memory and context awareness
  */
 
-const SwarmAgentSDK = require('../../sdk/agentsdk');
+const { SwarmAgentSDK } = require('@agentswarmprotocol/agentsdk');
 const { v4: uuidv4 } = require('uuid');
 
 class ConversationAgent extends SwarmAgentSDK {
@@ -142,6 +142,9 @@ class ConversationAgent extends SwarmAgentSDK {
       this.logger.error('Missing required field: message');
       throw new Error('Missing required field: message');
     }
+
+    // Send task status update - Started
+    await this.sendTaskStatus(metadata.taskId, 'started');
     
     // Get or create conversation context
     if (!this.conversations.has(conversationId)) {
@@ -178,6 +181,9 @@ class ConversationAgent extends SwarmAgentSDK {
     // Process the message
     const intents = this.detectIntents(message);
     const sentiment = this.analyzeSentiment(message);
+    
+    // Send task status update - Processing
+    await this.sendTaskStatus(metadata.taskId, 'processing');
     
     // Check if this is a research-related query and available agents are provided
     const isResearchQuery = this.isResearchQuery(message);
@@ -236,8 +242,36 @@ class ConversationAgent extends SwarmAgentSDK {
       hasResponse: !!responseData.response, 
       responseLength: responseData.response ? responseData.response.length : 0
     })}`);
+
+    // Send task status update - Completed
+    await this.sendTaskStatus(metadata.taskId, 'completed');
     
     return responseData;
+  }
+
+  /**
+   * Send a task status update to the orchestrator
+   * @param {string} taskId - The ID of the task
+   * @param {string} status - The new status
+   */
+  async sendTaskStatus(taskId, status) {
+    if (!taskId) {
+      this.logger.warn('Cannot send task status: taskId is missing');
+      return;
+    }
+
+    try {
+      await this.send({
+        type: 'task.status',
+        content: {
+          taskId,
+          status,
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send task status update: ${error.message}`);
+    }
   }
 
   /**
