@@ -33,11 +33,13 @@ class AgentServer {
   private pendingResponses: Record<string, PendingResponse>;
   private server: http.Server;
   private wss: WebSocket.Server;
+  private messageHandler: any;
 
   constructor(
     { agents }: AgentServerDependencies, 
     eventBus: EventEmitter, 
-    config: AgentServerConfig = {}
+    config: AgentServerConfig = {},
+    messageHandler?: any
   ) {
     this.agents = agents; // Only needed for connection tracking
     this.eventBus = eventBus;
@@ -46,6 +48,7 @@ class AgentServer {
     // Initialize server and wss to null as they'll be set in start()
     this.server = null as unknown as http.Server;
     this.wss = null as unknown as WebSocket.Server;
+    this.messageHandler = messageHandler;
   }
 
   async start(): Promise<AgentServer> {
@@ -85,7 +88,7 @@ class AgentServer {
       });
       
       // Send welcome message
-      this.send(ws as WebSocketWithId, {
+      this.send(connectionId, {
         type: 'orchestrator.welcome',
         content: {
           message: 'Connected to ASP Orchestrator',
@@ -112,27 +115,20 @@ class AgentServer {
     try {
       switch (message.type) {
         case 'agent.register':
-          // Emit registration event and wait for response
-          this.eventBus.emit('agent.register', message, ws.id, (registrationResult: any) => {
+          try {
+            const registrationResult = this.messageHandler.handleAgentRegistration(message, ws);
             if (registrationResult.error) {
               this.sendError(ws, registrationResult.error, message.id);
               return;
             }
-            
-            // Store connection object with the agent
-            const agent = this.agents.getAgentById(registrationResult.agentId);
-            if (agent) {
-              (agent as any).connection = ws;
-              this.agents.registerAgent(agent);
-            }
-            
-            // Send confirmation
-            this.send(ws, {
+            this.send(ws.id, {
               type: 'agent.registered',
               content: registrationResult,
               requestId: message.id
             } as BaseMessage);
-          });
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
           break;
           
         case 'service.request':
@@ -144,7 +140,7 @@ class AgentServer {
             }
             
             // Send the result back
-            this.send(ws, {
+            this.send(ws.id, {
               type: 'service.response',
               content: serviceResult,
               requestId: message.id
@@ -162,7 +158,7 @@ class AgentServer {
             
             // The actual communication will be handled by event listeners in the orchestrator
             // This just returns a task ID for tracking
-            this.send(ws, {
+            this.send(ws.id, {
               type: 'agent.request.accepted',
               content: result,
               requestId: message.id
@@ -206,7 +202,7 @@ class AgentServer {
           this.eventBus.emit('task.notification.received', enhancedNotification);
           
           // Confirm receipt (optional)
-          this.send(ws, {
+          this.send(ws.id, {
             type: 'notification.received',
             content: {
               message: 'Notification received',
@@ -227,7 +223,22 @@ class AgentServer {
   }
 
   // Helper method to send messages
-  send(ws: WebSocketWithId, message: BaseMessage): string {
+  send(agentId: string, message: BaseMessage): string {
+    if (!agentId) {
+      throw new Error('Agent ID is required');
+    }
+    
+    const agent = this.agents.getAgentById(agentId);
+    if (!agent || !agent.connectionId) {
+      throw new Error(`Agent ${agentId} not found or not connected`);
+    }
+    
+    // Access the connection property of the agent
+    const ws = (agent as any).connection;
+    if (!ws) {
+      throw new Error(`Connection not found for agent ${agentId}`);
+    }
+    
     if (!message.id) {
       message.id = uuidv4();
     }
@@ -258,6 +269,7 @@ class AgentServer {
     }
     
     try {
+      // Send directly using WebSocket since this is used in error handling contexts
       ws.send(JSON.stringify(message));
     } catch (error) {
       console.error('Error sending error message:', error);
@@ -265,7 +277,7 @@ class AgentServer {
   }
 
   // Helper method to send a message and wait for a response
-  async sendAndWaitForResponse(ws: WebSocketWithId, message: BaseMessage, options: SendOptions = {}): Promise<any> {
+  async sendAndWaitForResponse(agentId: string, message: BaseMessage, options: SendOptions = {}): Promise<any> {
     const timeout = options.timeout || 30000; // Default 30 second timeout
     
     return new Promise((resolve, reject) => {
@@ -322,7 +334,7 @@ class AgentServer {
       this.eventBus.on('response.message', responseHandler);
       
       // Send the message
-      this.send(ws, message);
+      this.send(agentId, message);
     });
   }
 

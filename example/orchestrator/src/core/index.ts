@@ -135,7 +135,8 @@ class Orchestrator {
     this.agentServer = new AgentServer(
       { agents: this.agents }, 
       this.eventBus, 
-      { port: this.port }
+      { port: this.port },
+      this.messageHandler
     );
     
     this.clientServer = new ClientServer(
@@ -257,16 +258,6 @@ class Orchestrator {
             console.error(`Error in agent-to-agent request: ${error.message}`);
             this.tasks.updateTaskStatus(taskId, 'failed', { error: error.message });
           });
-      }
-    });
-    
-    // Handle agent registration
-    this.eventBus.on('agent.register', (message: any, connectionId: string, callback: Function) => {
-      try {
-        const result = this.messageHandler.handleAgentRegistration(message, connectionId);
-        callback(result);
-      } catch (error) {
-        callback({ error: error instanceof Error ? error.message : String(error) });
       }
     });
     

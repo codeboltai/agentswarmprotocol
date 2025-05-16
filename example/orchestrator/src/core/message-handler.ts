@@ -150,10 +150,10 @@ class MessageHandler {
   /**
    * Handle agent registration
    * @param {BaseMessage} message - Registration message
-   * @param {string} connectionId - Agent connection ID
+   * @param {any} ws - The WebSocket connection
    * @returns {Object} Registration result
    */
-  handleAgentRegistration(message: BaseMessage, connectionId: string) {
+  handleAgentRegistration(message: BaseMessage, ws: any) {
     const { name, capabilities, manifest } = message.content;
     
     if (!name) {
@@ -174,9 +174,11 @@ class MessageHandler {
         ...(manifest || {}),
         ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
       },
-      connectionId: connectionId,
+      connectionId: ws.id,
       status: 'online',
-      registeredAt: new Date().toISOString()
+      registeredAt: new Date().toISOString(),
+      // Set the WebSocket connection directly
+      ...(ws ? { connection: ws } : {})
     };
     
     this.agents.registerAgent(agent);
