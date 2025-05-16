@@ -171,6 +171,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this;
   }
 
+  //OK
   /**
    * Send a task result back to the orchestrator
    * @param taskId ID of the task
@@ -180,6 +181,7 @@ class SwarmAgentSDK extends EventEmitter {
     this.taskHandler.sendTaskResult(taskId, result);
   }
 
+  //OK - low level send
   /**
    * Send a message to the orchestrator
    * @param message Message to send
@@ -188,6 +190,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.webSocketManager.send(message);
   }
 
+  //OK
   /**
    * Send a message and wait for a response
    * @param message Message to send
@@ -208,6 +211,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.agentManager.requestAgentTask(targetAgentName, taskData, timeout);
   }
 
+  //Ok
   /**
    * Get list of agents
    * @param filters Filter criteria
@@ -216,6 +220,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.agentManager.getAgentList(filters);
   }
 
+  //Should be for SELF Only
   /**
    * Set agent status
    * @param status New status
@@ -240,6 +245,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.agentManager.executeAgentTask(targetAgentName, taskType, taskData, timeout);
   }
 
+  // NOT SURE WHAT IS THIS
   /**
    * Register a handler for agent requests
    * @param taskType Type of task to handle
@@ -291,6 +297,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.serviceManager.executeServiceTask(serviceId, functionName, params, options);
   }
 
+  //OK
   /**
    * Get a list of available services
    * @param filters Filter criteria
@@ -300,16 +307,7 @@ class SwarmAgentSDK extends EventEmitter {
   }
 
   // MCP Manager methods
-  /**
-   * Request MCP service
-   * @param params Service parameters
-   * @param timeout Request timeout
-   * @deprecated Use getMCPServers, getMCPTools, and executeMCPTool instead
-   */
-  requestMCPService(params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    return this.mcpManager.requestMCPService(params, timeout);
-  }
-
+  //OK
   /**
    * Get list of MCP servers
    * @param filters Filter criteria
@@ -319,6 +317,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.mcpManager.getMCPServers(filters, timeout);
   }
 
+  //OK
   /**
    * Get list of tools for an MCP server
    * @param serverId Server ID
@@ -328,6 +327,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.mcpManager.getMCPTools(serverId, timeout);
   }
 
+  //OK
   /**
    * Execute an MCP tool
    * @param serverId Server ID
@@ -344,22 +344,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.mcpManager.executeMCPTool(serverId, toolName, parameters, timeout);
   }
 
-  /**
-   * Execute a tool by name (will find server automatically)
-   * @param toolName Tool name
-   * @param parameters Tool parameters
-   * @param serverId Optional server ID (if known)
-   * @param timeout Request timeout
-   */
-  executeTool(
-    toolName: string, 
-    parameters: Record<string, any> = {}, 
-    serverId: string | null = null, 
-    timeout = 60000
-  ): Promise<any> {
-    return this.mcpManager.executeTool(toolName, parameters, serverId, timeout);
-  }
-
+  // OK
   /**
    * Send a task notification
    * @param notification Notification data
@@ -368,6 +353,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.taskHandler.sendTaskNotification(notification);
   }
 
+  // NOT NEEDED
   /**
    * Register a handler for notifications
    * @param handler Handler function
