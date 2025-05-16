@@ -380,6 +380,16 @@ class Orchestrator {
         this.eventBus.emit('task.result', message);
       }
     });
+
+    // Handle service requests from agents
+    this.eventBus.on('service.request', async (message: any, connectionId: string, callback: Function) => {
+      try {
+        const result = await this.messageHandler.handleServiceRequest(message, connectionId);
+        callback(result);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
   }
 
   /**
