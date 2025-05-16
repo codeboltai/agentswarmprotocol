@@ -415,7 +415,18 @@ function App() {
     
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
-    
+    console.log('Sending message to orchestrator with the specific agent target');
+    console.log({
+      type: 'client.message',
+      content: {
+        text: content,
+        role: 'user',
+        target: {
+          type: 'agent',
+          id: targetAgentId
+        }
+      }
+    });
     // Send message to orchestrator with the specific agent target
     client.sendMessage({
       type: 'client.message',

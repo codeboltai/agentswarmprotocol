@@ -268,7 +268,7 @@ class SwarmAgentSDK extends EventEmitter {
    * @param timeout Request timeout
    */
   executeService(serviceName: string, params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    return this.serviceManager.executeService(serviceName, params, timeout);
+    return this.serviceManager.requestService(serviceName, params, timeout);
   }
 
   /**
