@@ -43,9 +43,9 @@ export class MessageHandler extends EventEmitter {
       if (message.type === 'error' || (message.content && message.content.error)) {
         reject(new Error(message.content ? message.content.error : 'Unknown error'));
       } else {
+        console.log(`Resolved pending response for message ID: ${message.id}`);
         resolve(message);
       }
-      console.log(`Resolved pending response for message ID: ${message.id}`);
       return;
     }
     
@@ -65,11 +65,17 @@ export class MessageHandler extends EventEmitter {
         break;
         
       case 'task.result':
+        console.log('Emitting task-result and task.update events:', message.content);
         this.emit('task-result', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
         break;
         
       case 'task.status':
+        console.log('Emitting task-status and task.update events:', message.content);
         this.emit('task-status', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
         break;
         
       case 'task.created':
@@ -88,7 +94,7 @@ export class MessageHandler extends EventEmitter {
         break;
         
       default:
-        console.log(`Unhandled message type: ${message.type}`);
+        console.log(`Unhandled message type message-handler: ${message.type}`);
         break;
     }
   }

@@ -32,6 +32,9 @@ interface SimpleClient {
   on(event: 'connected' | 'disconnected', listener: () => void): void;
   on(event: 'message', listener: (message: AgentMessage) => void): void;
   on(event: 'error', listener: (error: ClientError) => void): void;
+  on(event: 'task-result', listener: (result: any) => void): void;
+  on(event: 'task-status', listener: (status: any) => void): void;
+  on(event: string, listener: (...args: any[]) => void): void;
 }
 
 // Initialize the real client
@@ -49,6 +52,32 @@ function createClient(): SimpleClient {
     client.on('disconnected', () => emitter.emit('disconnected'));
     client.on('message', (msg: AgentMessage) => emitter.emit('message', msg));
     client.on('error', (err: ClientError) => emitter.emit('error', err));
+    
+    // Forward task-related events for UI updates
+    client.on('task-status', (status: any) => {
+      console.log('Task status update received in client wrapper:', status);
+      emitter.emit('message', { 
+        type: 'task.update', 
+        content: status,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also emit a direct event for task status
+      emitter.emit('task-status', status);
+    });
+    
+    client.on('task-result', (result: any) => {
+      console.log('Task result received in client wrapper:', result);
+      // Create a properly structured message
+      emitter.emit('message', { 
+        type: 'task.result', 
+        content: result,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Also emit a direct event for task result
+      emitter.emit('task-result', result);
+    });
     
     console.log('Successfully initialized SwarmClientSDK');
     
@@ -78,7 +107,7 @@ function createClient(): SimpleClient {
         }
       },
       
-      on(event: 'connected' | 'disconnected' | 'message' | 'error', 
+      on(event: 'connected' | 'disconnected' | 'message' | 'error' | string, 
          // eslint-disable-next-line @typescript-eslint/no-explicit-any
          listener: (...args: any[]) => void): void {
         emitter.on(event, listener);
@@ -116,6 +145,11 @@ function App() {
       timestamp: new Date().toISOString(),
     },
   ]);
+
+  // Debug logging for loading state
+  useEffect(() => {
+    console.log(`[DEBUG] isLoading state: ${isLoading}`);
+  }, [isLoading]);
 
   // Fetch agents and build ID to name mapping
   const fetchAgents = async () => {
@@ -181,8 +215,52 @@ function App() {
         ]);
       });
 
+      // Direct handler for task-result events
+      simpleClient.on('task-result', (result: any) => {
+        console.log('[DIRECT HANDLER] Task result received:', result);
+        // Always stop loading on task result
+        setIsLoading(false);
+        
+        // Add result message to chat
+        let resultContent = 'Task completed';
+        if (result && result.result) {
+          const resultData = result.result;
+          if (typeof resultData === 'string') {
+            resultContent = resultData;
+          } else if (typeof resultData === 'object' && resultData !== null) {
+            resultContent = JSON.stringify(resultData, null, 2);
+          }
+        }
+        
+        setMessages(prev => [
+          ...prev,
+          {
+            id: uuidv4(),
+            content: `Task update: ${resultContent}`,
+            type: "system",
+            timestamp: new Date().toISOString(),
+          }
+        ]);
+      });
+      
+      // Direct handler for task-status events
+      simpleClient.on('task-status', (status: any) => {
+        console.log('[DIRECT HANDLER] Task status received:', status);
+        // Stop loading on completed/failed tasks
+        if (status && status.status && ['completed', 'failed', 'cancelled'].includes(status.status)) {
+          setIsLoading(false);
+        }
+      });
+
       simpleClient.on('message', (message: AgentMessage) => {
         console.log('Message received:', message);
+        
+        // Immediately stop loading for any task.result message
+        if (message.type === 'task.result' || 
+            (message.type === 'task.status' && message.content?.status === 'completed')) {
+          console.log('Task completion detected, stopping loading');
+          setIsLoading(false);
+        }
         
         // Handle incoming messages from agents
         if (message.type === 'agent.message') {
@@ -200,13 +278,10 @@ function App() {
           setIsLoading(false);
         }
         
-        // Handle task updates
-        if (message.type === 'task.update') {
-          const taskUpdate = message.content;
-          
-          if (taskUpdate.status === 'completed') {
-            setIsLoading(false);
-          }
+        // For any message type called task.result, always stop loading
+        if (message.type === 'task.result') {
+          console.log('Task result message handler - forcing loading off');
+          setIsLoading(false);
         }
       });
 

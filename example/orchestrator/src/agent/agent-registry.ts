@@ -8,6 +8,7 @@ import { Agent as BaseAgent, AgentStatus, AgentRegistry as IAgentRegistry } from
 // Extended Agent interface for backward compatibility
 interface Agent extends BaseAgent {
   statusDetails?: any;
+  connection?: any; // WebSocket connection object
 }
 
 interface AgentConfiguration {
@@ -88,9 +89,7 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns {Agent|undefined} The agent object or undefined if not found
    */
   getAgentByConnectionId(connectionId: string): Agent | undefined {
-    return Array.from(this.agents.values()).find(
-      agent => agent.connectionId === connectionId
-    );
+    return this.agentsByConnectionId.get(connectionId);
   }
 
   /**
@@ -100,7 +99,7 @@ export class AgentRegistry implements IAgentRegistry {
    */
   getAgentConnection(connectionId: string): any {
     const agent = this.getAgentByConnectionId(connectionId);
-    return agent ? (agent as any).connection : undefined;
+    return agent?.connection;
   }
 
   /**

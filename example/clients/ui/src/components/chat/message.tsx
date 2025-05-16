@@ -58,6 +58,7 @@ export function Message({
         "flex w-full mb-5 items-start",
         isUser ? "justify-end" : "justify-start"
       )}
+      data-loading={isLoading ? "true" : undefined}
     >
       {/* Avatar for non-user messages */}
       {!isUser && (

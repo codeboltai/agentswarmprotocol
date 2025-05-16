@@ -88,13 +88,19 @@ class AgentServer {
       });
       
       // Send welcome message
-      this.send(connectionId, {
-        type: 'orchestrator.welcome',
-        content: {
-          message: 'Connected to ASP Orchestrator',
-          orchestratorVersion: '1.0.0'
-        }
-      } as BaseMessage);
+      try {
+        const welcomeMessage = {
+          id: uuidv4(),
+          type: 'orchestrator.welcome',
+          content: {
+            message: 'Connected to ASP Orchestrator',
+            orchestratorVersion: '1.0.0'
+          }
+        };
+        ws.send(JSON.stringify(welcomeMessage));
+      } catch (error) {
+        console.error('Error sending welcome message:', error);
+      }
     });
     
     // Start HTTP server for agents
@@ -116,16 +122,20 @@ class AgentServer {
       switch (message.type) {
         case 'agent.register':
           try {
-            const registrationResult = this.messageHandler.handleAgentRegistration(message, ws);
+            // Pass the WebSocket object to the registration handler
+            const registrationResult = this.messageHandler.handleAgentRegistration(message, ws.id, ws);
             if (registrationResult.error) {
               this.sendError(ws, registrationResult.error, message.id);
               return;
             }
-            this.send(ws.id, {
+            
+            ws.send(JSON.stringify({
+              id: uuidv4(),
               type: 'agent.registered',
               content: registrationResult,
-              requestId: message.id
-            } as BaseMessage);
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
           } catch (error) {
             this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
           }
@@ -139,12 +149,14 @@ class AgentServer {
               return;
             }
             
-            // Send the result back
-            this.send(ws.id, {
+            // Send the result back - using WebSocket directly
+            ws.send(JSON.stringify({
+              id: uuidv4(),
               type: 'service.response',
               content: serviceResult,
-              requestId: message.id
-            } as BaseMessage);
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
           });
           break;
           
@@ -157,12 +169,14 @@ class AgentServer {
             }
             
             // The actual communication will be handled by event listeners in the orchestrator
-            // This just returns a task ID for tracking
-            this.send(ws.id, {
+            // This just returns a task ID for tracking - using WebSocket directly
+            ws.send(JSON.stringify({
+              id: uuidv4(),
               type: 'agent.request.accepted',
               content: result,
-              requestId: message.id
-            } as BaseMessage);
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
           });
           break;
           
@@ -175,6 +189,13 @@ class AgentServer {
         case 'task.error':
           // Emit task error event
           this.eventBus.emit('task.error.received', message);
+          this.eventBus.emit('response.message', message);
+          break;
+          
+        case 'task.status':
+          // Emit task status update event
+          console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
+          this.eventBus.emit('task.status.received', message);
           this.eventBus.emit('response.message', message);
           break;
           
@@ -201,19 +222,21 @@ class AgentServer {
           // Emit the notification event for the orchestrator to handle
           this.eventBus.emit('task.notification.received', enhancedNotification);
           
-          // Confirm receipt (optional)
-          this.send(ws.id, {
+          // Confirm receipt (optional) - using WebSocket directly
+          ws.send(JSON.stringify({
+            id: uuidv4(),
             type: 'notification.received',
             content: {
               message: 'Notification received',
               notificationId: message.id
             },
-            requestId: message.id
-          } as BaseMessage);
+            requestId: message.id,
+            timestamp: Date.now().toString()
+          }));
           break;
           
         default:
-          console.warn(`Unhandled message type: ${message.type}`);
+          console.warn(`Unhandled message type agent-server: ${message.type}`);
           this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
       }
     } catch (error) {
@@ -223,22 +246,7 @@ class AgentServer {
   }
 
   // Helper method to send messages
-  send(agentId: string, message: BaseMessage): string {
-    if (!agentId) {
-      throw new Error('Agent ID is required');
-    }
-    
-    const agent = this.agents.getAgentById(agentId);
-    if (!agent || !agent.connectionId) {
-      throw new Error(`Agent ${agentId} not found or not connected`);
-    }
-    
-    // Access the connection property of the agent
-    const ws = (agent as any).connection;
-    if (!ws) {
-      throw new Error(`Connection not found for agent ${agentId}`);
-    }
-    
+  send(wsOrAgentId: WebSocketWithId | string, message: BaseMessage): string {
     if (!message.id) {
       message.id = uuidv4();
     }
@@ -246,7 +254,34 @@ class AgentServer {
     message.timestamp = Date.now().toString();
     
     try {
-      ws.send(JSON.stringify(message));
+      // If a WebSocket object was directly provided
+      if (typeof wsOrAgentId !== 'string') {
+        wsOrAgentId.send(JSON.stringify(message));
+        return message.id;
+      }
+      
+      // Otherwise, it's an agent ID
+      const agentId = wsOrAgentId;
+      if (!agentId) {
+        throw new Error('Agent ID is required');
+      }
+      
+      const agent = this.agents.getAgentById(agentId);
+      if (!agent) {
+        throw new Error(`Agent ${agentId} not found`);
+      }
+      
+      if (!agent.connectionId) {
+        throw new Error(`Agent ${agentId} not connected (no connectionId)`);
+      }
+      
+      // Access the connection property of the agent
+      const connection = (agent as any).connection;
+      if (!connection) {
+        throw new Error(`Connection not found for agent ${agentId} (connectionId: ${agent.connectionId})`);
+      }
+      
+      connection.send(JSON.stringify(message));
       return message.id;
     } catch (error) {
       console.error('Error sending message:', error);
