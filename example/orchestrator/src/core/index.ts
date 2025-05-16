@@ -261,6 +261,16 @@ class Orchestrator {
       }
     });
     
+    // Listen for service request events
+    this.eventBus.on('service.request', async (message: any, connectionId: string, callback: Function) => {
+      try {
+        const result = await this.messageHandler.handleServiceRequest(message, connectionId);
+        callback(result);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+    
     // Handle service registration
     this.eventBus.on('service.register', async (message: any, connectionId: string, callback: Function) => {
       try {
