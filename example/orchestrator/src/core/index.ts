@@ -2,9 +2,9 @@ import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
 import { AgentRegistry } from '../agent/agent-registry';
-import { TaskRegistry } from './utils/tasks/task-registry';
+import { AgentTaskRegistry } from './utils/tasks/agent-task-registry';
 import { ServiceRegistry } from '../service/service-registry';
-import { ServiceTaskRegistry } from '../service/service-task-registry';
+import { ServiceTaskRegistry } from './utils/tasks/service-task-registry';
 import AgentServer from '../agent/agent-server';
 import ClientServer from '../client/client-server';
 import ServiceServer from '../service/service-server';
@@ -57,7 +57,7 @@ class Orchestrator {
   private servicePort: number;
   private logLevel: string;
   private agents: AgentRegistry;
-  private tasks: TaskRegistry;
+  private tasks: AgentTaskRegistry;
   private services: ServiceRegistry;
   private serviceTasks: ServiceTaskRegistry;
   private pendingResponses: Record<string, PendingResponse>;
@@ -110,7 +110,7 @@ class Orchestrator {
     this.logLevel = config.logLevel || orchestratorSettings.logLevel || process.env.LOG_LEVEL || 'info';
     
     this.agents = new AgentRegistry();
-    this.tasks = new TaskRegistry();
+    this.tasks = new AgentTaskRegistry();
     this.services = new ServiceRegistry();
     this.serviceTasks = new ServiceTaskRegistry();
     this.pendingResponses = {}; // Track pending responses

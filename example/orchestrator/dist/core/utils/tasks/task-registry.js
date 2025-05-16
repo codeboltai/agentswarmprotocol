@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TaskRegistry = void 0;
+exports.AgentTaskRegistry = void 0;
 /**
  * Task Registry for the ASP Orchestrator
  * Manages active and completed tasks in the system
  */
-class TaskRegistry {
+class AgentTaskRegistry {
     constructor() {
         this.tasks = new Map(); // Maps task IDs to task objects
         this.tasksByAgentId = new Map(); // Maps agent IDs to arrays of assigned task IDs
@@ -421,4 +421,4 @@ class TaskRegistry {
         });
     }
 }
-exports.TaskRegistry = TaskRegistry;
+exports.AgentTaskRegistry = AgentTaskRegistry;

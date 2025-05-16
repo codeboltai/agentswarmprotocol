@@ -8,10 +8,11 @@ import {
   AgentStatus,
   ServiceStatus,
   TaskStatus,
-  AgentRegistry,
-  TaskRegistry,
-  ServiceRegistry as IServiceRegistry,
-  MCPInterface,
+  AgentRegistry, 
+  AgentTaskRegistry, 
+  ServiceTaskRegistry,
+  ServiceRegistry as IServiceRegistry, 
+  MCPInterface, 
   BaseMessage,
   MessageHandlerConfig
 } from '../../../types/common';
@@ -23,13 +24,6 @@ import {
 import { EventEmitter } from 'events';
 import { ServiceRegistry } from '../service/service-registry';
 
-// Core interfaces for the orchestrator
-interface ServiceTaskRegistry {
-  registerTask(id: string, taskData: any): void;
-  getTask(id: string): any;
-  updateTaskStatus(id: string, status: string, result?: any): void;
-  getTasks(filters?: any): any[];
-}
 
 /**
  * MessageHandler - Centralizes business logic for handling messages in ASP
@@ -37,7 +31,7 @@ interface ServiceTaskRegistry {
  */
 class MessageHandler {
   private agents: AgentRegistry;
-  private tasks: TaskRegistry;
+  private tasks: AgentTaskRegistry;
   private services: ServiceRegistry;
   private serviceTasks?: ServiceTaskRegistry;
   private eventBus: EventEmitter;

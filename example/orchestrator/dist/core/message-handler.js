@@ -102,10 +102,10 @@ class MessageHandler {
     /**
      * Handle agent registration
      * @param {BaseMessage} message - Registration message
-     * @param {string} connectionId - Agent connection ID
+     * @param {any} ws - The WebSocket connection
      * @returns {Object} Registration result
      */
-    handleAgentRegistration(message, connectionId) {
+    handleAgentRegistration(message, ws) {
         const { name, capabilities, manifest } = message.content;
         if (!name) {
             throw new Error('Agent name is required');
@@ -123,9 +123,11 @@ class MessageHandler {
                 ...(manifest || {}),
                 ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
             },
-            connectionId: connectionId,
+            connectionId: ws.id,
             status: 'online',
-            registeredAt: new Date().toISOString()
+            registeredAt: new Date().toISOString(),
+            // Set the WebSocket connection directly
+            ...(ws ? { connection: ws } : {})
         };
         this.agents.registerAgent(agent);
         console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
@@ -298,6 +300,78 @@ class MessageHandler {
             console.log(`Agent disconnected: ${agent.name}`);
             this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
         }
+    }
+    /**
+     * Handle an incoming message
+     * @param message The message to handle
+     * @param connectionId ID of the connection that sent the message
+     * @returns Response message if needed
+     */
+    handleMessage(message, connectionId) {
+        const { type } = message;
+        switch (type) {
+            case 'agent.register':
+                return this.handleAgentRegistration(message, connectionId);
+            case 'service.register':
+                return this.handleServiceRegistration(message, connectionId);
+            case 'task.result':
+                this.eventBus.emit('task.result', message);
+                return;
+            case 'task.status':
+                // Update task status in registry
+                if (message.content && message.content.taskId) {
+                    const { taskId, status } = message.content;
+                    this.tasks.updateTaskStatus(taskId, status);
+                    // Emit event for status update
+                    this.eventBus.emit('task.status', message);
+                }
+                return;
+            case 'task.notification':
+                this.eventBus.emit('task.notification', message);
+                return;
+            case 'service.task.result':
+                this.eventBus.emit('service.task.result', message);
+                return;
+            case 'service.notification':
+                this.eventBus.emit('service.notification', message);
+                return;
+            default:
+                console.warn(`Unhandled message type: ${type}`);
+                return;
+        }
+    }
+    /**
+     * Handle service registration
+     * @param message Registration message
+     * @param connectionId Connection ID
+     * @returns Registration response
+     */
+    handleServiceRegistration(message, connectionId) {
+        const { content } = message;
+        const { name, capabilities = [], manifest = {} } = content;
+        if (!name) {
+            throw new Error('Service registration missing required field: name');
+        }
+        const now = new Date().toISOString();
+        // Register the service
+        const service = this.services.registerService({
+            id: (0, uuid_1.v4)(),
+            name,
+            capabilities,
+            manifest,
+            connectionId,
+            status: 'online',
+            registeredAt: now
+        });
+        return {
+            type: 'service.registered',
+            content: {
+                serviceId: service.id,
+                name: service.name,
+                capabilities: service.capabilities,
+                manifest: service.manifest
+            }
+        };
     }
 }
 exports.default = MessageHandler;

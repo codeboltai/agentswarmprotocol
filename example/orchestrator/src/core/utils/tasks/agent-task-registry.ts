@@ -52,7 +52,7 @@ interface TaskUpdateOptions {
  * Task Registry for the ASP Orchestrator
  * Manages active and completed tasks in the system
  */
-class TaskRegistry {
+class AgentTaskRegistry {
   private tasks: Map<string, Task>;
   private tasksByAgentId: Map<string, string[]>;
   private tasksByClientId: Map<string, string[]>;
@@ -535,4 +535,4 @@ class TaskRegistry {
   }
 }
 
-export { TaskRegistry, Task, TaskData, TaskHistoryEntry, TaskUpdateOptions }; 
+export { AgentTaskRegistry, Task, TaskData, TaskHistoryEntry, TaskUpdateOptions }; 
