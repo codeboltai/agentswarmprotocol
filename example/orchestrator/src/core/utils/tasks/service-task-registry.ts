@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { ServiceTaskRegistry as IServiceTaskRegistry } from '../../../types/common';
+import { ServiceTaskRegistry as IServiceTaskRegistry } from '../../../../../types/common';
 
 interface ServiceTask {
   id: string;
