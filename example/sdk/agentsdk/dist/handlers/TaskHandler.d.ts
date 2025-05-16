@@ -43,9 +43,4 @@ export declare class TaskHandler extends EventEmitter {
      * @param content Message content
      */
     sendMessage(taskId: string, content: any): void;
-    /**
-     * Send a task notification
-     * @param notification Notification data
-     */
-    sendTaskNotification(notification: any): Promise<void>;
 }

@@ -95,14 +95,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     setStatus(status: AgentStatus): Promise<void>;
     /**
-     * Execute a task on another agent
-     * @param targetAgentName Name of the target agent
-     * @param taskType Type of task
-     * @param taskData Task data
-     * @param timeout Request timeout
-     */
-    executeAgentTask(targetAgentName: string, taskType: string, taskData?: Record<string, any>, timeout?: number): Promise<any>;
-    /**
      * Register a handler for agent requests
      * @param taskType Type of task to handle
      * @param handler Handler function
@@ -131,7 +123,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     executeServiceTask(serviceId: string, functionName: string, params?: Record<string, any>, options?: {
         timeout: number;
-        onNotification: ((notification: any) => void) | undefined;
         clientId: string | undefined;
     }): Promise<any>;
     /**
@@ -139,13 +130,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      * @param filters Filter criteria
      */
     getServiceList(filters?: Record<string, any>): Promise<any[]>;
-    /**
-     * Request MCP service
-     * @param params Service parameters
-     * @param timeout Request timeout
-     * @deprecated Use getMCPServers, getMCPTools, and executeMCPTool instead
-     */
-    requestMCPService(params?: Record<string, any>, timeout?: number): Promise<any>;
     /**
      * Get list of MCP servers
      * @param filters Filter criteria
@@ -166,24 +150,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      * @param timeout Request timeout
      */
     executeMCPTool(serverId: string, toolName: string, parameters?: Record<string, any>, timeout?: number): Promise<any>;
-    /**
-     * Execute a tool by name (will find server automatically)
-     * @param toolName Tool name
-     * @param parameters Tool parameters
-     * @param serverId Optional server ID (if known)
-     * @param timeout Request timeout
-     */
-    executeTool(toolName: string, parameters?: Record<string, any>, serverId?: string | null, timeout?: number): Promise<any>;
-    /**
-     * Send a task notification
-     * @param notification Notification data
-     */
-    sendTaskNotification(notification: any): Promise<void>;
-    /**
-     * Register a handler for notifications
-     * @param handler Handler function
-     */
-    onNotification(handler: (notification: any) => void): SwarmAgentSDK;
 }
 export { SwarmAgentSDK };
 export default SwarmAgentSDK;

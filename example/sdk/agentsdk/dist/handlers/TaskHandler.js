@@ -123,19 +123,5 @@ class TaskHandler extends events_1.EventEmitter {
             }
         });
     }
-    /**
-     * Send a task notification
-     * @param notification Notification data
-     */
-    async sendTaskNotification(notification) {
-        await this.webSocketManager.send({
-            id: (0, uuid_1.v4)(),
-            type: 'task.notification',
-            content: {
-                agentId: this.agentId,
-                notification
-            }
-        });
-    }
 }
 exports.TaskHandler = TaskHandler;

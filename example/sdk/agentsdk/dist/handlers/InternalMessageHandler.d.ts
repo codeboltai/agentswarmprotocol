@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { MessageHandler as MessageHandlerType } from '../core/types';
 import { WebSocketManager } from '../core/WebSocketManager';
-export declare class MessageHandler extends EventEmitter {
+export declare class InternalMessageHandler extends EventEmitter {
     private webSocketManager;
     private logger;
     private messageHandlers;

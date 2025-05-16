@@ -5,19 +5,12 @@ export declare class ServiceManager {
     private logger;
     constructor(webSocketManager: WebSocketManager, logger?: Console);
     /**
-     * Request a service
+     * Request or execute a service
      * @param serviceName Name of the service
      * @param params Service parameters
      * @param timeout Request timeout
      */
     requestService(serviceName: string, params?: Record<string, any>, timeout?: number): Promise<any>;
-    /**
-     * Convenience method for executing a service
-     * @param serviceName Name of the service
-     * @param params Parameters to pass
-     * @param timeout Request timeout
-     */
-    executeService(serviceName: string, params?: Record<string, any>, timeout?: number): Promise<any>;
     /**
      * Execute a service task
      * @param serviceId Service ID or name

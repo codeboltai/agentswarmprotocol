@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MessageHandler = void 0;
+exports.InternalMessageHandler = void 0;
 const events_1 = require("events");
-class MessageHandler extends events_1.EventEmitter {
+class InternalMessageHandler extends events_1.EventEmitter {
     constructor(webSocketManager, logger = console) {
         super();
         this.webSocketManager = webSocketManager;
@@ -85,4 +85,4 @@ class MessageHandler extends events_1.EventEmitter {
         return this;
     }
 }
-exports.MessageHandler = MessageHandler;
+exports.InternalMessageHandler = InternalMessageHandler;

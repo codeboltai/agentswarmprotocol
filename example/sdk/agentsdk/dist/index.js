@@ -7,7 +7,7 @@ exports.SwarmAgentSDK = void 0;
 const events_1 = require("events");
 const uuid_1 = require("uuid");
 const WebSocketManager_1 = require("./core/WebSocketManager");
-const MessageHandler_1 = require("./handlers/MessageHandler");
+const InternalMessageHandler_1 = require("./handlers/InternalMessageHandler");
 const TaskHandler_1 = require("./handlers/TaskHandler");
 const AgentManager_1 = require("./services/AgentManager");
 const ServiceManager_1 = require("./services/ServiceManager");
@@ -25,7 +25,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.logger = config.logger || console;
         // Initialize modules
         this.webSocketManager = new WebSocketManager_1.WebSocketManager(config.orchestratorUrl || 'ws://localhost:3000', config.autoReconnect !== false, config.reconnectInterval || 5000, this.logger);
-        this.messageHandler = new MessageHandler_1.MessageHandler(this.webSocketManager, this.logger);
+        this.messageHandler = new InternalMessageHandler_1.InternalMessageHandler(this.webSocketManager, this.logger);
         this.taskHandler = new TaskHandler_1.TaskHandler(this.webSocketManager, this.agentId, this.logger);
         this.agentManager = new AgentManager_1.AgentManager(this.webSocketManager, this.agentId, this.logger);
         this.serviceManager = new ServiceManager_1.ServiceManager(this.webSocketManager, this.logger);
@@ -130,6 +130,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.taskHandler.registerDefaultTaskHandler(handler);
         return this;
     }
+    //OK
     /**
      * Send a task result back to the orchestrator
      * @param taskId ID of the task
@@ -138,6 +139,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     sendTaskResult(taskId, result) {
         this.taskHandler.sendTaskResult(taskId, result);
     }
+    //OK - low level send
     /**
      * Send a message to the orchestrator
      * @param message Message to send
@@ -145,6 +147,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     send(message) {
         return this.webSocketManager.send(message);
     }
+    //OK
     /**
      * Send a message and wait for a response
      * @param message Message to send
@@ -163,6 +166,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     requestAgentTask(targetAgentName, taskData, timeout = 30000) {
         return this.agentManager.requestAgentTask(targetAgentName, taskData, timeout);
     }
+    //Ok
     /**
      * Get list of agents
      * @param filters Filter criteria
@@ -170,6 +174,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     getAgentList(filters = {}) {
         return this.agentManager.getAgentList(filters);
     }
+    //Should be for SELF Only
     /**
      * Set agent status
      * @param status New status
@@ -177,16 +182,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     setStatus(status) {
         return this.agentManager.setStatus(status);
     }
-    /**
-     * Execute a task on another agent
-     * @param targetAgentName Name of the target agent
-     * @param taskType Type of task
-     * @param taskData Task data
-     * @param timeout Request timeout
-     */
-    executeAgentTask(targetAgentName, taskType, taskData = {}, timeout = 30000) {
-        return this.agentManager.executeAgentTask(targetAgentName, taskType, taskData, timeout);
-    }
+    // NOT SURE WHAT IS THIS
     /**
      * Register a handler for agent requests
      * @param taskType Type of task to handle
@@ -213,7 +209,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
      * @param timeout Request timeout
      */
     executeService(serviceName, params = {}, timeout = 30000) {
-        return this.serviceManager.executeService(serviceName, params, timeout);
+        return this.serviceManager.requestService(serviceName, params, timeout);
     }
     /**
      * Execute a service task
@@ -224,11 +220,11 @@ class SwarmAgentSDK extends events_1.EventEmitter {
      */
     executeServiceTask(serviceId, functionName, params = {}, options = {
         timeout: 30000,
-        onNotification: undefined,
         clientId: undefined
     }) {
         return this.serviceManager.executeServiceTask(serviceId, functionName, params, options);
     }
+    //OK
     /**
      * Get a list of available services
      * @param filters Filter criteria
@@ -237,15 +233,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         return this.serviceManager.getServiceList(filters);
     }
     // MCP Manager methods
-    /**
-     * Request MCP service
-     * @param params Service parameters
-     * @param timeout Request timeout
-     * @deprecated Use getMCPServers, getMCPTools, and executeMCPTool instead
-     */
-    requestMCPService(params = {}, timeout = 30000) {
-        return this.mcpManager.requestMCPService(params, timeout);
-    }
+    //OK
     /**
      * Get list of MCP servers
      * @param filters Filter criteria
@@ -254,6 +242,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     getMCPServers(filters = {}, timeout = 30000) {
         return this.mcpManager.getMCPServers(filters, timeout);
     }
+    //OK
     /**
      * Get list of tools for an MCP server
      * @param serverId Server ID
@@ -262,6 +251,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     getMCPTools(serverId, timeout = 30000) {
         return this.mcpManager.getMCPTools(serverId, timeout);
     }
+    //OK
     /**
      * Execute an MCP tool
      * @param serverId Server ID
@@ -271,33 +261,6 @@ class SwarmAgentSDK extends events_1.EventEmitter {
      */
     executeMCPTool(serverId, toolName, parameters = {}, timeout = 60000) {
         return this.mcpManager.executeMCPTool(serverId, toolName, parameters, timeout);
-    }
-    /**
-     * Execute a tool by name (will find server automatically)
-     * @param toolName Tool name
-     * @param parameters Tool parameters
-     * @param serverId Optional server ID (if known)
-     * @param timeout Request timeout
-     */
-    executeTool(toolName, parameters = {}, serverId = null, timeout = 60000) {
-        return this.mcpManager.executeTool(toolName, parameters, serverId, timeout);
-    }
-    /**
-     * Send a task notification
-     * @param notification Notification data
-     */
-    sendTaskNotification(notification) {
-        return this.taskHandler.sendTaskNotification(notification);
-    }
-    /**
-     * Register a handler for notifications
-     * @param handler Handler function
-     */
-    onNotification(handler) {
-        this.onMessage('task.notification', (content) => {
-            handler(content);
-        });
-        return this;
     }
 }
 exports.SwarmAgentSDK = SwarmAgentSDK;
