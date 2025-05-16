@@ -1,9 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  Agent, 
-  Task, 
-  Service, 
-  MCPServer, 
+import {
+  Agent,
+  Task,
+  Service,
+  MCPServer,
   MCPTool,
   AgentStatus,
   ServiceStatus,
@@ -54,14 +54,14 @@ class MessageHandler {
    */
   async handleTaskCreation(message: BaseMessage, clientId: string) {
     const { agentName, agentId, taskData } = message.content;
-    
+
     if (!taskData) {
       throw new Error('Invalid task creation request: taskData is required');
     }
-    
+
     // Allow direct targeting by ID or lookup by name
     let agent: Agent | undefined;
-    
+
     if (agentId) {
       // Find agent directly by ID
       agent = this.agents.getAgentById(agentId);
@@ -77,10 +77,10 @@ class MessageHandler {
     } else {
       throw new Error('Invalid task creation request: Either agentName or agentId is required');
     }
-    
+
     // Create a task
     const taskId = uuidv4();
-    
+
     // Register task in task registry
     this.tasks.registerTask(taskId, {
       agentId: agent.id,
@@ -89,10 +89,10 @@ class MessageHandler {
       createdAt: new Date().toISOString(),
       taskData
     });
-    
+
     // Emit event for task creation
     this.eventBus.emit('task.created', taskId, agent.id, clientId, taskData);
-    
+
     return {
       taskId,
       agentId: agent.id,
@@ -109,10 +109,10 @@ class MessageHandler {
     if (!taskId) {
       throw new Error('Invalid task status request: Task ID is required');
     }
-    
+
     try {
       const task = this.tasks.getTask(taskId);
-      
+
       return {
         taskId,
         status: task.status,
@@ -137,26 +137,27 @@ class MessageHandler {
       status: agent.status,
       capabilities: agent.capabilities
     }));
-    
+
     return agents;
   }
 
   /**
    * Handle agent registration
    * @param {BaseMessage} message - Registration message
-   * @param {any} ws - The WebSocket connection
+   * @param {string} connectionId - Agent connection ID
+   * @param {any} ws - WebSocket connection object
    * @returns {Object} Registration result
    */
-  handleAgentRegistration(message: BaseMessage, ws: any) {
+  handleAgentRegistration(message: BaseMessage, connectionId: string, ws?: any) {
     const { name, capabilities, manifest } = message.content;
-    
+
     if (!name) {
       throw new Error('Agent name is required');
     }
-    
+
     // Check if there's a pre-configured agent with this name
     const agentConfig = this.agents.getAgentConfigurationByName(name);
-    
+
     // Register the agent
     const agent: Agent = {
       id: agentConfig ? agentConfig.id : uuidv4(),
@@ -168,20 +169,23 @@ class MessageHandler {
         ...(manifest || {}),
         ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
       },
-      connectionId: ws.id,
+      connectionId: connectionId,
       status: 'online',
-      registeredAt: new Date().toISOString(),
-      // Set the WebSocket connection directly
-      ...(ws ? { connection: ws } : {})
+      registeredAt: new Date().toISOString()
     };
-    
+
+    // Store the WebSocket connection if provided
+    if (ws) {
+      (agent as any).connection = ws;
+    }
+
     this.agents.registerAgent(agent);
-    
+
     console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
     if (agentConfig) {
       console.log(`Applied pre-configured settings for agent: ${name}`);
     }
-    
+
     return {
       agentId: agent.id,
       name: agent.name,
@@ -197,42 +201,42 @@ class MessageHandler {
    */
   async handleServiceRequest(message: AgentMessages.ServiceRequestMessage, connectionId: string): Promise<any> {
     const { service, params } = message.content;
-    
+
     if (!service) {
       throw new Error('Service name is required');
     }
-    
+
     // Get the agent making the request
     const agent = this.agents.getAgentByConnectionId(connectionId);
     if (!agent) {
       throw new Error('Agent not registered');
     }
-    
+
     // Check if this is an MCP request
     if (service === 'mcp-service') {
       return this.handleMCPRequest(params as any, agent);
     }
-    
+
     // Check if the service exists
     const serviceObj = this.services.getServiceByName(service);
     if (!serviceObj) {
       throw new Error(`Service not found: ${service}`);
     }
-    
+
     // Check if the agent is allowed to use this service
     if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(service)) {
       throw new Error(`Agent is not authorized to use service: ${service}`);
     }
-    
+
     // Create a service task
     const taskId = uuidv4();
-    
+
     // Emit event for service task creation
     this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
       functionName: params?.functionName || 'default',
       params: params || {}
     });
-    
+
     // Wait for result (this will be resolved by the orchestrator)
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
@@ -240,7 +244,7 @@ class MessageHandler {
         this.eventBus.removeListener('service.task.failed', errorHandler);
         reject(new Error(`Service task timeout: ${taskId}`));
       }, 30000); // 30 second timeout
-      
+
       const resultHandler = (completedTaskId: string, result: any) => {
         if (completedTaskId === taskId) {
           clearTimeout(timeoutId);
@@ -249,7 +253,7 @@ class MessageHandler {
           resolve(result);
         }
       };
-      
+
       const errorHandler = (failedTaskId: string, error: any) => {
         if (failedTaskId === taskId) {
           clearTimeout(timeoutId);
@@ -258,7 +262,7 @@ class MessageHandler {
           reject(error);
         }
       };
-      
+
       this.eventBus.on('service.task.completed', resultHandler);
       this.eventBus.on('service.task.failed', errorHandler);
     });
@@ -272,23 +276,23 @@ class MessageHandler {
    */
   async handleMCPRequest(params: any, agent: Agent): Promise<any> {
     const { action, mcpServerName, toolName, toolArgs, serverId } = params;
-    
+
     switch (action) {
       case 'list-servers':
         return this.handleMCPServersListRequest(agent);
-      
+
       case 'list-tools':
         if (!serverId) {
           throw new Error('Server ID is required to list tools');
         }
         return this.handleMCPToolsListRequest(serverId, agent);
-      
+
       case 'execute-tool':
         if (!serverId || !toolName) {
           throw new Error('Server ID and tool name are required to execute a tool');
         }
         return this.handleMCPToolExecuteRequest(serverId, toolName, toolArgs || {}, agent);
-      
+
       default:
         throw new Error(`Invalid MCP action: ${action}`);
     }
@@ -301,7 +305,7 @@ class MessageHandler {
    */
   async handleMCPServersListRequest(agent: Agent): Promise<any> {
     const servers = this.mcp.getServerList();
-    
+
     return {
       servers
     };
@@ -315,7 +319,7 @@ class MessageHandler {
    */
   async handleMCPToolsListRequest(serverId: string, agent: Agent): Promise<any> {
     const tools = this.mcp.getToolList(serverId);
-    
+
     return {
       serverId,
       tools
@@ -333,7 +337,7 @@ class MessageHandler {
   async handleMCPToolExecuteRequest(serverId: string, toolName: string, args: any, agent: Agent): Promise<any> {
     try {
       const result = await this.mcp.executeServerTool(serverId, toolName, args);
-      
+
       return {
         serverId,
         toolName,
@@ -356,7 +360,7 @@ class MessageHandler {
    */
   handleServiceDisconnected(connectionId: string): void {
     const service = this.services.getServiceByConnectionId(connectionId);
-    
+
     if (service) {
       console.log(`Service disconnected: ${service.name}`);
       this.services.updateServiceStatus(service.id, 'offline', { disconnectedAt: new Date().toISOString() });
@@ -369,9 +373,13 @@ class MessageHandler {
    */
   handleAgentDisconnected(connectionId: string): void {
     const agent = this.agents.getAgentByConnectionId(connectionId);
-    
     if (agent) {
       console.log(`Agent disconnected: ${agent.name}`);
+      
+      // Remove the connection object
+      (agent as any).connection = undefined;
+      
+      // Update agent status to offline
       this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
     }
   }
@@ -388,38 +396,39 @@ class MessageHandler {
     switch (type) {
       case 'agent.register':
         return this.handleAgentRegistration(message, connectionId);
-      
+
       case 'service.register':
         return this.handleServiceRegistration(message, connectionId);
-      
+
       case 'task.result':
         this.eventBus.emit('task.result', message);
         return;
-      
+
       case 'task.status':
         // Update task status in registry
         if (message.content && message.content.taskId) {
           const { taskId, status } = message.content;
-          this.tasks.updateTaskStatus(taskId, status);
+          console.log(`Handling task status update: ${taskId} status: ${status}`);
+          this.tasks.updateTaskStatus(taskId, status, message.content);
           // Emit event for status update
           this.eventBus.emit('task.status', message);
         }
         return;
-      
+
       case 'task.notification':
         this.eventBus.emit('task.notification', message);
         return;
-      
+
       case 'service.task.result':
         this.eventBus.emit('service.task.result', message);
         return;
-      
+
       case 'service.notification':
         this.eventBus.emit('service.notification', message);
         return;
-      
+
       default:
-        console.warn(`Unhandled message type: ${type}`);
+        console.warn(`Unhandled message type in message-handler: ${type}`);
         return;
     }
   }

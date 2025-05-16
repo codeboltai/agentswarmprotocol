@@ -133,6 +133,10 @@ class ConversationAgent extends SwarmAgentSDK {
     
     const { conversationId, message, context = {} } = task || {};
     
+    // Track current task/message ID for status updates
+    this.currentMessageId = metadata.taskId || `msg-${uuidv4().substring(0, 8)}`;
+    this.logger.info(`Setting current message ID: ${this.currentMessageId}`);
+    
     if (!conversationId) {
       this.logger.error('Missing required field: conversationId');
       throw new Error('Missing required field: conversationId');
@@ -144,7 +148,7 @@ class ConversationAgent extends SwarmAgentSDK {
     }
 
     // Send task status update - Started
-    await this.sendTaskStatus(metadata.taskId, 'started');
+    await this.sendTaskStatus(this.currentMessageId, 'started');
     
     // Get or create conversation context
     if (!this.conversations.has(conversationId)) {
@@ -244,7 +248,11 @@ class ConversationAgent extends SwarmAgentSDK {
     })}`);
 
     // Send task status update - Completed
-    await this.sendTaskStatus(metadata.taskId, 'completed');
+    await this.sendTaskStatus(this.currentMessageId, 'completed');
+    
+    // Clear current message ID now that it's complete
+    this.logger.info(`Task ${this.currentMessageId} completed`);
+    this.currentMessageId = null;
     
     return responseData;
   }
@@ -255,20 +263,39 @@ class ConversationAgent extends SwarmAgentSDK {
    * @param {string} status - The new status
    */
   async sendTaskStatus(taskId, status) {
+    // If no taskId is provided, use the current message ID or generate a new one
     if (!taskId) {
-      this.logger.warn('Cannot send task status: taskId is missing');
-      return;
+      const messageId = this.currentMessageId || `task-${uuidv4().substring(0, 8)}`;
+      this.logger.info(`No taskId provided, using generated ID: ${messageId}`);
+      taskId = messageId;
     }
 
     try {
+      // Send task status update with the task ID
+      this.logger.info(`Sending task status update: ${status} for task ${taskId}`);
       await this.send({
         type: 'task.status',
         content: {
           taskId,
           status,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          result: status === 'completed' ? { status: 'completed' } : undefined
         }
       });
+      
+      // If status is completed, also send a task.result message for redundancy
+      if (status === 'completed') {
+        this.logger.info(`Sending task.result message for completed task ${taskId}`);
+        await this.send({
+          type: 'task.result',
+          content: {
+            taskId,
+            status: 'completed',
+            result: { status: 'completed' },
+            completedAt: new Date().toISOString()
+          }
+        });
+      }
     } catch (error) {
       this.logger.error(`Failed to send task status update: ${error.message}`);
     }
