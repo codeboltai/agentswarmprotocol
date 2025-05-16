@@ -28,6 +28,5 @@ export type TaskHandler = (taskData: any, message: TaskExecuteMessage) => Promis
 
 export interface ServiceTaskOptions {
   timeout?: number;
-  onNotification?: (notification: any) => void;
   clientId?: string;
 } 

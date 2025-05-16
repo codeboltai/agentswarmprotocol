@@ -45,28 +45,8 @@ export class ServiceManager {
     params: Record<string, any> = {},
     options: ServiceTaskOptions = {}
   ): Promise<any> {
-    const { timeout = 30000, onNotification, clientId } = options;
+    const { timeout = 30000, clientId } = options;
     const requestId = uuidv4();
-    
-    // Setup notification handling if provided
-    if (onNotification) {
-      const notificationHandler = (notificationMessage: any) => {
-        // Check if this notification is for our request
-        if (notificationMessage.requestId === requestId) {
-          onNotification(notificationMessage);
-          
-          // If completed or failed, remove the listener
-          if (
-            notificationMessage.status === 'completed' || 
-            notificationMessage.status === 'failed'
-          ) {
-            this.webSocketManager.removeListener('service.task.notification', notificationHandler);
-          }
-        }
-      };
-      
-      this.webSocketManager.on('service.task.notification', notificationHandler);
-    }
     
     // Make the request
     const response = await this.webSocketManager.sendAndWaitForResponse({

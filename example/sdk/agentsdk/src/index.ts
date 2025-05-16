@@ -290,7 +290,6 @@ class SwarmAgentSDK extends EventEmitter {
     params: Record<string, any> = {},
     options = {
       timeout: 30000,
-      onNotification: undefined as ((notification: any) => void) | undefined,
       clientId: undefined as string | undefined
     }
   ): Promise<any> {
@@ -343,28 +342,7 @@ class SwarmAgentSDK extends EventEmitter {
   ): Promise<any> {
     return this.mcpManager.executeMCPTool(serverId, toolName, parameters, timeout);
   }
-
-  // OK
-  /**
-   * Send a task notification
-   * @param notification Notification data
-   */
-  sendTaskNotification(notification: any): Promise<void> {
-    return this.taskHandler.sendTaskNotification(notification);
-  }
-
-  // NOT NEEDED
-  /**
-   * Register a handler for notifications
-   * @param handler Handler function
-   */
-  onNotification(handler: (notification: any) => void): SwarmAgentSDK {
-    this.onMessage('task.notification', (content) => {
-      handler(content);
-    });
-    
-    return this;
-  }
+  
 }
 
 export { SwarmAgentSDK };
