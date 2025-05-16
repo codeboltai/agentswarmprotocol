@@ -10,7 +10,7 @@ export class ServiceManager {
   ) {}
 
   /**
-   * Request a service
+   * Request or execute a service
    * @param serviceName Name of the service
    * @param params Service parameters
    * @param timeout Request timeout
@@ -30,16 +30,6 @@ export class ServiceManager {
     }
     
     return response.content.result;
-  }
-
-  /**
-   * Convenience method for executing a service
-   * @param serviceName Name of the service
-   * @param params Parameters to pass
-   * @param timeout Request timeout
-   */
-  async executeService(serviceName: string, params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    return this.requestService(serviceName, params, timeout);
   }
 
   /**
