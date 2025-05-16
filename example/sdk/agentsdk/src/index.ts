@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
 import { AgentConfig, MessageHandler, TaskHandler, TaskExecuteMessage } from './core/types';
 import { WebSocketManager } from './core/WebSocketManager';
-import { MessageHandler as MessageHandlerClass } from './handlers/MessageHandler';
+import { InternalMessageHandler as MessageHandlerClass } from './handlers/InternalMessageHandler';
 import { TaskHandler as TaskHandlerClass } from './handlers/TaskHandler';
 import { AgentManager } from './services/AgentManager';
 import { ServiceManager } from './services/ServiceManager';
@@ -229,21 +229,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.agentManager.setStatus(status);
   }
 
-  /**
-   * Execute a task on another agent
-   * @param targetAgentName Name of the target agent
-   * @param taskType Type of task
-   * @param taskData Task data
-   * @param timeout Request timeout
-   */
-  executeAgentTask(
-    targetAgentName: string, 
-    taskType: string, 
-    taskData: Record<string, any> = {}, 
-    timeout = 30000
-  ): Promise<any> {
-    return this.agentManager.executeAgentTask(targetAgentName, taskType, taskData, timeout);
-  }
+
 
   // NOT SURE WHAT IS THIS
   /**

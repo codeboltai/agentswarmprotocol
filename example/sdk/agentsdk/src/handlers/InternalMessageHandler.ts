@@ -3,7 +3,7 @@ import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { MessageHandler as MessageHandlerType } from '../core/types';
 import { WebSocketManager } from '../core/WebSocketManager';
 
-export class MessageHandler extends EventEmitter {
+export class InternalMessageHandler extends EventEmitter {
   private messageHandlers: Map<string, MessageHandlerType> = new Map();
 
   constructor(
