@@ -45,6 +45,10 @@ export class AgentManager {
    * @param taskData Task data
    * @param timeout Request timeout
    */
+  // const taskRequestData = {
+  //   type: taskType,
+  //   ...taskData
+  // };
   async requestAgentTask(targetAgentName: string, taskData: any, timeout = 30000): Promise<any> {
     const response = await this.webSocketManager.sendAndWaitForResponse({
       id: uuidv4(),
@@ -62,27 +66,7 @@ export class AgentManager {
     return response.content.result;
   }
 
-  /**
-   * Execute a task on another agent
-   * @param targetAgentName Name of the target agent
-   * @param taskType Type of task
-   * @param taskData Task data
-   * @param timeout Request timeout
-   */
-  async executeAgentTask(
-    targetAgentName: string, 
-    taskType: string, 
-    taskData: Record<string, any> = {}, 
-    timeout = 30000
-  ): Promise<any> {
-    // Add task type to the request data
-    const taskRequestData = {
-      type: taskType,
-      ...taskData
-    };
-    
-    return this.requestAgentTask(targetAgentName, taskRequestData, timeout);
-  }
+ 
 
   /**
    * Register a handler for agent requests
