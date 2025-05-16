@@ -23,6 +23,27 @@ interface ClientError {
   message: string;
 }
 
+// Define task result interface
+interface TaskResult {
+  content: {
+    result: {
+      result?: {
+        message: string;
+      };
+      message?: string;
+      agentId?: string;
+    };
+    taskId: string;
+    status: string;
+  };
+}
+
+interface TaskStatus {
+  taskId: string;
+  status: string;
+  result?: unknown;
+}
+
 // Create a client interface for the UI
 interface SimpleClient {
   getAgents: () => Promise<AgentInfo[]>;
@@ -32,9 +53,9 @@ interface SimpleClient {
   on(event: 'connected' | 'disconnected', listener: () => void): void;
   on(event: 'message', listener: (message: AgentMessage) => void): void;
   on(event: 'error', listener: (error: ClientError) => void): void;
-  on(event: 'task-result', listener: (result: any) => void): void;
-  on(event: 'task-status', listener: (status: any) => void): void;
-  on(event: string, listener: (...args: any[]) => void): void;
+  on(event: 'task-result', listener: (result: TaskResult) => void): void;
+  on(event: 'task-status', listener: (status: TaskStatus) => void): void;
+  on(event: string, listener: (data: unknown) => void): void;
 }
 
 // Initialize the real client
@@ -54,32 +75,26 @@ function createClient(): SimpleClient {
     client.on('error', (err: ClientError) => emitter.emit('error', err));
     
     // Forward task-related events for UI updates
-    client.on('task-status', (status: any) => {
+    client.on('task-status', (status: TaskStatus) => {
       console.log('Task status update received in client wrapper:', status);
-      emitter.emit('message', { 
-        type: 'task.update', 
-        content: status,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Also emit a direct event for task status
       emitter.emit('task-status', status);
     });
     
-    client.on('task-result', (result: any) => {
+    client.on('task-result', (result: TaskResult) => {
       console.log('Task result received in client wrapper:', result);
-      // Create a properly structured message
-      emitter.emit('message', { 
-        type: 'task.result', 
-        content: result,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Also emit a direct event for task result
       emitter.emit('task-result', result);
     });
     
     console.log('Successfully initialized SwarmClientSDK');
+    
+    function typedOn(event: 'connected' | 'disconnected', listener: () => void): void;
+    function typedOn(event: 'message', listener: (message: AgentMessage) => void): void;
+    function typedOn(event: 'error', listener: (error: ClientError) => void): void;
+    function typedOn(event: 'task-result', listener: (result: TaskResult) => void): void;
+    function typedOn(event: 'task-status', listener: (status: TaskStatus) => void): void;
+    function typedOn(event: string, listener: unknown): void {
+      emitter.on(event, listener as (...args: unknown[]) => void);
+    }
     
     const clientInterface: SimpleClient = {
       async getAgents(): Promise<AgentInfo[]> {
@@ -93,8 +108,8 @@ function createClient(): SimpleClient {
       async connect(): Promise<void> {
         try {
           await client.connect();
-        } catch (error) {
-          console.error('Connection error:', error);
+        } catch (error: unknown) {
+          console.error('Connection error:', error instanceof Error ? error.message : String(error));
           throw error;
         }
       },
@@ -102,21 +117,17 @@ function createClient(): SimpleClient {
       disconnect(): void {
         try {
           client.disconnect();
-        } catch (error) {
-          console.error('Disconnect error:', error);
+        } catch (error: unknown) {
+          console.error('Disconnect error:', error instanceof Error ? error.message : String(error));
         }
       },
       
-      on(event: 'connected' | 'disconnected' | 'message' | 'error' | string, 
-         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-         listener: (...args: any[]) => void): void {
-        emitter.on(event, listener);
-      }
+      on: typedOn
     };
     
     return clientInterface;
-  } catch (error) {
-    console.error('Failed to initialize client:', error);
+  } catch (error: unknown) {
+    console.error('Failed to initialize client:', error instanceof Error ? error.message : String(error));
     throw error;
   }
 }
@@ -216,35 +227,52 @@ function App() {
       });
 
       // Direct handler for task-result events
-      simpleClient.on('task-result', (result: any) => {
+      simpleClient.on('task-result', (result: TaskResult) => {
         console.log('[DIRECT HANDLER] Task result received:', result);
+        
         // Always stop loading on task result
         setIsLoading(false);
         
-        // Add result message to chat
-        let resultContent = 'Task completed';
-        if (result && result.result) {
-          const resultData = result.result;
-          if (typeof resultData === 'string') {
-            resultContent = resultData;
-          } else if (typeof resultData === 'object' && resultData !== null) {
-            resultContent = JSON.stringify(resultData, null, 2);
+        // Extract the actual result content from the task result
+        if (result?.content?.result) {
+          const taskResult = result.content.result;
+          
+          // If there's a result message from the agent, add it to the chat
+          if (taskResult.result?.message) {
+            const newMessage: ChatMessage = {
+              id: uuidv4(),
+              content: taskResult.result.message,
+              type: "agent",
+              timestamp: new Date().toISOString(),
+              agentId: taskResult.agentId
+            };
+            setMessages((prevMessages: ChatMessage[]) => [...prevMessages, newMessage]);
+          } else if (taskResult.message) {
+            // Direct message format
+            const newMessage: ChatMessage = {
+              id: uuidv4(),
+              content: taskResult.message,
+              type: "agent",
+              timestamp: new Date().toISOString(),
+              agentId: taskResult.agentId
+            };
+            setMessages((prevMessages: ChatMessage[]) => [...prevMessages, newMessage]);
+          } else {
+            // Add a system message for unexpected format
+            const newMessage: ChatMessage = {
+              id: uuidv4(),
+              content: "Received a response in an unexpected format. Please try again.",
+              type: "system",
+              timestamp: new Date().toISOString()
+            };
+            setMessages((prevMessages: ChatMessage[]) => [...prevMessages, newMessage]);
+            console.warn('Received task result in unexpected format:', result);
           }
         }
-        
-        setMessages(prev => [
-          ...prev,
-          {
-            id: uuidv4(),
-            content: `Task update: ${resultContent}`,
-            type: "system",
-            timestamp: new Date().toISOString(),
-          }
-        ]);
       });
       
       // Direct handler for task-status events
-      simpleClient.on('task-status', (status: any) => {
+      simpleClient.on('task-status', (status: TaskStatus) => {
         console.log('[DIRECT HANDLER] Task status received:', status);
         // Stop loading on completed/failed tasks
         if (status && status.status && ['completed', 'failed', 'cancelled'].includes(status.status)) {
