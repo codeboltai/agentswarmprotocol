@@ -102,10 +102,11 @@ class MessageHandler {
     /**
      * Handle agent registration
      * @param {BaseMessage} message - Registration message
-     * @param {any} ws - The WebSocket connection
+     * @param {string} connectionId - Agent connection ID
+     * @param {any} ws - WebSocket connection object
      * @returns {Object} Registration result
      */
-    handleAgentRegistration(message, ws) {
+    handleAgentRegistration(message, connectionId, ws) {
         const { name, capabilities, manifest } = message.content;
         if (!name) {
             throw new Error('Agent name is required');
@@ -123,12 +124,14 @@ class MessageHandler {
                 ...(manifest || {}),
                 ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
             },
-            connectionId: ws.id,
+            connectionId: connectionId,
             status: 'online',
-            registeredAt: new Date().toISOString(),
-            // Set the WebSocket connection directly
-            ...(ws ? { connection: ws } : {})
+            registeredAt: new Date().toISOString()
         };
+        // Store the WebSocket connection if provided
+        if (ws) {
+            agent.connection = ws;
+        }
         this.agents.registerAgent(agent);
         console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
         if (agentConfig) {
@@ -298,6 +301,9 @@ class MessageHandler {
         const agent = this.agents.getAgentByConnectionId(connectionId);
         if (agent) {
             console.log(`Agent disconnected: ${agent.name}`);
+            // Remove the connection object
+            agent.connection = undefined;
+            // Update agent status to offline
             this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
         }
     }
@@ -321,7 +327,8 @@ class MessageHandler {
                 // Update task status in registry
                 if (message.content && message.content.taskId) {
                     const { taskId, status } = message.content;
-                    this.tasks.updateTaskStatus(taskId, status);
+                    console.log(`Handling task status update: ${taskId} status: ${status}`);
+                    this.tasks.updateTaskStatus(taskId, status, message.content);
                     // Emit event for status update
                     this.eventBus.emit('task.status', message);
                 }
@@ -336,7 +343,7 @@ class MessageHandler {
                 this.eventBus.emit('service.notification', message);
                 return;
             default:
-                console.warn(`Unhandled message type: ${type}`);
+                console.warn(`Unhandled message type in message-handler: ${type}`);
                 return;
         }
     }

@@ -61,7 +61,7 @@ class AgentRegistry {
      * @returns {Agent|undefined} The agent object or undefined if not found
      */
     getAgentByConnectionId(connectionId) {
-        return Array.from(this.agents.values()).find(agent => agent.connectionId === connectionId);
+        return this.agentsByConnectionId.get(connectionId);
     }
     /**
      * Get agent WebSocket connection by connection ID
@@ -70,7 +70,7 @@ class AgentRegistry {
      */
     getAgentConnection(connectionId) {
         const agent = this.getAgentByConnectionId(connectionId);
-        return agent ? agent.connection : undefined;
+        return agent?.connection;
     }
     /**
      * Get all registered agents

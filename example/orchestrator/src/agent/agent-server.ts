@@ -235,6 +235,35 @@ class AgentServer {
           }));
           break;
           
+        case 'agent.status':
+          // Handle agent status update
+          const statusAgent = this.agents.getAgentByConnectionId(ws.id);
+          
+          if (!statusAgent) {
+            this.sendError(ws, 'Agent not registered or unknown', message.id);
+            return;
+          }
+          
+          // Update agent status in the registry
+          this.agents.updateAgentStatus(
+            statusAgent.id, 
+            message.content.status, 
+            message.content
+          );
+          
+          // Confirm receipt
+          ws.send(JSON.stringify({
+            id: uuidv4(),
+            type: 'agent.status.updated',
+            content: {
+              message: 'Agent status updated',
+              status: message.content.status
+            },
+            requestId: message.id,
+            timestamp: Date.now().toString()
+          }));
+          break;
+          
         default:
           console.warn(`Unhandled message type agent-server: ${message.type}`);
           this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);

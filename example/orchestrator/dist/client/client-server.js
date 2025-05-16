@@ -401,9 +401,21 @@ class ClientServer {
             content: message
         });
     }
-    // Helper to get client connection by ID
+    /**
+     * Helper to get client connection by ID
+     * @param clientId - The client ID to look up
+     * @returns The WebSocket connection or undefined if not found
+     */
     getClientConnection(clientId) {
-        return this.clientConnections.get(clientId);
+        if (!clientId || typeof clientId !== 'string') {
+            console.warn(`Invalid client ID passed to getClientConnection: ${typeof clientId}`);
+            return undefined;
+        }
+        const connection = this.clientConnections.get(clientId);
+        if (!connection) {
+            console.debug(`No connection found for client ID: ${clientId}`);
+        }
+        return connection;
     }
     // Check if client is connected
     hasClientConnection(clientId) {
@@ -472,16 +484,24 @@ class ClientServer {
             this.sendToClient(ws, message);
         });
     }
-    // Add the new method here
     /**
      * Send a message to a client by ID
      * @param clientId - ID of the client to send the message to
      * @param message - The message to send
      */
     sendMessageToClient(clientId, message) {
+        if (!clientId || typeof clientId !== 'string') {
+            console.warn(`Invalid client ID passed to sendMessageToClient: ${typeof clientId}`);
+            return;
+        }
         const clientWs = this.getClientConnection(clientId);
         if (clientWs) {
-            this.sendToClient(clientWs, message);
+            try {
+                this.sendToClient(clientWs, message);
+            }
+            catch (error) {
+                console.error(`Error sending message to client ${clientId}:`, error);
+            }
         }
         else {
             console.warn(`Cannot send message to client ${clientId}: Client not connected`);

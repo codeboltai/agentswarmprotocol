@@ -94,7 +94,7 @@ async function runTests() {
     // Test: Send a simple message
     await safeExecuteTest('Sending a message', async () => {
       const response = await agent.send({
-        type: 'test.ping',
+        type: 'pong',
         content: { message: 'Hello from test agent' }
       });
       console.log('Response:', response);

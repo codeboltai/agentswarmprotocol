@@ -140,6 +140,13 @@ class Orchestrator {
             // Get the agent connection
             const agent = this.agents.getAgentById(agentId);
             if (agent && agent.connectionId) {
+                // Check if we have the actual connection object
+                const connection = agent.connection;
+                if (!connection) {
+                    console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent connection not found`);
+                    this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent connection not found' });
+                    return;
+                }
                 // Create a task message to send to the agent
                 const taskMessage = {
                     id: taskId,
@@ -156,23 +163,74 @@ class Orchestrator {
                     }
                 };
                 // Send the task to the agent
-                this.sendAndWaitForResponse(agent.connectionId, taskMessage, { timeout: 60000 })
-                    .then(response => {
-                    // Task completed by agent
-                    if (response.type === 'task.result') {
-                        this.tasks.updateTaskStatus(taskId, 'completed', response.content);
-                        this.eventBus.emit('response.message', response);
-                    }
-                })
-                    .catch(error => {
-                    // Task failed
-                    console.error(`Error sending task to agent: ${error.message}`);
-                    this.tasks.updateTaskStatus(taskId, 'failed', { error: error.message });
-                });
+                try {
+                    connection.send(JSON.stringify({
+                        ...taskMessage,
+                        timestamp: Date.now().toString()
+                    }));
+                    console.log(`Task ${taskId} sent to agent ${agentId}`);
+                }
+                catch (error) {
+                    console.error(`Error sending task to agent: ${error instanceof Error ? error.message : String(error)}`);
+                    this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Failed to send task to agent' });
+                }
             }
             else {
                 console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent not connected`);
                 this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent not connected' });
+            }
+        });
+        // Listen for task status update events
+        this.eventBus.on('task.status.received', (message) => {
+            try {
+                const { taskId, status, agentId } = message.content;
+                console.log(`Processing task status update: ${taskId} status: ${status}`);
+                if (taskId && status) {
+                    // Update task status in the registry
+                    this.tasks.updateTaskStatus(taskId, status, message.content);
+                    // Emit general task status event
+                    this.eventBus.emit('task.status', message);
+                    // Forward the status update to the client if needed
+                    const task = this.tasks.getTask(taskId);
+                    if (task && task.clientId && typeof task.clientId === 'string') {
+                        console.log(`Forwarding task status update to client: ${task.clientId}`);
+                        console.log(message.content);
+                        // Format the message in a standard way expected by clients
+                        this.clientServer.sendMessageToClient(task.clientId, {
+                            id: (0, uuid_1.v4)(),
+                            type: 'task.status',
+                            content: {
+                                taskId,
+                                status,
+                                agentId,
+                                result: status === 'completed' ? message.content.result : null,
+                                error: status === 'failed' ? message.content.error : null,
+                                timestamp: Date.now().toString()
+                            }
+                        });
+                        // If task is completed, also send a separate task.result message
+                        // which may be what the UI is looking for
+                        if (status === 'completed') {
+                            console.log(`Also sending task.result for completed task ${taskId} to client ${task.clientId}`);
+                            this.clientServer.sendMessageToClient(task.clientId, {
+                                id: (0, uuid_1.v4)(),
+                                type: 'task.result',
+                                content: {
+                                    taskId,
+                                    status: 'completed',
+                                    result: message.content.result || message.content,
+                                    completedAt: new Date().toISOString()
+                                }
+                            });
+                        }
+                    }
+                    else if (task && task.clientId) {
+                        console.warn(`Invalid client ID for task ${taskId}: ${typeof task.clientId}`);
+                    }
+                }
+            }
+            catch (error) {
+                console.error(`Error handling task status update:`, error);
             }
         });
         // Listen for service task created events
@@ -247,7 +305,7 @@ class Orchestrator {
         // Handle service registration
         this.eventBus.on('service.register', async (message, connectionId, callback) => {
             try {
-                const result = this.messageHandler.handleAgentRegistration(message, connectionId);
+                const result = this.messageHandler.handleServiceRegistration(message, connectionId);
                 callback(result);
             }
             catch (error) {
@@ -340,24 +398,52 @@ class Orchestrator {
         });
         // Handle task status updates
         this.eventBus.on('task.status', (message) => {
-            const { taskId, status, agentId } = message.content;
-            console.log(`Received task status update for task ${taskId}: ${status}`);
-            // Update task status in registry
-            this.tasks.updateTaskStatus(taskId, status, message.content);
-            // Handle task completion
-            if (status === 'completed') {
-                // Emit task result event
-                this.eventBus.emit('task.result', message);
-            }
-        });
-        // Handle service requests from agents
-        this.eventBus.on('service.request', async (message, connectionId, callback) => {
             try {
-                const result = await this.messageHandler.handleServiceRequest(message, connectionId);
-                callback(result);
+                if (!message || !message.content) {
+                    console.error('Invalid task status message received:', message);
+                    return;
+                }
+                const { taskId, status } = message.content;
+                if (!taskId || !status) {
+                    console.error('Invalid task status message - missing taskId or status:', message);
+                    return;
+                }
+                console.log(`Received task status update for task ${taskId}: ${status}`);
+                // Update task status in registry
+                this.tasks.updateTaskStatus(taskId, status, message.content);
+                // Handle task completion
+                if (status === 'completed') {
+                    // Get the task to retrieve the clientId
+                    try {
+                        const task = this.tasks.getTask(taskId);
+                        if (task && task.clientId && typeof task.clientId === 'string') {
+                            // Send standardized task.result message for completed tasks
+                            console.log(`Task ${taskId} completed - sending result to client ${task.clientId}`);
+                            this.clientServer.sendMessageToClient(task.clientId, {
+                                id: (0, uuid_1.v4)(),
+                                type: 'task.result',
+                                content: {
+                                    taskId,
+                                    status: 'completed',
+                                    result: message.content.result || message.content,
+                                    completedAt: new Date().toISOString()
+                                }
+                            });
+                        }
+                        else if (task && task.clientId) {
+                            console.warn(`Task ${taskId} completed but has invalid clientId: ${typeof task.clientId}`);
+                        }
+                        else {
+                            console.warn(`Task ${taskId} completed but has no clientId`);
+                        }
+                    }
+                    catch (error) {
+                        console.error(`Error handling completed task ${taskId}:`, error);
+                    }
+                }
             }
             catch (error) {
-                callback({ error: error instanceof Error ? error.message : String(error) });
+                console.error('Error handling task status update:', error);
             }
         });
     }
@@ -451,9 +537,9 @@ class Orchestrator {
             // If a connection ID was provided, try to find the WebSocket
             if (typeof wsOrConnectionId === 'string') {
                 // Try to find agent connection
-                const agentConnection = this.agents.getAgentConnection(wsOrConnectionId);
-                if (agentConnection) {
-                    ws = agentConnection;
+                const agent = this.agents.getAgentByConnectionId(wsOrConnectionId);
+                if (agent && agent.connection) {
+                    ws = agent.connection;
                 }
                 else {
                     // If not an agent, check if it's a service
@@ -474,6 +560,10 @@ class Orchestrator {
             // Ensure message has an ID
             if (!message.id) {
                 message.id = messageId;
+            }
+            // Add timestamp if not present
+            if (!message.timestamp) {
+                message.timestamp = Date.now().toString();
             }
             // Convert message to string
             const messageString = JSON.stringify(message);
@@ -526,41 +616,69 @@ class Orchestrator {
      * Forward task result to client
      */
     forwardTaskResultToClient(clientId, taskId, content) {
-        this.clientServer.sendMessageToClient(clientId, {
-            id: (0, uuid_1.v4)(),
-            type: 'task.result',
-            taskId,
-            content
-        });
+        if (!clientId || typeof clientId !== 'string') {
+            console.error(`Cannot forward task result: Invalid client ID [${clientId}]`);
+            return;
+        }
+        try {
+            // Format the message in a consistent way for the UI
+            console.log(`Forwarding task result to client ${clientId} for task ${taskId}`);
+            // Create a properly formatted task result message that matches TaskResultMessage interface
+            const resultMessage = {
+                id: (0, uuid_1.v4)(),
+                type: 'task.result',
+                content: {
+                    taskId,
+                    status: 'completed',
+                    result: content.result || content,
+                    completedAt: new Date().toISOString()
+                }
+            };
+            console.log(`Task result message: ${JSON.stringify(resultMessage)}`);
+            this.clientServer.sendMessageToClient(clientId, resultMessage);
+        }
+        catch (error) {
+            console.error(`Error forwarding task result to client ${clientId}:`, error);
+        }
     }
     /**
      * Forward service task result to agent
      */
     forwardServiceTaskResultToAgent(agentId, taskId, content) {
         const agent = this.agents.getAgentById(agentId);
-        if (agent && agent.connectionId) {
-            const ws = this.agents.getAgentConnection(agent.connectionId);
-            if (ws) {
-                ws.send(JSON.stringify({
+        if (agent && agent.connectionId && agent.connection) {
+            const connection = agent.connection;
+            try {
+                connection.send(JSON.stringify({
                     id: (0, uuid_1.v4)(),
                     type: 'service.task.result',
                     taskId,
-                    content
+                    content,
+                    timestamp: Date.now().toString()
                 }));
             }
-            else {
-                console.error(`Cannot forward service task result to agent ${agentId}: Agent not connected`);
+            catch (error) {
+                console.error(`Error forwarding service task result to agent ${agentId}:`, error);
             }
         }
         else {
-            console.error(`Cannot forward service task result to agent ${agentId}: Agent not connected`);
+            console.error(`Cannot forward service task result to agent ${agentId}: Agent not connected or connection not available`);
         }
     }
     /**
      * Forward task error to client
      */
     forwardTaskErrorToClient(clientId, message) {
-        this.clientServer.sendMessageToClient(clientId, message);
+        if (!clientId || typeof clientId !== 'string') {
+            console.error(`Cannot forward task error: Invalid client ID [${clientId}]`);
+            return;
+        }
+        try {
+            this.clientServer.sendMessageToClient(clientId, message);
+        }
+        catch (error) {
+            console.error(`Error forwarding task error to client ${clientId}:`, error);
+        }
     }
     /**
      * Forward task notification to client
@@ -584,7 +702,12 @@ class Orchestrator {
                 console.error(`Error looking up task for notification: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
-        if (clientId) {
+        // Check if clientId is valid
+        if (!clientId || typeof clientId !== 'string') {
+            console.warn(`Cannot forward task notification: Invalid clientId [${clientId}]`, message);
+            return;
+        }
+        try {
             // Create notification message for client
             const notificationMessage = {
                 id: (0, uuid_1.v4)(),
@@ -595,8 +718,8 @@ class Orchestrator {
             // Send notification to client
             this.clientServer.sendMessageToClient(clientId, notificationMessage);
         }
-        else {
-            console.warn(`Cannot forward task notification: No clientId available`, message);
+        catch (error) {
+            console.error(`Error forwarding notification to client ${clientId}:`, error);
         }
     }
     /**
@@ -621,7 +744,12 @@ class Orchestrator {
                 console.error(`Error looking up service task for notification: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
-        if (clientId) {
+        // Check if clientId is valid
+        if (!clientId || typeof clientId !== 'string') {
+            console.warn(`Cannot forward service notification to client: Invalid clientId [${clientId}]`, message);
+            return;
+        }
+        try {
             // Create notification message for client
             const notificationMessage = {
                 id: (0, uuid_1.v4)(),
@@ -632,8 +760,8 @@ class Orchestrator {
             // Send notification to client
             this.clientServer.sendMessageToClient(clientId, notificationMessage);
         }
-        else {
-            console.warn(`Cannot forward service notification to client: No clientId available`, message);
+        catch (error) {
+            console.error(`Error forwarding service notification to client ${clientId}:`, error);
         }
     }
     /**
@@ -641,25 +769,26 @@ class Orchestrator {
      */
     forwardServiceTaskNotificationToAgent(agentId, message) {
         const agent = this.agents.getAgentById(agentId);
-        if (agent && agent.connectionId) {
-            const ws = this.agents.getAgentConnection(agent.connectionId);
-            if (ws) {
+        if (agent && agent.connectionId && agent.connection) {
+            const connection = agent.connection;
+            try {
                 // Create notification message for agent
                 const notificationMessage = {
                     id: (0, uuid_1.v4)(),
                     type: 'service.notification',
                     taskId: message.taskId,
-                    content: message.content
+                    content: message.content,
+                    timestamp: Date.now().toString()
                 };
                 // Send notification to agent
-                ws.send(JSON.stringify(notificationMessage));
+                connection.send(JSON.stringify(notificationMessage));
             }
-            else {
-                console.warn(`Cannot forward service notification to agent ${agentId}: Agent not connected`);
+            catch (error) {
+                console.warn(`Error forwarding service notification to agent ${agentId}:`, error);
             }
         }
         else {
-            console.warn(`Cannot forward service notification to agent ${agentId}: Agent not connected`);
+            console.warn(`Cannot forward service notification to agent ${agentId}: Agent not connected or connection not available`);
         }
     }
     /**
