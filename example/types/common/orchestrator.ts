@@ -35,7 +35,7 @@ export interface AgentRegistry {
   removeAgent(id: string): boolean;
 }
 
-export interface TaskRegistry {
+export interface AgentTaskRegistry {
   registerTask(id: string, taskData: any): void;
   getTask(id: string): Task;
   updateTaskStatus(id: string, status: TaskStatus, result?: any): void;
@@ -85,7 +85,7 @@ export interface MCPInterface {
 // Message handler interfaces
 export interface MessageHandlerConfig {
   agents: AgentRegistry;
-  tasks: TaskRegistry;
+  tasks: AgentTaskRegistry;
   services: ServiceRegistry;
   serviceTasks?: ServiceTaskRegistry;
   eventBus: EventEmitter;

@@ -109,7 +109,7 @@ class Orchestrator {
         this.servicePort = config.servicePort || orchestratorSettings.servicePort || Number(process.env.SERVICE_PORT) || 3002;
         this.logLevel = config.logLevel || orchestratorSettings.logLevel || process.env.LOG_LEVEL || 'info';
         this.agents = new agent_registry_1.AgentRegistry();
-        this.tasks = new task_registry_1.TaskRegistry();
+        this.tasks = new task_registry_1.AgentTaskRegistry();
         this.services = new service_registry_1.ServiceRegistry();
         this.serviceTasks = new service_task_registry_1.ServiceTaskRegistry();
         this.pendingResponses = {}; // Track pending responses
@@ -127,7 +127,7 @@ class Orchestrator {
             mcp: this.mcp
         });
         // Create servers with specific dependencies rather than passing the entire orchestrator
-        this.agentServer = new agent_server_1.default({ agents: this.agents }, this.eventBus, { port: this.port });
+        this.agentServer = new agent_server_1.default({ agents: this.agents }, this.eventBus, { port: this.port }, this.messageHandler);
         this.clientServer = new client_server_1.default(this.eventBus, { clientPort: this.clientPort });
         this.serviceServer = new service_server_1.default({ services: this.services }, this.eventBus, { port: this.servicePort });
         // Set up event listeners
@@ -145,21 +145,24 @@ class Orchestrator {
                     id: taskId,
                     type: 'task.execute',
                     content: {
-                        ...taskData,
-                        taskType: taskData.taskType,
-                        input: taskData.input || taskData,
-                        metadata: {
-                            clientId: clientId,
-                            timestamp: new Date().toISOString()
+                        taskId: taskId,
+                        type: taskData.taskType,
+                        data: {
+                            conversationId: taskData.conversationId,
+                            message: taskData.message,
+                            role: taskData.role,
+                            context: taskData.context
                         }
                     }
                 };
                 // Send the task to the agent
-                this.sendAndWaitForResponse(agent.connectionId, taskMessage)
+                this.sendAndWaitForResponse(agent.connectionId, taskMessage, { timeout: 60000 })
                     .then(response => {
                     // Task completed by agent
-                    this.tasks.updateTaskStatus(taskId, 'completed', response);
-                    this.eventBus.emit('response.message', response);
+                    if (response.type === 'task.result') {
+                        this.tasks.updateTaskStatus(taskId, 'completed', response.content);
+                        this.eventBus.emit('response.message', response);
+                    }
                 })
                     .catch(error => {
                     // Task failed
@@ -231,10 +234,10 @@ class Orchestrator {
                 });
             }
         });
-        // Handle agent registration
-        this.eventBus.on('agent.register', (message, connectionId, callback) => {
+        // Listen for service request events
+        this.eventBus.on('service.request', async (message, connectionId, callback) => {
             try {
-                const result = this.messageHandler.handleAgentRegistration(message, connectionId);
+                const result = await this.messageHandler.handleServiceRequest(message, connectionId);
                 callback(result);
             }
             catch (error) {
@@ -281,6 +284,80 @@ class Orchestrator {
                 if (agentId) {
                     this.forwardServiceTaskNotificationToAgent(agentId, message);
                 }
+            }
+        });
+        // Handle client agent list requests
+        this.eventBus.on('client.agent.list', (filters, callback) => {
+            try {
+                const agents = this.messageHandler.getAgentList(filters);
+                callback(agents);
+            }
+            catch (error) {
+                callback({ error: error instanceof Error ? error.message : String(error) });
+            }
+        });
+        // Handle client messages to agents
+        this.eventBus.on('client.message.agent', async (message, targetAgentId, callback) => {
+            try {
+                // Create a task for the agent
+                const taskId = (0, uuid_1.v4)();
+                const conversationId = (0, uuid_1.v4)(); // Generate a conversation ID if not provided
+                const taskData = {
+                    taskType: 'conversation:message',
+                    conversationId,
+                    message: message.content.text,
+                    role: message.content.role || 'user',
+                    context: {
+                        messageHistory: [],
+                        metadata: {
+                            clientId: message.content.sender.id,
+                            timestamp: message.timestamp || new Date().toISOString()
+                        }
+                    }
+                };
+                // Register task in task registry
+                this.tasks.registerTask(taskId, {
+                    type: 'agent.task',
+                    name: 'Client Message',
+                    severity: 'normal',
+                    agentId: targetAgentId,
+                    clientId: message.content.sender.id,
+                    status: 'pending',
+                    createdAt: new Date().toISOString(),
+                    taskData
+                });
+                // Emit task created event
+                this.eventBus.emit('task.created', taskId, targetAgentId, message.content.sender.id, taskData);
+                callback({
+                    taskId,
+                    status: 'pending'
+                });
+            }
+            catch (error) {
+                console.error('Error handling client message:', error);
+                callback({ error: error instanceof Error ? error.message : String(error) });
+            }
+        });
+        // Handle task status updates
+        this.eventBus.on('task.status', (message) => {
+            const { taskId, status, agentId } = message.content;
+            console.log(`Received task status update for task ${taskId}: ${status}`);
+            // Update task status in registry
+            this.tasks.updateTaskStatus(taskId, status, message.content);
+            // Handle task completion
+            if (status === 'completed') {
+                // Emit task result event
+                this.eventBus.emit('task.result', message);
+            }
+        });
+        // Handle service requests from agents
+        this.eventBus.on('service.request', async (message, connectionId, callback) => {
+            try {
+                const result = await this.messageHandler.handleServiceRequest(message, connectionId);
+                callback(result);
+            }
+            catch (error) {
+                callback({ error: error instanceof Error ? error.message : String(error) });
             }
         });
     }
