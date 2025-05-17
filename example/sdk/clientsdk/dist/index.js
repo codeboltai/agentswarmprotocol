@@ -1,32 +1,11 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __exportStar = (this && this.__exportStar) || function(m, exports) {
-    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MCPManager = exports.AgentManager = exports.TaskManager = exports.MessageHandler = exports.WebSocketClient = exports.SwarmClientSDK = void 0;
+exports.SwarmClientSDK = void 0;
 const events_1 = require("events");
-const uuid_1 = require("uuid");
-const WebSocketClient_1 = require("./WebSocketClient");
-Object.defineProperty(exports, "WebSocketClient", { enumerable: true, get: function () { return WebSocketClient_1.WebSocketClient; } });
-const MessageHandler_1 = require("./MessageHandler");
-Object.defineProperty(exports, "MessageHandler", { enumerable: true, get: function () { return MessageHandler_1.MessageHandler; } });
-const TaskManager_1 = require("./TaskManager");
-Object.defineProperty(exports, "TaskManager", { enumerable: true, get: function () { return TaskManager_1.TaskManager; } });
-const AgentManager_1 = require("./AgentManager");
-Object.defineProperty(exports, "AgentManager", { enumerable: true, get: function () { return AgentManager_1.AgentManager; } });
-const MCPManager_1 = require("./MCPManager");
-Object.defineProperty(exports, "MCPManager", { enumerable: true, get: function () { return MCPManager_1.MCPManager; } });
+const WebSocketClient_1 = require("./service/WebSocketClient");
+const TaskManager_1 = require("./manager/TaskManager");
+const AgentManager_1 = require("./manager/AgentManager");
+const MCPManager_1 = require("./manager/MCPManager");
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol
  * Handles client-side communication with the orchestrator
@@ -39,19 +18,16 @@ class SwarmClientSDK extends events_1.EventEmitter {
     constructor(config = {}) {
         super();
         this.clientId = null;
-        this.defaultTimeout = config.defaultTimeout || 30000;
+        // Store task listeners
+        this.taskListeners = new Map();
         // Initialize WebSocket client
         this.wsClient = new WebSocketClient_1.WebSocketClient(config);
-        // Initialize message handler
-        this.messageHandler = new MessageHandler_1.MessageHandler();
-        // Initialize managers
-        this.tasks = new TaskManager_1.TaskManager(this.sendRequest.bind(this));
-        this.agents = new AgentManager_1.AgentManager(this.sendRequest.bind(this));
-        this.mcp = new MCPManager_1.MCPManager(this.sendRequest.bind(this));
+        // Initialize managers with the WebSocketClient
+        this.agentManager = new AgentManager_1.AgentManager(this.wsClient);
+        this.mcpManager = new MCPManager_1.MCPManager(this.wsClient);
+        // Pass this instance to TaskManager for event listening
+        this.taskManager = new TaskManager_1.TaskManager(this.wsClient, this);
         // Set up event forwarding
-        this.wsClient.on('message', async (message) => {
-            await this.messageHandler.handleMessage(message);
-        });
         this.wsClient.on('connected', () => {
             this.emit('connected');
         });
@@ -61,24 +37,106 @@ class SwarmClientSDK extends events_1.EventEmitter {
         this.wsClient.on('error', (error) => {
             this.emit('error', error);
         });
-        // Forward events from message handler
-        this.messageHandler.on('welcome', (content) => {
-            if (content.clientId) {
-                this.clientId = content.clientId;
-                this.wsClient.setClientId(content.clientId);
-            }
-            this.emit('welcome', content);
+        // Set up central message handling
+        this.wsClient.on('message', this.handleMessage.bind(this));
+    }
+    /**
+     * Handle incoming messages from the orchestrator
+     * @param message - The received message
+     */
+    handleMessage(message) {
+        console.log(`SwarmClientSDK received message: ${JSON.stringify(message)}`);
+        // Emit the raw message for anyone who wants to listen
+        this.emit('raw-message', message);
+        // Handle specific message types
+        switch (message.type) {
+            case 'orchestrator.welcome':
+                if (message.content && message.content.clientId) {
+                    this.clientId = message.content.clientId;
+                }
+                this.emit('welcome', message.content);
+                break;
+            case 'agent.list':
+                this.emit('agent-list', message.content.agents);
+                break;
+            case 'mcp.server.list':
+                this.emit('mcp-server-list', message.content.servers);
+                break;
+            case 'task.result':
+                // Check if we have a registered listener for this task
+                const taskId = message.content.taskId;
+                const taskListener = this.taskListeners.get(taskId);
+                if (taskListener) {
+                    taskListener.resultHandler(message.content);
+                }
+                // Emit the event for others to listen
+                this.emit('task-result', message.content);
+                // Also emit task.update for backward compatibility with UI
+                this.emit('task.update', message.content);
+                break;
+            case 'task.status':
+                // Check if we have a registered listener for this task
+                const statusTaskId = message.content.taskId;
+                const statusListener = this.taskListeners.get(statusTaskId);
+                if (statusListener && message.content.status === 'failed') {
+                    statusListener.statusHandler(message.content);
+                }
+                this.emit('task-status', message.content);
+                // Also emit task.update for backward compatibility with UI
+                this.emit('task.update', message.content);
+                break;
+            case 'task.created':
+                this.emit('task-created', message.content);
+                break;
+            case 'task.notification':
+                this.emit('task-notification', message.content);
+                break;
+            case 'service.notification':
+                this.emit('service-notification', message.content);
+                break;
+            case 'mcp.task.execution':
+                this.emit('mcp.task.execution', message.content);
+                break;
+            case 'error':
+                this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
+                break;
+            default:
+                console.log(`Unhandled message type: ${message.type}`);
+                break;
+        }
+    }
+    /**
+     * Register task event listeners
+     * @param taskId - The task ID to listen for
+     * @param options - Handler and timeout options
+     * @returns Cleanup function
+     */
+    registerTaskListeners(taskId, options) {
+        const { resultHandler, statusHandler, timeout, timeoutCallback } = options;
+        // Set timeout
+        const timeoutId = setTimeout(() => {
+            this.removeTaskListeners(taskId);
+            timeoutCallback();
+        }, timeout);
+        // Store handlers
+        this.taskListeners.set(taskId, {
+            resultHandler,
+            statusHandler,
+            timeoutId
         });
-        // Set up event forwarding for task manager
-        this.tasks.registerEventListeners(this.messageHandler);
-        // Set up event forwarding for agent manager
-        this.agents.registerEventListeners(this.messageHandler);
-        // Set up event forwarding for MCP manager
-        this.mcp.registerEventListeners(this.messageHandler);
-        // Forward remaining events
-        this.messageHandler.on('orchestrator-error', (error) => {
-            this.emit('orchestrator-error', error);
-        });
+        // Return cleanup function
+        return () => this.removeTaskListeners(taskId);
+    }
+    /**
+     * Remove task event listeners
+     * @param taskId - The task ID to remove listeners for
+     */
+    removeTaskListeners(taskId) {
+        const listeners = this.taskListeners.get(taskId);
+        if (listeners && listeners.timeoutId) {
+            clearTimeout(listeners.timeoutId);
+        }
+        this.taskListeners.delete(taskId);
     }
     /**
      * Connect to the orchestrator
@@ -92,7 +150,14 @@ class SwarmClientSDK extends events_1.EventEmitter {
      */
     disconnect() {
         this.wsClient.disconnect();
-        this.messageHandler.clearPendingResponses();
+        this.wsClient.clearPendingResponses();
+        // Clear all task listeners
+        for (const [taskId, listeners] of this.taskListeners.entries()) {
+            if (listeners.timeoutId) {
+                clearTimeout(listeners.timeoutId);
+            }
+        }
+        this.taskListeners.clear();
     }
     /**
      * Check if connected to the orchestrator
@@ -114,17 +179,8 @@ class SwarmClientSDK extends events_1.EventEmitter {
      * @param options - Additional options
      * @returns The response message
      */
-    async sendRequest(message, options = {}) {
-        // Set message ID if not set
-        if (!message.id) {
-            message.id = (0, uuid_1.v4)();
-        }
-        // Set timestamp if not set
-        if (!message.timestamp) {
-            message.timestamp = new Date().toISOString();
-        }
-        // Wait for response
-        return this.messageHandler.waitForResponse(message, (msg) => this.wsClient.send(msg), { timeout: options.timeout || this.defaultTimeout });
+    async sendRequestWaitForResponse(message, options = {}) {
+        return this.wsClient.sendRequestWaitForResponse(message, options);
     }
     /**
      * Send a task to an agent
@@ -134,15 +190,23 @@ class SwarmClientSDK extends events_1.EventEmitter {
      * @returns Task information
      */
     async sendTask(agentName, taskData, options = {}) {
-        return this.tasks.sendTask(agentName, taskData, options);
+        return this.taskManager.sendTask(agentName, taskData, options);
+    }
+    /**
+     * Get the status of a task
+     * @param taskId - ID of the task to get status for
+     * @returns Task status
+     */
+    async getTaskStatus(taskId) {
+        return this.taskManager.getTaskStatus(taskId);
     }
     /**
      * Get a list of all registered agents
      * @param filters - Optional filters to apply to the agent list
      * @returns Array of agent objects
      */
-    async getAgents(filters = {}) {
-        return this.agents.getAgents(filters);
+    async getAgentsList(filters = {}) {
+        return this.agentManager.getAgentsList(filters);
     }
     /**
      * List available MCP servers
@@ -150,13 +214,26 @@ class SwarmClientSDK extends events_1.EventEmitter {
      * @returns List of MCP servers
      */
     async listMCPServers(filters = {}) {
-        return this.mcp.listMCPServers(filters);
+        return this.mcpManager.listMCPServers(filters);
+    }
+    /**
+     * Get tools available on an MCP server
+     * @param serverId - ID of the server to get tools for
+     * @returns List of tools
+     */
+    async getMCPServerTools(serverId) {
+        return this.mcpManager.getMCPServerTools(serverId);
+    }
+    /**
+     * Execute a tool on an MCP server
+     * @param serverId - ID of the server to execute the tool on
+     * @param toolName - Name of the tool to execute
+     * @param parameters - Tool parameters
+     * @returns Tool execution result
+     */
+    async executeMCPTool(serverId, toolName, parameters) {
+        return this.mcpManager.executeMCPTool(serverId, toolName, parameters);
     }
 }
 exports.SwarmClientSDK = SwarmClientSDK;
-__exportStar(require("./WebSocketClient"), exports);
-__exportStar(require("./MessageHandler"), exports);
-__exportStar(require("./TaskManager"), exports);
-__exportStar(require("./AgentManager"), exports);
-__exportStar(require("./MCPManager"), exports);
 //# sourceMappingURL=index.js.map

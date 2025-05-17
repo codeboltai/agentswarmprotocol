@@ -123,6 +123,21 @@ export interface SwarmClientSDKInterface {
     emit(event: string, ...args: unknown[]): boolean;
 }
 /**
+ * Configuration options for WebSocketClient
+ */
+export interface WebSocketClientConfig {
+    /** WebSocket URL of the orchestrator client interface */
+    orchestratorUrl?: string;
+    /** Whether to automatically reconnect on disconnection */
+    autoReconnect?: boolean;
+    /** Interval in ms to attempt reconnection */
+    reconnectInterval?: number;
+    /** Force the use of browser WebSocket implementation */
+    forceBrowserWebSocket?: boolean;
+    /** Default timeout for requests in milliseconds */
+    defaultTimeout?: number;
+}
+/**
  * The SwarmClientSDK class
  */
 export interface SwarmClientSDK extends SwarmClientSDKInterface {

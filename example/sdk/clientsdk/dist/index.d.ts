@@ -1,34 +1,46 @@
 import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { WebSocketClient, WebSocketClientConfig } from './WebSocketClient';
-import { MessageHandler } from './MessageHandler';
-import { TaskManager } from './TaskManager';
-import { AgentManager } from './AgentManager';
-import { MCPManager } from './MCPManager';
-/**
- * Configuration options for the SDK
- */
-export interface SwarmClientSDKConfig extends WebSocketClientConfig {
-    /** Default timeout for requests in milliseconds */
-    defaultTimeout?: number;
-}
+import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
+import { MCPServerFilters } from './manager/MCPManager';
+import { AgentFilters, TaskRequestOptions } from './types';
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol
  * Handles client-side communication with the orchestrator
  */
 export declare class SwarmClientSDK extends EventEmitter {
     private wsClient;
-    private messageHandler;
-    private defaultTimeout;
     private clientId;
-    agents: AgentManager;
-    tasks: TaskManager;
-    mcp: MCPManager;
+    private agentManager;
+    private taskManager;
+    private mcpManager;
+    private taskListeners;
     /**
      * Create a new SwarmClientSDK instance
      * @param config - Configuration options
      */
-    constructor(config?: SwarmClientSDKConfig);
+    constructor(config?: WebSocketClientConfig);
+    /**
+     * Handle incoming messages from the orchestrator
+     * @param message - The received message
+     */
+    private handleMessage;
+    /**
+     * Register task event listeners
+     * @param taskId - The task ID to listen for
+     * @param options - Handler and timeout options
+     * @returns Cleanup function
+     */
+    registerTaskListeners(taskId: string, options: {
+        resultHandler: (result: any) => void;
+        statusHandler: (status: any) => void;
+        timeout: number;
+        timeoutCallback: () => void;
+    }): () => void;
+    /**
+     * Remove task event listeners
+     * @param taskId - The task ID to remove listeners for
+     */
+    removeTaskListeners(taskId: string): void;
     /**
      * Connect to the orchestrator
      * @returns Promise that resolves when connected
@@ -54,7 +66,7 @@ export declare class SwarmClientSDK extends EventEmitter {
      * @param options - Additional options
      * @returns The response message
      */
-    sendRequest(message: Partial<BaseMessage>, options?: {
+    sendRequestWaitForResponse(message: Partial<BaseMessage>, options?: {
         timeout?: number;
     }): Promise<any>;
     /**
@@ -64,23 +76,37 @@ export declare class SwarmClientSDK extends EventEmitter {
      * @param options - Additional options
      * @returns Task information
      */
-    sendTask(agentName: string, taskData: any, options?: any): Promise<any>;
+    sendTask(agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
+    /**
+     * Get the status of a task
+     * @param taskId - ID of the task to get status for
+     * @returns Task status
+     */
+    getTaskStatus(taskId: string): Promise<any>;
     /**
      * Get a list of all registered agents
      * @param filters - Optional filters to apply to the agent list
      * @returns Array of agent objects
      */
-    getAgents(filters?: {}): Promise<any[]>;
+    getAgentsList(filters?: AgentFilters): Promise<any[]>;
     /**
      * List available MCP servers
      * @param filters - Optional filters
      * @returns List of MCP servers
      */
-    listMCPServers(filters?: {}): Promise<any[]>;
+    listMCPServers(filters?: MCPServerFilters): Promise<any[]>;
+    /**
+     * Get tools available on an MCP server
+     * @param serverId - ID of the server to get tools for
+     * @returns List of tools
+     */
+    getMCPServerTools(serverId: string): Promise<any[]>;
+    /**
+     * Execute a tool on an MCP server
+     * @param serverId - ID of the server to execute the tool on
+     * @param toolName - Name of the tool to execute
+     * @param parameters - Tool parameters
+     * @returns Tool execution result
+     */
+    executeMCPTool(serverId: string, toolName: string, parameters: any): Promise<any>;
 }
-export { WebSocketClient, MessageHandler, TaskManager, AgentManager, MCPManager };
-export * from './WebSocketClient';
-export * from './MessageHandler';
-export * from './TaskManager';
-export * from './AgentManager';
-export * from './MCPManager';
