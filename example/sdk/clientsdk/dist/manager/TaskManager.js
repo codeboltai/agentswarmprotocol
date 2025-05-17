@@ -33,43 +33,7 @@ class TaskManager {
                 taskData
             }
         });
-        const taskId = response.content.taskId;
-        if (!waitForResult) {
-            return response.content;
-        }
-        // Wait for task result using the central event handling in SDK
-        return new Promise((resolve, reject) => {
-            let isResolved = false;
-            // Define handlers
-            const resultHandler = (result) => {
-                if (result.taskId === taskId && !isResolved) {
-                    isResolved = true;
-                    cleanup();
-                    resolve(result);
-                }
-            };
-            const statusHandler = (status) => {
-                var _a;
-                if (status.taskId === taskId && status.status === 'failed' && !isResolved) {
-                    isResolved = true;
-                    cleanup();
-                    reject(new Error(`Task failed: ${((_a = status.error) === null || _a === void 0 ? void 0 : _a.message) || 'Unknown error'}`));
-                }
-            };
-            const timeoutCallback = () => {
-                if (!isResolved) {
-                    isResolved = true;
-                    reject(new Error(`Task timeout after ${timeout}ms: ${taskId}`));
-                }
-            };
-            // Register handlers with the SDK
-            const cleanup = this.sdk.registerTaskListeners(taskId, {
-                resultHandler,
-                statusHandler,
-                timeout,
-                timeoutCallback
-            });
-        });
+        return response.content;
     }
     /**
      * Get the status of a task

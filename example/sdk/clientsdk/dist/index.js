@@ -18,8 +18,6 @@ class SwarmClientSDK extends events_1.EventEmitter {
     constructor(config = {}) {
         super();
         this.clientId = null;
-        // Store task listeners
-        this.taskListeners = new Map();
         // Initialize WebSocket client
         this.wsClient = new WebSocketClient_1.WebSocketClient(config);
         // Initialize managers with the WebSocketClient
@@ -63,27 +61,11 @@ class SwarmClientSDK extends events_1.EventEmitter {
                 this.emit('mcp-server-list', message.content.servers);
                 break;
             case 'task.result':
-                // Check if we have a registered listener for this task
-                const taskId = message.content.taskId;
-                const taskListener = this.taskListeners.get(taskId);
-                if (taskListener) {
-                    taskListener.resultHandler(message.content);
-                }
                 // Emit the event for others to listen
                 this.emit('task-result', message.content);
-                // Also emit task.update for backward compatibility with UI
-                this.emit('task.update', message.content);
                 break;
             case 'task.status':
-                // Check if we have a registered listener for this task
-                const statusTaskId = message.content.taskId;
-                const statusListener = this.taskListeners.get(statusTaskId);
-                if (statusListener && message.content.status === 'failed') {
-                    statusListener.statusHandler(message.content);
-                }
                 this.emit('task-status', message.content);
-                // Also emit task.update for backward compatibility with UI
-                this.emit('task.update', message.content);
                 break;
             case 'task.created':
                 this.emit('task-created', message.content);
@@ -106,39 +88,6 @@ class SwarmClientSDK extends events_1.EventEmitter {
         }
     }
     /**
-     * Register task event listeners
-     * @param taskId - The task ID to listen for
-     * @param options - Handler and timeout options
-     * @returns Cleanup function
-     */
-    registerTaskListeners(taskId, options) {
-        const { resultHandler, statusHandler, timeout, timeoutCallback } = options;
-        // Set timeout
-        const timeoutId = setTimeout(() => {
-            this.removeTaskListeners(taskId);
-            timeoutCallback();
-        }, timeout);
-        // Store handlers
-        this.taskListeners.set(taskId, {
-            resultHandler,
-            statusHandler,
-            timeoutId
-        });
-        // Return cleanup function
-        return () => this.removeTaskListeners(taskId);
-    }
-    /**
-     * Remove task event listeners
-     * @param taskId - The task ID to remove listeners for
-     */
-    removeTaskListeners(taskId) {
-        const listeners = this.taskListeners.get(taskId);
-        if (listeners && listeners.timeoutId) {
-            clearTimeout(listeners.timeoutId);
-        }
-        this.taskListeners.delete(taskId);
-    }
-    /**
      * Connect to the orchestrator
      * @returns Promise that resolves when connected
      */
@@ -151,13 +100,6 @@ class SwarmClientSDK extends events_1.EventEmitter {
     disconnect() {
         this.wsClient.disconnect();
         this.wsClient.clearPendingResponses();
-        // Clear all task listeners
-        for (const [taskId, listeners] of this.taskListeners.entries()) {
-            if (listeners.timeoutId) {
-                clearTimeout(listeners.timeoutId);
-            }
-        }
-        this.taskListeners.clear();
     }
     /**
      * Check if connected to the orchestrator

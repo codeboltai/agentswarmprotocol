@@ -9,7 +9,9 @@
     "moduleResolution": "node",
     "strict": true,
     "declaration": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "jsx": "react",
+    "skipLibCheck": true
   },
   "include": [
     "src/**/*.ts"

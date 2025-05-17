@@ -13,7 +13,6 @@ export declare class SwarmClientSDK extends EventEmitter {
     private agentManager;
     private taskManager;
     private mcpManager;
-    private taskListeners;
     /**
      * Create a new SwarmClientSDK instance
      * @param config - Configuration options
@@ -24,23 +23,6 @@ export declare class SwarmClientSDK extends EventEmitter {
      * @param message - The received message
      */
     private handleMessage;
-    /**
-     * Register task event listeners
-     * @param taskId - The task ID to listen for
-     * @param options - Handler and timeout options
-     * @returns Cleanup function
-     */
-    registerTaskListeners(taskId: string, options: {
-        resultHandler: (result: any) => void;
-        statusHandler: (status: any) => void;
-        timeout: number;
-        timeoutCallback: () => void;
-    }): () => void;
-    /**
-     * Remove task event listeners
-     * @param taskId - The task ID to remove listeners for
-     */
-    removeTaskListeners(taskId: string): void;
     /**
      * Connect to the orchestrator
      * @returns Promise that resolves when connected
