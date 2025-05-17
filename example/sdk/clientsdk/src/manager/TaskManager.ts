@@ -29,15 +29,14 @@ export class TaskManager {
    * @returns Task information
    */
   async sendTask(agentName: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
-    const waitForResult = options.waitForResult !== false;
-    const timeout = options.timeout || 60000; // Default 60 second timeout
-    
+
     console.log(`Sending task to agent ${agentName}`);
     
     // Create task
     const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'task.create',
       content: {
+        event: 'task.completed',
         agentName,
         taskData
       }
