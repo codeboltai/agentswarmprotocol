@@ -47,6 +47,21 @@ class ClientServer {
     this.eventBus.on('task.error', (clientId: string, message: any) => {
       this.forwardTaskErrorToClient(clientId, message);
     });
+
+    // Listen for task notifications
+    this.eventBus.on('task.notification', (clientId: string, content: any) => {
+      this.forwardTaskNotificationToClient(clientId, content);
+    });
+
+    // Listen for service notifications
+    this.eventBus.on('service.notification', (clientId: string, content: any) => {
+      this.forwardServiceNotificationToClient(clientId, content);
+    });
+
+    // Listen for MCP task executions
+    this.eventBus.on('mcp.task.execution', (clientId: string, content: any) => {
+      this.forwardMCPTaskExecutionToClient(clientId, content);
+    });
   }
 
   async start(): Promise<ClientServer> {
@@ -148,6 +163,14 @@ class ClientServer {
           
         case 'client.message':
           await this.handleClientDirectMessage(message, ws);
+          break;
+          
+        case 'mcp.server.tools':
+          await this.handleClientMCPServerTools(message, ws);
+          break;
+          
+        case 'mcp.tool.execute':
+          await this.handleClientMCPToolExecution(message, ws);
           break;
           
         default:
@@ -273,6 +296,92 @@ class ClientServer {
         id: message.id, // Use id for consistency
         content: {
           servers: result
+        }
+      });
+    });
+  }
+
+  // Handle MCP server tools request from client
+  async handleClientMCPServerTools(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
+    console.log(`Processing MCP server tools request: ${JSON.stringify(message)}`);
+    
+    if (!message.content?.serverId) {
+      return this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Invalid request',
+          details: 'Server ID is required'
+        }
+      });
+    }
+    
+    // Emit MCP server tools request event
+    this.eventBus.emit('client.mcp.server.tools', message.content.serverId, (result: any) => {
+      if (result.error) {
+        this.sendToClient(ws, {
+          type: 'error',
+          id: message.id,
+          content: {
+            error: 'Error getting MCP server tools',
+            details: result.error
+          }
+        });
+        return;
+      }
+      
+      this.sendToClient(ws, {
+        type: 'mcp.server.tools',
+        id: message.id,
+        content: {
+          serverId: message.content.serverId,
+          tools: result
+        }
+      });
+    });
+  }
+  
+  // Handle MCP tool execution request from client
+  async handleClientMCPToolExecution(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
+    console.log(`Processing MCP tool execution request: ${JSON.stringify(message)}`);
+    
+    if (!message.content?.serverId || !message.content?.toolName) {
+      return this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Invalid request',
+          details: 'Server ID and tool name are required'
+        }
+      });
+    }
+    
+    // Emit MCP tool execution request event
+    this.eventBus.emit('client.mcp.tool.execute', {
+      serverId: message.content.serverId,
+      toolName: message.content.toolName,
+      parameters: message.content.parameters || {},
+      clientId: ws.id
+    }, (result: any) => {
+      if (result.error) {
+        this.sendToClient(ws, {
+          type: 'error',
+          id: message.id,
+          content: {
+            error: 'Error executing MCP tool',
+            details: result.error
+          }
+        });
+        return;
+      }
+      
+      this.sendToClient(ws, {
+        type: 'mcp.tool.execution',
+        id: message.id,
+        content: {
+          serverId: message.content.serverId,
+          toolName: message.content.toolName,
+          result: result
         }
       });
     });
@@ -422,6 +531,51 @@ class ClientServer {
       id: uuidv4(),
       type: 'task.error',
       content: message
+    });
+  }
+  
+  // Forward task notifications to clients
+  forwardTaskNotificationToClient(clientId: string, content: any): void {
+    const clientWs = this.getClientConnection(clientId);
+    if (!clientWs) {
+      console.log(`Client ${clientId} is not connected, cannot forward task notification`);
+      return;
+    }
+    
+    this.sendToClient(clientWs, {
+      id: uuidv4(),
+      type: 'task.notification',
+      content: content
+    });
+  }
+  
+  // Forward service notifications to clients
+  forwardServiceNotificationToClient(clientId: string, content: any): void {
+    const clientWs = this.getClientConnection(clientId);
+    if (!clientWs) {
+      console.log(`Client ${clientId} is not connected, cannot forward service notification`);
+      return;
+    }
+    
+    this.sendToClient(clientWs, {
+      id: uuidv4(),
+      type: 'service.notification',
+      content: content
+    });
+  }
+  
+  // Forward MCP task executions to clients
+  forwardMCPTaskExecutionToClient(clientId: string, content: any): void {
+    const clientWs = this.getClientConnection(clientId);
+    if (!clientWs) {
+      console.log(`Client ${clientId} is not connected, cannot forward MCP task execution`);
+      return;
+    }
+    
+    this.sendToClient(clientWs, {
+      id: uuidv4(),
+      type: 'mcp.task.execution',
+      content: content
     });
   }
   
