@@ -1,14 +1,11 @@
-import { EventEmitter } from 'events';
 import { AgentStatus, Agent as AgentType } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
 import { AgentFilters } from '../types';
 
-
-
 /**
  * AgentManager - Handles agent-related operations
  */
-export class AgentManager extends EventEmitter {
+export class AgentManager {
   private wsClient: WebSocketClient;
 
   /**
@@ -16,7 +13,6 @@ export class AgentManager extends EventEmitter {
    * @param wsClient - WebSocketClient instance
    */
   constructor(wsClient: WebSocketClient) {
-    super();
     this.wsClient = wsClient;
   }
 
@@ -32,14 +28,5 @@ export class AgentManager extends EventEmitter {
     });
     
     return response.content.agents;
-  }
-
-  /**
-   * Register event listeners for agent events
-   */
-  registerEventListeners(): void {
-    this.wsClient.on('agent-list', (agents: AgentType[]) => {
-      this.emit('agent-list', agents);
-    });
   }
 } 

@@ -25,3 +25,13 @@ export interface Agent {
     /** Filter by agent name (partial match) */
     name?: string;
   }
+
+/**
+ * Task request options
+ */
+export interface TaskRequestOptions {
+    /** Whether to wait for the task result */
+    waitForResult?: boolean;
+    /** Timeout in milliseconds */
+    timeout?: number;
+  }

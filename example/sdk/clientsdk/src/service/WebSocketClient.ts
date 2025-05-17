@@ -310,46 +310,12 @@ export class WebSocketClient extends EventEmitter {
       return;
     }
     
-    // Emit specific message types for components to listen to
-    switch (message.type) {
-      case 'orchestrator.welcome':
-        if (message.content && message.content.clientId) {
-          this.clientId = message.content.clientId;
-        }
-        this.emit('welcome', message.content);
-        break;
-        
-      case 'agent.list':
-        this.emit('agent-list', message.content.agents);
-        break;
-        
-      case 'mcp.server.list':
-        this.emit('mcp-server-list', message.content.servers);
-        break;
-        
-      case 'task.result':
-        this.emit('task-result', message.content);
-        // Also emit task.update for backward compatibility with UI
-        this.emit('task.update', message.content);
-        break;
-        
-      case 'task.status':
-        this.emit('task-status', message.content);
-        // Also emit task.update for backward compatibility with UI
-        this.emit('task.update', message.content);
-        break;
-        
-      case 'task.created':
-        this.emit('task-created', message.content);
-        break;
-        
-      case 'task.notification':
-        this.emit('task-notification', message.content);
-        break;
-        
-      case 'error':
-        this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
-        break;
+    // Just emit the raw message for central handling in the SDK
+    this.emit('message', message);
+    
+    // Only handle clientId for welcome messages here
+    if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {
+      this.clientId = message.content.clientId;
     }
   }
 

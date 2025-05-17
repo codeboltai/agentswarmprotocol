@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import { MCPServer, MCPTool } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
 
@@ -17,7 +16,7 @@ export interface MCPServerFilters {
 /**
  * MCPManager - Handles MCP-related operations
  */
-export class MCPManager extends EventEmitter {
+export class MCPManager {
   private wsClient: WebSocketClient;
 
   /**
@@ -25,7 +24,6 @@ export class MCPManager extends EventEmitter {
    * @param wsClient - WebSocketClient instance
    */
   constructor(wsClient: WebSocketClient) {
-    super();
     this.wsClient = wsClient;
   }
 
@@ -77,19 +75,5 @@ export class MCPManager extends EventEmitter {
     });
     
     return response.content.result;
-  }
-
-  /**
-   * Register event listeners for MCP events
-   */
-  registerEventListeners(): void {
-    this.wsClient.on('mcp-server-list', (servers: MCPServer[]) => {
-      console.log('MCP Manager handling mcp-server-list event with servers:', JSON.stringify(servers));
-      this.emit('mcp-server-list', servers);
-    });
-    
-    this.wsClient.on('mcp-tool-executed', (result: any) => {
-      this.emit('mcp-tool-executed', result);
-    });
   }
 } 
