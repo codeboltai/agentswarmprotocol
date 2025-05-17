@@ -3,10 +3,10 @@ import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 
 import { WebSocketClient } from './service/WebSocketClient';
-import { TaskManager, TaskRequestOptions } from './manager/TaskManager';
+import { TaskManager } from './manager/TaskManager';
 import { AgentManager } from './manager/AgentManager';
 import { MCPManager, MCPServerFilters } from './manager/MCPManager';
-import { AgentFilters } from './types';
+import { AgentFilters, TaskRequestOptions } from './types';
 
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol
