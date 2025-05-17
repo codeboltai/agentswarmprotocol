@@ -82,8 +82,6 @@ export class SwarmClientSDK extends EventEmitter {
         break;
         
       case 'task.result':
-     
-        
         // Emit the event for others to listen
         this.emit('task-result', message.content);
         break;
@@ -104,6 +102,10 @@ export class SwarmClientSDK extends EventEmitter {
       
       case 'task.childtask.status':
         this.emit('task.childtask.status', message.content);
+        break;
+
+      case 'task.completed':
+        this.emit('task.completed', message.content);
         break;
         
       case 'task.notification':

@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Import using dynamic import instead
 import { Pencil1Icon, GitHubLogoIcon } from '@radix-ui/react-icons';
 import { ThemeToggle } from './components/ui/theme-toggle';
-import { AgentInfo } from '@agentswarmprotocol/types';
+import { Agent as AgentInfo } from '@agentswarmprotocol/types/common';
 import { EventEmitter } from 'events';
 import { SwarmClientSDK } from '@agentswarmprotocol/clientsdk';
 
@@ -46,8 +46,8 @@ interface TaskStatus {
 
 // Create a client interface for the UI
 interface SimpleClient {
-  getAgents: () => Promise<AgentInfo[]>;
-  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  getAgentsList: () => Promise<AgentInfo[]>;
+  sendRequestWaitForResponse: (message: Record<string, unknown>) => Promise<unknown>;
   connect: () => Promise<void>;
   disconnect: () => void;
   on(event: 'connected' | 'disconnected', listener: () => void): void;
@@ -97,12 +97,12 @@ function createClient(): SimpleClient {
     }
     
     const clientInterface: SimpleClient = {
-      async getAgents(): Promise<AgentInfo[]> {
-        return client.getAgents();
+      async getAgentsList(): Promise<AgentInfo[]> {
+        return client.getAgentsList();
       },
       
-      async sendMessage(message: Record<string, unknown>): Promise<unknown> {
-        return client.sendRequest(message);
+      async sendRequestWaitForResponse(message: Record<string, unknown>): Promise<unknown> {
+        return client.sendRequestWaitForResponse(message);
       },
       
       async connect(): Promise<void> {
@@ -167,7 +167,7 @@ function App() {
     if (!client || !isConnected) return;
     
     try {
-      const agentList = await client.getAgents();
+      const agentList = await client.getAgentsList();
       const nameMap: Record<string, string> = {};
       
       agentList.forEach((agent: AgentInfo) => {
@@ -428,7 +428,7 @@ function App() {
       }
     });
     // Send message to orchestrator with the specific agent target
-    client.sendMessage({
+    client.sendRequestWaitForResponse({
       type: 'client.message',
       content: {
         text: content,

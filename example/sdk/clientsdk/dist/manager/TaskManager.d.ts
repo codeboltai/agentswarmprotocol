@@ -1,19 +1,16 @@
 import { TaskStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
-import { EventEmitter } from 'events';
 import { TaskRequestOptions } from '../types';
 /**
  * TaskManager - Handles task-related operations
  */
 export declare class TaskManager {
     private wsClient;
-    private sdk;
     /**
      * Create a new TaskManager instance
      * @param wsClient - WebSocketClient instance
-     * @param sdk - SwarmClientSDK instance for event listening
      */
-    constructor(wsClient: WebSocketClient, sdk: EventEmitter);
+    constructor(wsClient: WebSocketClient);
     /**
      * Send a task to an agent
      * @param agentName - Name of the agent to send the task to
@@ -22,6 +19,17 @@ export declare class TaskManager {
      * @returns Task information
      */
     sendTask(agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
+    /**
+     * Send a message to a running task
+     * @param taskId - ID of the task to send the message to
+     * @param message - Message to send (can be string or structured data)
+     * @param options - Additional options like message type
+     * @returns Response from the message delivery
+     */
+    sendMessageDuringTask(taskId: string, message: string | Record<string, any>, options?: {
+        messageType?: string;
+        timeout?: number;
+    }): Promise<any>;
     /**
      * Get the status of a task
      * @param taskId - ID of the task to get status for
