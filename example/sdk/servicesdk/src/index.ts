@@ -56,12 +56,6 @@ class SwarmServiceSDK extends EventEmitter {
     
     // Set up event forwarding
     this.setupEventForwarding();
-    
-
-    // Forward task notification events
-    this.taskHandler.on('notification', (notification) => {
-      this.emit('notification', notification);
-    });
   }
 
   /**
@@ -123,7 +117,44 @@ class SwarmServiceSDK extends EventEmitter {
           break;
           
         case 'service.task.execute':
-          this.taskHandler.handleServiceTask(message as ServiceTaskExecuteMessage);
+          const taskMessage = message as ServiceTaskExecuteMessage;
+          const taskId = taskMessage.id;
+          const functionName = taskMessage.content.functionName;
+          
+          // Emit 'started' notification
+          const startNotification = {
+            taskId,
+            message: `Starting task: ${functionName}`,
+            type: 'started' as ServiceNotificationType,
+            data: {}
+          };
+          this.emit('notification', startNotification);
+          this.sendTaskNotification(taskId, startNotification.message, startNotification.type, startNotification.data);
+          
+          // Process the task
+          this.taskHandler.handleServiceTask(taskMessage)
+            .then(() => {
+              // Emit 'completed' notification
+              const completeNotification = {
+                taskId,
+                message: `Task completed: ${functionName}`,
+                type: 'completed' as ServiceNotificationType,
+                data: {}
+              };
+              this.emit('notification', completeNotification);
+              this.sendTaskNotification(taskId, completeNotification.message, completeNotification.type, completeNotification.data);
+            })
+            .catch((error) => {
+              // Emit 'failed' notification
+              const failedNotification = {
+                taskId,
+                message: `Task failed: ${error.message}`,
+                type: 'failed' as ServiceNotificationType,
+                data: { error: error.message }
+              };
+              this.emit('notification', failedNotification);
+              this.sendTaskNotification(taskId, failedNotification.message, failedNotification.type, failedNotification.data);
+            });
           break;
       }
     });
@@ -181,7 +212,20 @@ class SwarmServiceSDK extends EventEmitter {
     notificationType: ServiceNotificationType = 'info', 
     data: any = {}
   ): Promise<void> {
-    await this.taskHandler.sendTaskNotification(taskId, message, notificationType, data);
+    await this.webSocketManager.send({
+      id: uuidv4(),
+      type: 'service.task.notification',
+      content: {
+        serviceId: this.serviceId,
+        taskId,
+        notification: {
+          type: notificationType,
+          message,
+          timestamp: new Date().toISOString(),
+          data
+        }
+      }
+    } as BaseMessage);
   }
 
   /**
