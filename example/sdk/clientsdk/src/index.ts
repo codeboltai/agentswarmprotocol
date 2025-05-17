@@ -31,9 +31,10 @@ export class SwarmClientSDK extends EventEmitter {
     this.wsClient = new WebSocketClient(config);
     
     // Initialize managers with the WebSocketClient
-    this.taskManager = new TaskManager(this.wsClient);
     this.agentManager = new AgentManager(this.wsClient);
     this.mcpManager = new MCPManager(this.wsClient);
+    // Pass this instance to TaskManager for event listening
+    this.taskManager = new TaskManager(this.wsClient, this);
     
     // Set up event forwarding
     this.wsClient.on('connected', () => {
@@ -48,34 +49,65 @@ export class SwarmClientSDK extends EventEmitter {
       this.emit('error', error);
     });
     
-    // Forward events from WebSocketClient
-    this.wsClient.on('welcome', (content: any) => {
-      if (content.clientId) {
-        this.clientId = content.clientId;
-      }
-      this.emit('welcome', content);
-    });
+    // Set up central message handling
+    this.wsClient.on('message', this.handleMessage.bind(this));
+  }
+
+  /**
+   * Handle incoming messages from the orchestrator
+   * @param message - The received message
+   */
+  private handleMessage(message: any): void {
+    console.log(`SwarmClientSDK received message: ${JSON.stringify(message)}`);
     
-    // Set up event forwarding for task manager
-    this.taskManager.registerEventListeners();
-    this.taskManager.on('task-created', (data) => this.emit('task-created', data));
-    this.taskManager.on('task-status', (data) => this.emit('task-status', data));
-    this.taskManager.on('task-result', (data) => this.emit('task-result', data));
-    this.taskManager.on('task-notification', (data) => this.emit('task-notification', data));
+    // Emit the raw message for anyone who wants to listen
+    this.emit('raw-message', message);
     
-    // Set up event forwarding for agent manager
-    this.agentManager.registerEventListeners();
-    this.agentManager.on('agent-list', (data) => this.emit('agent-list', data));
-    
-    // Set up event forwarding for MCP manager
-    this.mcpManager.registerEventListeners();
-    this.mcpManager.on('mcp-server-list', (data) => this.emit('mcp-server-list', data));
-    this.mcpManager.on('mcp-tool-executed', (data) => this.emit('mcp-tool-executed', data));
-    
-    // Forward remaining events
-    this.wsClient.on('orchestrator-error', (error: any) => {
-      this.emit('orchestrator-error', error);
-    });
+    // Handle specific message types
+    switch (message.type) {
+      case 'orchestrator.welcome':
+        if (message.content && message.content.clientId) {
+          this.clientId = message.content.clientId;
+        }
+        this.emit('welcome', message.content);
+        break;
+        
+      case 'agent.list':
+        this.emit('agent-list', message.content.agents);
+        break;
+        
+      case 'mcp.server.list':
+        this.emit('mcp-server-list', message.content.servers);
+        break;
+        
+      case 'task.result':
+        this.emit('task-result', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
+        break;
+        
+      case 'task.status':
+        this.emit('task-status', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
+        break;
+        
+      case 'task.created':
+        this.emit('task-created', message.content);
+        break;
+        
+      case 'task.notification':
+        this.emit('task-notification', message.content);
+        break;
+        
+      case 'error':
+        this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
+        break;
+        
+      default:
+        console.log(`Unhandled message type: ${message.type}`);
+        break;
+    }
   }
 
   /**

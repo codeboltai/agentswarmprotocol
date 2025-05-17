@@ -1,30 +1,25 @@
-import { EventEmitter } from 'events';
 import { Task, TaskStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
+import { EventEmitter } from 'events';
+import { TaskRequestOptions } from '../types';
 
-/**
- * Task request options
- */
-export interface TaskRequestOptions {
-  /** Whether to wait for the task result */
-  waitForResult?: boolean;
-  /** Timeout in milliseconds */
-  timeout?: number;
-}
+
 
 /**
  * TaskManager - Handles task-related operations
  */
-export class TaskManager extends EventEmitter {
+export class TaskManager {
   private wsClient: WebSocketClient;
+  private sdk: EventEmitter;
 
   /**
    * Create a new TaskManager instance
    * @param wsClient - WebSocketClient instance
+   * @param sdk - SwarmClientSDK instance for event listening
    */
-  constructor(wsClient: WebSocketClient) {
-    super();
+  constructor(wsClient: WebSocketClient, sdk: EventEmitter) {
     this.wsClient = wsClient;
+    this.sdk = sdk;
   }
 
   /**
@@ -78,12 +73,13 @@ export class TaskManager extends EventEmitter {
       
       const cleanup = () => {
         clearTimeout(timeoutId);
-        this.removeListener('task-result', resultHandler);
-        this.removeListener('task-status', statusHandler);
+        this.sdk.removeListener('task-result', resultHandler);
+        this.sdk.removeListener('task-status', statusHandler);
       };
       
-      this.on('task-result', resultHandler);
-      this.on('task-status', statusHandler);
+      // Listen to events from the SDK instead of from this instance
+      this.sdk.on('task-result', resultHandler);
+      this.sdk.on('task-status', statusHandler);
     });
   }
 
@@ -101,26 +97,5 @@ export class TaskManager extends EventEmitter {
     });
     
     return response.content;
-  }
-
-  /**
-   * Register event listeners for task events
-   */
-  registerEventListeners(): void {
-    this.wsClient.on('task-created', (data: any) => {
-      this.emit('task-created', data);
-    });
-    
-    this.wsClient.on('task-status', (data: any) => {
-      this.emit('task-status', data);
-    });
-    
-    this.wsClient.on('task-result', (data: any) => {
-      this.emit('task-result', data);
-    });
-    
-    this.wsClient.on('task-notification', (data: any) => {
-      this.emit('task-notification', data);
-    });
   }
 } 
