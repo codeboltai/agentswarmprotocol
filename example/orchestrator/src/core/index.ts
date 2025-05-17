@@ -392,6 +392,16 @@ class Orchestrator {
       }
     });
 
+    // Handle client service list requests
+    this.eventBus.on('client.service.list', (filters: any, callback: Function) => {
+      try {
+        const services = this.services.getAllServices(filters);
+        callback(services);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
     // Handle client messages to agents
     this.eventBus.on('client.message.agent', async (message: any, targetAgentId: string, callback: Function) => {
       try {

@@ -141,6 +141,27 @@ class AgentServer {
           }
           break;
           
+        case 'service.list':
+          // Emit service list event
+          this.eventBus.emit('client.service.list', message.content?.filters || {}, (services: any) => {
+            if (services.error) {
+              this.sendError(ws, services.error, message.id);
+              return;
+            }
+            
+            // Send the result back to the agent
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'service.list.result',
+              content: {
+                services
+              },
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
         case 'service.request':
           // Emit service request event
           this.eventBus.emit('service.request', message, ws.id, (serviceResult: any) => {

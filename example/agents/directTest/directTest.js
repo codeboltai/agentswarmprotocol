@@ -99,11 +99,40 @@ async function runTests() {
       });
       console.log('Response:', response);
     });
+
+    // Test: Send a message and wait for response
+    await safeExecuteTest('Sending a message and waiting for response', async () => {
+      try {
+        const response = await agent.sendAndWaitForResponse({
+          type: 'ping',
+          content: { message: 'Testing send and wait' }
+        }, 5000);
+        console.log('Response received:', response);
+      } catch (error) {
+        if (error.message.includes('timeout')) {
+          console.log('Response timeout as expected');
+        } else {
+          throw error;
+        }
+      }
+    });
+    
+    // Test: Send a message during task execution
+    await safeExecuteTest('Sending a message during task execution', async () => {
+      // Create a mock task ID
+      const mockTaskId = 'test-task-' + Date.now();
+      agent.sendMessage(mockTaskId, { status: 'processing', progress: 50 });
+      console.log('Task message sent with ID:', mockTaskId);
+    });
     
     // Try to set status (may not be supported)
     await safeExecuteTest('Setting agent status', async () => {
       try {
         await agent.setStatus(AgentStatus.BUSY);
+        console.log('Status set to BUSY');
+        // Set back to AVAILABLE
+        await agent.setStatus(AgentStatus.AVAILABLE);
+        console.log('Status set back to AVAILABLE');
       } catch (error) {
         if (error.message.includes('Unsupported message type: agent.status')) {
           console.log('Note: agent.status message type not supported by the orchestrator');
@@ -119,6 +148,9 @@ async function runTests() {
       try {
         agents = await agent.getAgentList();
         console.log(`Found ${agents.length} agents`);
+        if (agents.length > 0) {
+          console.log('Sample agent:', agents[0]);
+        }
       } catch (error) {
         if (error.message.includes('Unsupported message type: agent.list')) {
           console.log('Note: agent.list message type not supported by the orchestrator');
@@ -134,6 +166,9 @@ async function runTests() {
       try {
         services = await agent.getServiceList();
         console.log(`Found ${services.length} services`);
+        if (services.length > 0) {
+          console.log('Sample service:', services[0]);
+        }
       } catch (error) {
         if (error.message.includes('Unsupported message type')) {
           console.log('Note: service.list message type not supported by the orchestrator');
@@ -142,6 +177,51 @@ async function runTests() {
         }
       }
     });
+
+    // Test: Execute a service
+    if (services.length > 0) {
+      const serviceName = services[0].name;
+      await safeExecuteTest(`Executing service ${serviceName}`, async () => {
+        try {
+          console.log(`Attempting to execute service ${serviceName}`);
+          const result = await agent.executeService(serviceName, { test: 'data' });
+          console.log('Service execution result:', result);
+        } catch (error) {
+          if (error.message.includes('Unsupported message type')) {
+            console.log('Note: service.request message type not supported by the orchestrator');
+          } else if (error.message.includes('Connection not found')) {
+            console.log(`Note: Service connection not available. Make sure the service is running and connected.`);
+          } else {
+            throw error;
+          }
+        }
+      });
+      
+      // Test: Execute a service task
+      await safeExecuteTest(`Executing service task for ${serviceName}`, async () => {
+        try {
+          // Ensure we're using a valid service ID that's currently connected
+          const serviceId = services[0].id || serviceName;
+          console.log(`Attempting to execute task on service ${serviceId}`);
+          
+          const result = await agent.executeServiceTask(
+            serviceId,
+            'testFunction',
+            { param1: 'value1' },
+            { timeout: 5000 }
+          );
+          console.log('Service task execution result:', result);
+        } catch (error) {
+          if (error.message.includes('Unsupported message type')) {
+            console.log('Note: service.task message type not supported by the orchestrator');
+          } else if (error.message.includes('Connection not found')) {
+            console.log(`Note: Service connection not available. Make sure the service is running and connected.`);
+          } else {
+            throw error;
+          }
+        }
+      });
+    }
     
     // Try to get MCP servers (may not be supported)
     let mcpServers = [];
@@ -149,6 +229,9 @@ async function runTests() {
       try {
         mcpServers = await agent.getMCPServers();
         console.log(`Found ${mcpServers.length} MCP servers`);
+        if (mcpServers.length > 0) {
+          console.log('Sample MCP server:', mcpServers[0]);
+        }
       } catch (error) {
         if (error.message.includes('Unsupported message type')) {
           console.log('Note: mcp.servers message type not supported by the orchestrator');
@@ -168,6 +251,9 @@ async function runTests() {
         try {
           mcpTools = await agent.getMCPTools(serverId);
           console.log(`Found ${mcpTools.length} MCP tools`);
+          if (mcpTools.length > 0) {
+            console.log('Sample MCP tool:', mcpTools[0]);
+          }
         } catch (error) {
           if (error.message.includes('Unsupported message type')) {
             console.log('Note: mcp.tools message type not supported by the orchestrator');
@@ -222,17 +308,30 @@ async function runTests() {
       const serviceName = services[0].name;
       await safeExecuteTest(`Requesting service ${serviceName}`, async () => {
         try {
+          console.log(`Attempting to request service ${serviceName}`);
           const result = await agent.requestService(serviceName, { test: 'data' });
           console.log('Service request result:', result);
         } catch (error) {
           if (error.message.includes('Unsupported message type')) {
             console.log('Note: service.request message type not supported by the orchestrator');
+          } else if (error.message.includes('Connection not found')) {
+            console.log(`Note: Service connection not available. Make sure the service is running and connected.`);
           } else {
             throw error;
           }
         }
       });
     }
+    
+    // Test: Force handling a message directly (for testing)
+    await safeExecuteTest('Handling a message directly', async () => {
+      agent.handleMessage({
+        id: 'test-' + Date.now(),
+        type: 'test.message',
+        content: { testData: 'Direct message handling test' }
+      });
+      console.log('Message handled directly');
+    });
     
     console.log('All tests completed!');
     
