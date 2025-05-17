@@ -380,68 +380,67 @@ export class WebSocketClient extends EventEmitter {
     const noTimeout = options.noTimeout || false;
     
     return new Promise((resolve, reject) => {
-      this.send(message)
-        .then(() => {
-          // If a specific event is provided with noTimeout, use event-based approach only
-          if (eventName && noTimeout) {
-            const eventHandler = (eventData: any) => {
-              // Check if this event is for our message ID
-              if (eventData && eventData.id === messageId) {
-                // Clean up
-                this.removeListener(eventName, eventHandler);
-                resolve(eventData);
-              }
-            };
-            
-            // Add the event listener
-            this.on(eventName, eventHandler);
-            return; // Skip pendingResponses logic entirely
+      let timeoutId: NodeJS.Timeout | null = null;
+      let eventHandler: ((data: any) => void) | null = null;
+      
+      // Setup event listener if needed
+      if (eventName) {
+        eventHandler = (eventData: any) => {
+          // Check if this event is for our message ID
+          if (eventData && eventData.id === messageId) {
+            cleanup();
+            resolve(eventData);
           }
-          
-          let timeoutId: NodeJS.Timeout | null = null;
-          
-          // If a specific event is provided (with timeout), listen for that event
-          if (eventName) {
-            const eventHandler = (eventData: any) => {
-              // Check if this event is for our message ID
-              if (eventData && eventData.id === messageId) {
-                // Clean up
-                this.removeListener(eventName, eventHandler);
-                if (timeoutId) {
-                  clearTimeout(timeoutId);
-                }
-                if (this.pendingResponses.has(messageId)) {
-                  this.pendingResponses.delete(messageId);
-                }
-                
-                resolve(eventData);
-              }
-            };
-            
-            // Add the event listener
-            this.on(eventName, eventHandler);
+        };
+        
+        // Add the event listener
+        this.on(eventName, eventHandler);
+      }
+      
+      // Create cleanup function
+      const cleanup = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        if (eventHandler && eventName) {
+          this.removeListener(eventName, eventHandler);
+        }
+        this.pendingResponses.delete(messageId);
+      };
+      
+      // Set timeout if not disabled
+      if (!noTimeout) {
+        timeoutId = setTimeout(() => {
+          if (eventHandler && eventName) {
+            this.removeListener(eventName, eventHandler);
           }
-          
-          // Set timeout
-          timeoutId = setTimeout(() => {
-            if (eventName) {
-              this.removeAllListeners(eventName);
-            }
-            
-            if (this.pendingResponses.has(messageId)) {
-              this.pendingResponses.delete(messageId);
-              reject(new Error(`Timeout waiting for response to message ${messageId}`));
-            }
-          }, timeout);
-          
-          // Store pending response
-          this.pendingResponses.set(messageId, {
-            resolve,
-            reject,
-            timeout: timeoutId
-          });
-        })
-        .catch(reject);
+          if (this.pendingResponses.has(messageId)) {
+            this.pendingResponses.delete(messageId);
+            reject(new Error(`Timeout waiting for response to message ${messageId}`));
+          }
+        }, timeout);
+      }
+      
+      // Only store in pendingResponses if we're not exclusively using event-based handling
+      if (!eventName || !noTimeout) {
+        this.pendingResponses.set(messageId, {
+          resolve: (data) => {
+            cleanup();
+            resolve(data);
+          },
+          reject: (error) => {
+            cleanup();
+            reject(error);
+          },
+          timeout: timeoutId || setTimeout(() => {}, 0) // Dummy timeout if none
+        });
+      }
+      
+      // Send the message
+      this.send(message).catch(error => {
+        cleanup();
+        reject(error);
+      });
     });
   }
   
