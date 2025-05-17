@@ -16,7 +16,6 @@ class WebSocketManager extends events_1.EventEmitter {
         this.ws = null;
         this.connected = false;
         this.connecting = false;
-        this.pendingResponses = new Map();
     }
     /**
      * Connect to the orchestrator
@@ -108,58 +107,10 @@ class WebSocketManager extends events_1.EventEmitter {
         });
     }
     /**
-     * Send a message and wait for a response
-     * @param message Message to send
-     * @param timeout Timeout in milliseconds
-     */
-    sendAndWaitForResponse(message, timeout = 30000) {
-        return new Promise((resolve, reject) => {
-            // Set up timeout
-            const timer = setTimeout(() => {
-                if (this.pendingResponses.has(message.id)) {
-                    this.pendingResponses.delete(message.id);
-                    reject(new Error(`Request timed out after ${timeout}ms`));
-                }
-            }, timeout);
-            // Store the pending response handlers
-            this.pendingResponses.set(message.id, { resolve, reject, timeout: timer });
-            // Send the message
-            this.send(message).catch(error => {
-                clearTimeout(timer);
-                this.pendingResponses.delete(message.id);
-                reject(error);
-            });
-        });
-    }
-    /**
      * Check if connected to the orchestrator
      */
     isConnected() {
         return this.connected;
-    }
-    /**
-     * Get the map of pending responses
-     */
-    getPendingResponses() {
-        return this.pendingResponses;
-    }
-    /**
-     * Handle response for a pending request
-     */
-    handleResponse(requestId, message, isError = false) {
-        if (this.pendingResponses.has(requestId)) {
-            const { resolve, reject, timeout } = this.pendingResponses.get(requestId);
-            clearTimeout(timeout);
-            this.pendingResponses.delete(requestId);
-            if (isError) {
-                reject(new Error(message.content ? message.content.error : 'Unknown error'));
-            }
-            else {
-                resolve(message);
-            }
-            return true;
-        }
-        return false;
     }
 }
 exports.WebSocketManager = WebSocketManager;

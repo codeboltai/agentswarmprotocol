@@ -1,13 +1,11 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { PendingResponse } from './types';
 
 export class WebSocketManager extends EventEmitter {
   private ws: WebSocket | null = null;
   private connected: boolean = false;
   private connecting: boolean = false;
-  private pendingResponses: Map<string, PendingResponse> = new Map();
 
   constructor(
     private orchestratorUrl: string,
@@ -114,32 +112,7 @@ export class WebSocketManager extends EventEmitter {
     });
   }
 
-  /**
-   * Send a message and wait for a response
-   * @param message Message to send
-   * @param timeout Timeout in milliseconds
-   */
-  sendAndWaitForResponse(message: BaseMessage, timeout = 30000): Promise<BaseMessage> {
-    return new Promise((resolve, reject) => {
-      // Set up timeout
-      const timer = setTimeout(() => {
-        if (this.pendingResponses.has(message.id)) {
-          this.pendingResponses.delete(message.id);
-          reject(new Error(`Request timed out after ${timeout}ms`));
-        }
-      }, timeout);
 
-      // Store the pending response handlers
-      this.pendingResponses.set(message.id, { resolve, reject, timeout: timer });
-
-      // Send the message
-      this.send(message).catch(error => {
-        clearTimeout(timer);
-        this.pendingResponses.delete(message.id);
-        reject(error);
-      });
-    });
-  }
 
   /**
    * Check if connected to the orchestrator
@@ -148,29 +121,5 @@ export class WebSocketManager extends EventEmitter {
     return this.connected;
   }
 
-  /**
-   * Get the map of pending responses
-   */
-  getPendingResponses(): Map<string, PendingResponse> {
-    return this.pendingResponses;
-  }
-
-  /**
-   * Handle response for a pending request
-   */
-  handleResponse(requestId: string, message: BaseMessage, isError: boolean = false): boolean {
-    if (this.pendingResponses.has(requestId)) {
-      const { resolve, reject, timeout } = this.pendingResponses.get(requestId)!;
-      clearTimeout(timeout);
-      this.pendingResponses.delete(requestId);
-      
-      if (isError) {
-        reject(new Error(message.content ? message.content.error : 'Unknown error'));
-      } else {
-        resolve(message);
-      }
-      return true;
-    }
-    return false;
-  }
+ 
 } 

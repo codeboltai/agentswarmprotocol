@@ -7,10 +7,7 @@ exports.SwarmServiceSDK = void 0;
 const events_1 = require("events");
 const uuid_1 = require("uuid");
 const WebSocketManager_1 = require("./core/WebSocketManager");
-const MessageHandler_1 = require("./handlers/MessageHandler");
 const TaskHandler_1 = require("./handlers/TaskHandler");
-const NotificationManager_1 = require("./services/NotificationManager");
-const StatusManager_1 = require("./services/StatusManager");
 class SwarmServiceSDK extends events_1.EventEmitter {
     constructor(config = {}) {
         super();
@@ -23,20 +20,9 @@ class SwarmServiceSDK extends events_1.EventEmitter {
         this.logger = config.logger || console;
         // Initialize modules
         this.webSocketManager = new WebSocketManager_1.WebSocketManager(config.orchestratorUrl || 'ws://localhost:3002', config.autoReconnect !== false, config.reconnectInterval || 5000, this.logger);
-        this.messageHandler = new MessageHandler_1.MessageHandler(this.webSocketManager, this.logger);
         this.taskHandler = new TaskHandler_1.TaskHandler(this.webSocketManager, this.serviceId, this.logger);
-        this.notificationManager = new NotificationManager_1.NotificationManager(this.webSocketManager, this.serviceId, this.logger);
-        this.statusManager = new StatusManager_1.StatusManager(this.webSocketManager, this.serviceId, this.logger);
         // Set up event forwarding
         this.setupEventForwarding();
-        // Handle special case for task execution messages
-        this.messageHandler.on('service.task.execute', (content, message) => {
-            this.taskHandler.handleServiceTask(message);
-        });
-        // Forward task notification events
-        this.taskHandler.on('notification', (notification) => {
-            this.emit('notification', notification);
-        });
     }
     /**
      * Set up event forwarding from the modules to this SDK instance
@@ -45,7 +31,7 @@ class SwarmServiceSDK extends events_1.EventEmitter {
         // Forward WebSocketManager events
         this.webSocketManager.on('connected', () => {
             // Register service with orchestrator
-            this.send({
+            this.webSocketManager.send({
                 type: 'service.register',
                 content: {
                     name: this.name,
@@ -67,11 +53,53 @@ class SwarmServiceSDK extends events_1.EventEmitter {
         });
         this.webSocketManager.on('disconnected', () => this.emit('disconnected'));
         this.webSocketManager.on('error', (error) => this.emit('error', error));
-        // Forward MessageHandler events
-        this.messageHandler.on('welcome', (content) => this.emit('welcome', content));
-        this.messageHandler.on('registered', (content) => this.emit('registered', content));
-        this.messageHandler.on('notification-received', (content) => this.emit('notification-received', content));
+        this.webSocketManager.on('message', (message) => {
+            // Emit for the specific message type
+            this.emit(message.type, message.content, message);
+            // For standard message types
+            switch (message.type) {
+                case 'orchestrator.welcome':
+                    this.emit('welcome', message.content);
+                    break;
+                case 'service.registered':
+                    this.emit('registered', message.content);
+                    break;
+                case 'notification.received':
+                    this.emit('notification-received', message.content);
+                    break;
+                case 'ping':
+                    this.webSocketManager.send({ type: 'pong', id: message.id, content: {} });
+                    break;
+                case 'error':
+                    this.emit('error', new Error(message.content ? message.content.error : 'Unknown error'));
+                    break;
+                case 'service.task.execute':
+                    const taskMessage = message;
+                    const taskId = taskMessage.id;
+                    const functionName = taskMessage.content.functionName;
+                    // Emit 'started' notification
+                    const startNotification = { taskId, message: `Starting task: ${functionName}`, type: 'started', data: {} };
+                    this.emit('notification', startNotification);
+                    this.sendTaskNotification(taskId, startNotification.message, startNotification.type, startNotification.data);
+                    // Process the task
+                    this.taskHandler.handleServiceTask(taskMessage)
+                        .then(() => {
+                        // Emit 'completed' notification
+                        const completeNotification = { taskId, message: `Task completed: ${functionName}`, type: 'completed', data: {} };
+                        this.emit('notification', completeNotification);
+                        this.sendTaskNotification(taskId, completeNotification.message, completeNotification.type, completeNotification.data);
+                    })
+                        .catch((error) => {
+                        // Emit 'failed' notification
+                        const failedNotification = { taskId, message: `Task failed: ${error.message}`, type: 'failed', data: { error: error.message } };
+                        this.emit('notification', failedNotification);
+                        this.sendTaskNotification(taskId, failedNotification.message, failedNotification.type, failedNotification.data);
+                    });
+                    break;
+            }
+        });
     }
+    //OK
     /**
      * Connect to the orchestrator
      * @returns {Promise} Resolves when connected
@@ -79,6 +107,7 @@ class SwarmServiceSDK extends events_1.EventEmitter {
     connect() {
         return this.webSocketManager.connect().then(() => this);
     }
+    //OK
     /**
      * Disconnect from the orchestrator
      */
@@ -86,6 +115,7 @@ class SwarmServiceSDK extends events_1.EventEmitter {
         this.webSocketManager.disconnect();
         return this;
     }
+    //OK
     /**
      * Register a task handler (new API style)
      * @param {string} taskName Name of the task to handle
@@ -95,76 +125,83 @@ class SwarmServiceSDK extends events_1.EventEmitter {
         this.taskHandler.onTask(taskName, handler);
         return this;
     }
-    /**
-     * Register a function handler (legacy API, kept for compatibility)
-     * @param {string} functionName Name of the function to handle
-     * @param {Function} handler Function to call
-     * @deprecated Use onTask instead
-     */
-    registerFunction(functionName, handler) {
-        return this.onTask(functionName, handler);
-    }
-    /**
-     * Handle incoming messages (exposed mainly for testing)
-     * @param {BaseMessage} message The message to handle
-     */
-    handleMessage(message) {
-        this.messageHandler.handleMessage(message);
-    }
-    /**
-     * Send a task result back to the orchestrator
-     * @param taskId ID of the task
-     * @param result Result data
-     */
-    sendTaskResult(taskId, result) {
-        this.taskHandler.sendTaskResult(taskId, result);
-    }
-    /**
-     * Send a task notification
-     * @param taskId ID of the task
-     * @param message Message content
-     * @param notificationType Type of notification
-     * @param data Additional data
-     */
-    async sendTaskNotification(taskId, message, notificationType = 'info', data = {}) {
-        await this.taskHandler.sendTaskNotification(taskId, message, notificationType, data);
-    }
-    /**
-     * Send a general notification to clients
-     * @param notification Notification data
-     */
-    async notify(notification) {
-        await this.notificationManager.notify(notification);
-    }
-    /**
-     * Send a notification to the orchestrator
-     * @param notification Notification data
-     */
-    async sendNotification(notification) {
-        await this.notificationManager.sendNotification(notification);
-    }
-    /**
-     * Send a message to the orchestrator
-     * @param message Message to send
-     */
-    send(message) {
-        return this.webSocketManager.send(message);
-    }
-    /**
-     * Send a message and wait for a response
-     * @param message Message to send
-     * @param timeout Timeout in milliseconds
-     */
-    sendAndWaitForResponse(message, timeout = 30000) {
-        return this.webSocketManager.sendAndWaitForResponse(message, timeout);
-    }
+    //Ok
     /**
      * Set service status
      * @param status New status
      * @param message Status message
      */
     async setStatus(status, message = '') {
-        await this.statusManager.setStatus(status, message);
+        await this.webSocketManager.send({
+            id: (0, uuid_1.v4)(),
+            type: 'service.status',
+            content: {
+                serviceId: this.serviceId,
+                status,
+                message,
+                timestamp: new Date().toISOString()
+            }
+        });
+    }
+    //OK
+    /**
+   * Send a task notification
+   * @param taskId ID of the task
+   * @param message Message content
+   * @param notificationType Type of notification
+   * @param data Additional data
+   */
+    async sendTaskNotification(taskId, message, notificationType = 'info', data = {}) {
+        await this.webSocketManager.send({
+            id: (0, uuid_1.v4)(),
+            type: 'service.task.notification',
+            content: {
+                serviceId: this.serviceId,
+                taskId,
+                notification: {
+                    type: notificationType,
+                    message,
+                    timestamp: new Date().toISOString(),
+                    data
+                }
+            }
+        });
+    }
+    //OK
+    /**
+     * Send a general notification to clients
+     * @param notification Notification data
+     */
+    async sendClientInfoNotification(notification) {
+        if (!notification.timestamp) {
+            notification.timestamp = new Date().toISOString();
+        }
+        if (!notification.type) {
+            notification.type = 'info';
+        }
+        await this.webSocketManager.send({
+            id: (0, uuid_1.v4)(),
+            type: 'service.notification',
+            content: {
+                serviceId: this.serviceId,
+                notification
+            }
+        });
+    }
+    //Ok
+    /**
+     * Send a notification to the orchestrator
+     * @param notification Notification data
+     */
+    async sendOrchestratorNotification(notification) {
+        await this.webSocketManager.send({
+            id: (0, uuid_1.v4)(),
+            type: 'service.notification',
+            content: {
+                serviceId: this.serviceId,
+                notification
+            }
+        });
     }
 }
 exports.SwarmServiceSDK = SwarmServiceSDK;

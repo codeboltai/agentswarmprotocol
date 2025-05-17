@@ -1,7 +1,6 @@
-import { EventEmitter } from 'events';
 import { WebSocketManager } from '../core/WebSocketManager';
-import { ServiceTaskExecuteMessage, TaskHandler as TaskHandlerType, ServiceNotificationType } from '../core/types';
-export declare class TaskHandler extends EventEmitter {
+import { ServiceTaskExecuteMessage, TaskHandler as TaskHandlerType } from '../core/types';
+export declare class TaskHandler {
     private webSocketManager;
     private serviceId;
     private logger;
@@ -14,13 +13,6 @@ export declare class TaskHandler extends EventEmitter {
      */
     onTask(taskName: string, handler: TaskHandlerType): this;
     /**
-     * Register a function handler (legacy API, kept for compatibility)
-     * @param {string} functionName Name of the function to handle
-     * @param {Function} handler Function to call
-     * @deprecated Use onTask instead
-     */
-    registerFunction(functionName: string, handler: TaskHandlerType): this;
-    /**
      * Handle a service task
      * @param {ServiceTaskExecuteMessage} message - The task message to handle
      */
@@ -31,12 +23,4 @@ export declare class TaskHandler extends EventEmitter {
      * @param result Result data
      */
     sendTaskResult(taskId: string, result: any): void;
-    /**
-     * Send a task notification
-     * @param taskId ID of the task
-     * @param message Message content
-     * @param notificationType Type of notification
-     * @param data Additional data
-     */
-    sendTaskNotification(taskId: string, message: string, notificationType?: ServiceNotificationType, data?: any): Promise<void>;
 }
