@@ -98,6 +98,14 @@ export class SwarmClientSDK extends EventEmitter {
       case 'task.created':
         this.emit('task-created', message.content);
         break;
+      
+      case 'task.childtask.created':
+        this.emit('task.childtask.created', message.content);
+        break;
+      
+      case 'task.childtask.status':
+        this.emit('task.childtask.status', message.content);
+        break;
         
       case 'task.notification':
         this.emit('task-notification', message.content);
@@ -121,9 +129,6 @@ export class SwarmClientSDK extends EventEmitter {
     }
   }
 
-  
-
-
   /**
    * Connect to the orchestrator
    * @returns Promise that resolves when connected
@@ -138,8 +143,6 @@ export class SwarmClientSDK extends EventEmitter {
   disconnect(): void {
     this.wsClient.disconnect();
     this.wsClient.clearPendingResponses();
-    
- 
   }
 
   /**
