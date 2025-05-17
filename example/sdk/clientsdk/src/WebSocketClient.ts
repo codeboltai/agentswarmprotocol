@@ -2,6 +2,7 @@
 // Using dynamic imports for better cross-environment compatibility
 import { EventEmitter } from 'events';
 import type * as WebSocketTypes from 'ws';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Configuration options for WebSocketClient
@@ -15,6 +16,17 @@ export interface WebSocketClientConfig {
   reconnectInterval?: number;
   /** Force the use of browser WebSocket implementation */
   forceBrowserWebSocket?: boolean;
+  /** Default timeout for requests in milliseconds */
+  defaultTimeout?: number;
+}
+
+/**
+ * Pending response entry type
+ */
+interface PendingResponse {
+  resolve: (value: any) => void;
+  reject: (reason?: any) => void;
+  timeout: NodeJS.Timeout;
 }
 
 /**
@@ -55,6 +67,8 @@ export class WebSocketClient extends EventEmitter {
   private ws: WebSocketTypes.WebSocket | WebSocket | null;
   private forceBrowserWebSocket: boolean;
   private isNodeEnvironment: boolean;
+  private defaultTimeout: number;
+  private pendingResponses: Map<string, PendingResponse>;
 
   /**
    * Create a new WebSocketClient instance
@@ -72,10 +86,15 @@ export class WebSocketClient extends EventEmitter {
     this.orchestratorUrl = config.orchestratorUrl || defaultUrl;
     this.autoReconnect = config.autoReconnect !== false;
     this.reconnectInterval = config.reconnectInterval || 5000;
+    this.defaultTimeout = config.defaultTimeout || 30000;
     this.connected = false;
     this.clientId = null;
     this.ws = null;
     this.forceBrowserWebSocket = config.forceBrowserWebSocket || false;
+    this.pendingResponses = new Map();
+    
+    // Set up message handling for responses
+    this.on('message', this.handleMessage.bind(this));
   }
 
   /**
@@ -283,5 +302,124 @@ export class WebSocketClient extends EventEmitter {
    */
   setClientId(clientId: string): void {
     this.clientId = clientId;
+  }
+
+  /**
+   * Handle incoming messages from the orchestrator
+   * @param message - The received message
+   */
+  private async handleMessage(message: any): Promise<void> {
+    // Check for pending responses
+    if (message.id && this.pendingResponses.has(message.id)) {
+      const { resolve, reject, timeout } = this.pendingResponses.get(message.id)!;
+      clearTimeout(timeout);
+      this.pendingResponses.delete(message.id);
+      
+      if (message.type === 'error' || (message.content && message.content.error)) {
+        reject(new Error(message.content ? message.content.error : 'Unknown error'));
+      } else {
+        console.log(`Resolved pending response for message ID: ${message.id}`);
+        resolve(message);
+      }
+      return;
+    }
+    
+    // Emit specific message types for components to listen to
+    switch (message.type) {
+      case 'orchestrator.welcome':
+        if (message.content && message.content.clientId) {
+          this.clientId = message.content.clientId;
+        }
+        this.emit('welcome', message.content);
+        break;
+        
+      case 'agent.list':
+        this.emit('agent-list', message.content.agents);
+        break;
+        
+      case 'mcp.server.list':
+        this.emit('mcp-server-list', message.content.servers);
+        break;
+        
+      case 'task.result':
+        this.emit('task-result', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
+        break;
+        
+      case 'task.status':
+        this.emit('task-status', message.content);
+        // Also emit task.update for backward compatibility with UI
+        this.emit('task.update', message.content);
+        break;
+        
+      case 'task.created':
+        this.emit('task-created', message.content);
+        break;
+        
+      case 'task.notification':
+        this.emit('task-notification', message.content);
+        break;
+        
+      case 'error':
+        this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
+        break;
+    }
+  }
+
+  /**
+   * Send a request message and wait for a response
+   * @param message - The message to send
+   * @param options - Additional options
+   * @returns The response message
+   */
+  async sendRequest(message: any, options: { timeout?: number } = {}): Promise<any> {
+    if (!this.connected) {
+      throw new Error('Not connected to orchestrator');
+    }
+    
+    // Set message ID if not set
+    if (!message.id) {
+      message.id = uuidv4();
+    }
+    
+    // Set timestamp if not set
+    if (!message.timestamp) {
+      message.timestamp = new Date().toISOString();
+    }
+    
+    const timeout = options.timeout || this.defaultTimeout;
+    const messageId = message.id;
+    
+    return new Promise((resolve, reject) => {
+      this.send(message)
+        .then(() => {
+          // Set timeout
+          const timeoutId = setTimeout(() => {
+            if (this.pendingResponses.has(messageId)) {
+              this.pendingResponses.delete(messageId);
+              reject(new Error(`Timeout waiting for response to message ${messageId}`));
+            }
+          }, timeout);
+          
+          // Store pending response
+          this.pendingResponses.set(messageId, {
+            resolve,
+            reject,
+            timeout: timeoutId
+          });
+        })
+        .catch(reject);
+    });
+  }
+  
+  /**
+   * Clear all pending responses
+   */
+  clearPendingResponses(): void {
+    for (const [_, { timeout }] of this.pendingResponses.entries()) {
+      clearTimeout(timeout);
+    }
+    this.pendingResponses.clear();
   }
 } 

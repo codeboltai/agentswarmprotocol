@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { Task, TaskStatus } from '@agentswarmprotocol/types/common';
+import { WebSocketClient } from './WebSocketClient';
 
 /**
  * Task request options
@@ -15,15 +16,15 @@ export interface TaskRequestOptions {
  * TaskManager - Handles task-related operations
  */
 export class TaskManager extends EventEmitter {
-  private sendRequest: (message: any) => Promise<any>;
+  private wsClient: WebSocketClient;
 
   /**
    * Create a new TaskManager instance
-   * @param sendRequest - Function to send requests
+   * @param wsClient - WebSocketClient instance
    */
-  constructor(sendRequest: (message: any) => Promise<any>) {
+  constructor(wsClient: WebSocketClient) {
     super();
-    this.sendRequest = sendRequest;
+    this.wsClient = wsClient;
   }
 
   /**
@@ -40,7 +41,7 @@ export class TaskManager extends EventEmitter {
     console.log(`Sending task to agent ${agentName}`);
     
     // Create task
-    const response = await this.sendRequest({
+    const response = await this.wsClient.sendRequest({
       type: 'task.create',
       content: {
         agentName,
@@ -92,7 +93,7 @@ export class TaskManager extends EventEmitter {
    * @returns Task status
    */
   async getTaskStatus(taskId: string): Promise<{ status: TaskStatus; result?: any }> {
-    const response = await this.sendRequest({
+    const response = await this.wsClient.sendRequest({
       type: 'task.status',
       content: {
         taskId
@@ -104,22 +105,21 @@ export class TaskManager extends EventEmitter {
 
   /**
    * Register event listeners for task events
-   * @param emitter - Event emitter to listen to
    */
-  registerEventListeners(emitter: EventEmitter): void {
-    emitter.on('task-created', (data: any) => {
+  registerEventListeners(): void {
+    this.wsClient.on('task-created', (data: any) => {
       this.emit('task-created', data);
     });
     
-    emitter.on('task-status', (data: any) => {
+    this.wsClient.on('task-status', (data: any) => {
       this.emit('task-status', data);
     });
     
-    emitter.on('task-result', (data: any) => {
+    this.wsClient.on('task-result', (data: any) => {
       this.emit('task-result', data);
     });
     
-    emitter.on('task-notification', (data: any) => {
+    this.wsClient.on('task-notification', (data: any) => {
       this.emit('task-notification', data);
     });
   }

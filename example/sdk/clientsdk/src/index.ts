@@ -1,10 +1,8 @@
 import { EventEmitter } from 'events';
-import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { ClientMessages } from '@agentswarmprotocol/types/messages';
 
 import { WebSocketClient, WebSocketClientConfig } from './WebSocketClient';
-import { MessageHandler } from './MessageHandler';
 import { TaskManager, TaskRequestOptions } from './TaskManager';
 import { AgentManager, AgentFilters } from './AgentManager';
 import { MCPManager, MCPServerFilters } from './MCPManager';
@@ -23,8 +21,6 @@ export interface SwarmClientSDKConfig extends WebSocketClientConfig {
  */
 export class SwarmClientSDK extends EventEmitter {
   private wsClient: WebSocketClient;
-  private messageHandler: MessageHandler;
-  private defaultTimeout: number;
   private clientId: string | null = null;
   
   private agentManager: AgentManager;
@@ -38,24 +34,15 @@ export class SwarmClientSDK extends EventEmitter {
   constructor(config: SwarmClientSDKConfig = {}) {
     super();
     
-    this.defaultTimeout = config.defaultTimeout || 30000;
-    
     // Initialize WebSocket client
     this.wsClient = new WebSocketClient(config);
     
-    // Initialize message handler
-    this.messageHandler = new MessageHandler();
-    
-    // Initialize managers
-    this.taskManager = new TaskManager(this.sendRequest.bind(this));
-    this.agentManager = new AgentManager(this.sendRequest.bind(this));
-    this.mcpManager = new MCPManager(this.sendRequest.bind(this));
+    // Initialize managers with the WebSocketClient
+    this.taskManager = new TaskManager(this.wsClient);
+    this.agentManager = new AgentManager(this.wsClient);
+    this.mcpManager = new MCPManager(this.wsClient);
     
     // Set up event forwarding
-    this.wsClient.on('message', async (message: any) => {
-      await this.messageHandler.handleMessage(message);
-    });
-    
     this.wsClient.on('connected', () => {
       this.emit('connected');
     });
@@ -68,33 +55,32 @@ export class SwarmClientSDK extends EventEmitter {
       this.emit('error', error);
     });
     
-    // Forward events from message handler
-    this.messageHandler.on('welcome', (content: any) => {
+    // Forward events from WebSocketClient
+    this.wsClient.on('welcome', (content: any) => {
       if (content.clientId) {
         this.clientId = content.clientId;
-        this.wsClient.setClientId(content.clientId);
       }
       this.emit('welcome', content);
     });
     
     // Set up event forwarding for task manager
-    this.taskManager.registerEventListeners(this.messageHandler);
+    this.taskManager.registerEventListeners();
     this.taskManager.on('task-created', (data) => this.emit('task-created', data));
     this.taskManager.on('task-status', (data) => this.emit('task-status', data));
     this.taskManager.on('task-result', (data) => this.emit('task-result', data));
     this.taskManager.on('task-notification', (data) => this.emit('task-notification', data));
     
     // Set up event forwarding for agent manager
-    this.agentManager.registerEventListeners(this.messageHandler);
+    this.agentManager.registerEventListeners();
     this.agentManager.on('agent-list', (data) => this.emit('agent-list', data));
     
     // Set up event forwarding for MCP manager
-    this.mcpManager.registerEventListeners(this.messageHandler);
+    this.mcpManager.registerEventListeners();
     this.mcpManager.on('mcp-server-list', (data) => this.emit('mcp-server-list', data));
     this.mcpManager.on('mcp-tool-executed', (data) => this.emit('mcp-tool-executed', data));
     
     // Forward remaining events
-    this.messageHandler.on('orchestrator-error', (error: any) => {
+    this.wsClient.on('orchestrator-error', (error: any) => {
       this.emit('orchestrator-error', error);
     });
   }
@@ -112,7 +98,7 @@ export class SwarmClientSDK extends EventEmitter {
    */
   disconnect(): void {
     this.wsClient.disconnect();
-    this.messageHandler.clearPendingResponses();
+    this.wsClient.clearPendingResponses();
   }
 
   /**
@@ -138,22 +124,7 @@ export class SwarmClientSDK extends EventEmitter {
    * @returns The response message
    */
   async sendRequest(message: Partial<BaseMessage>, options: { timeout?: number } = {}): Promise<any> {
-    // Set message ID if not set
-    if (!message.id) {
-      message.id = uuidv4();
-    }
-    
-    // Set timestamp if not set
-    if (!message.timestamp) {
-      message.timestamp = new Date().toISOString();
-    }
-    
-    // Wait for response
-    return this.messageHandler.waitForResponse(
-      message,
-      (msg: any) => this.wsClient.send(msg),
-      { timeout: options.timeout || this.defaultTimeout }
-    );
+    return this.wsClient.sendRequest(message, options);
   }
 
   /**
@@ -203,4 +174,14 @@ export class SwarmClientSDK extends EventEmitter {
     return this.mcpManager.getMCPServerTools(serverId);
   }
 
+  /**
+   * Execute a tool on an MCP server
+   * @param serverId - ID of the server to execute the tool on
+   * @param toolName - Name of the tool to execute
+   * @param parameters - Tool parameters
+   * @returns Tool execution result
+   */
+  async executeMCPTool(serverId: string, toolName: string, parameters: any): Promise<any> {
+    return this.mcpManager.executeMCPTool(serverId, toolName, parameters);
+  }
 } 

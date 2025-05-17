@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { AgentStatus, Agent as AgentType } from '@agentswarmprotocol/types/common';
+import { WebSocketClient } from './WebSocketClient';
 
 /**
  * Agent interface for agent data returned from the orchestrator
@@ -33,15 +34,15 @@ export interface AgentFilters {
  * AgentManager - Handles agent-related operations
  */
 export class AgentManager extends EventEmitter {
-  private sendRequest: (message: any) => Promise<any>;
+  private wsClient: WebSocketClient;
 
   /**
    * Create a new AgentManager instance
-   * @param sendRequest - Function to send requests
+   * @param wsClient - WebSocketClient instance
    */
-  constructor(sendRequest: (message: any) => Promise<any>) {
+  constructor(wsClient: WebSocketClient) {
     super();
-    this.sendRequest = sendRequest;
+    this.wsClient = wsClient;
   }
 
   /**
@@ -50,7 +51,7 @@ export class AgentManager extends EventEmitter {
    * @returns Array of agent objects
    */
   async getAgentsList(filters: AgentFilters = {}): Promise<AgentType[]> {
-    const response = await this.sendRequest({
+    const response = await this.wsClient.sendRequest({
       type: 'agent.list',
       content: { filters }
     });
@@ -60,10 +61,9 @@ export class AgentManager extends EventEmitter {
 
   /**
    * Register event listeners for agent events
-   * @param emitter - Event emitter to listen to
    */
-  registerEventListeners(emitter: EventEmitter): void {
-    emitter.on('agent-list', (agents: AgentType[]) => {
+  registerEventListeners(): void {
+    this.wsClient.on('agent-list', (agents: AgentType[]) => {
       this.emit('agent-list', agents);
     });
   }

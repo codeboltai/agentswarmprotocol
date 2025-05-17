@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { MCPServer, MCPTool } from '@agentswarmprotocol/types/common';
+import { WebSocketClient } from './WebSocketClient';
 
 /**
  * MCP server filter options
@@ -17,15 +18,15 @@ export interface MCPServerFilters {
  * MCPManager - Handles MCP-related operations
  */
 export class MCPManager extends EventEmitter {
-  private sendRequest: (message: any) => Promise<any>;
+  private wsClient: WebSocketClient;
 
   /**
    * Create a new MCPManager instance
-   * @param sendRequest - Function to send requests
+   * @param wsClient - WebSocketClient instance
    */
-  constructor(sendRequest: (message: any) => Promise<any>) {
+  constructor(wsClient: WebSocketClient) {
     super();
-    this.sendRequest = sendRequest;
+    this.wsClient = wsClient;
   }
 
   /**
@@ -34,7 +35,7 @@ export class MCPManager extends EventEmitter {
    * @returns List of MCP servers
    */
   async listMCPServers(filters: MCPServerFilters = {}): Promise<MCPServer[]> {
-    const response = await this.sendRequest({
+    const response = await this.wsClient.sendRequest({
       type: 'mcp.server.list',
       content: { filters }
     });
@@ -48,7 +49,7 @@ export class MCPManager extends EventEmitter {
    * @returns List of tools
    */
   async getMCPServerTools(serverId: string): Promise<MCPTool[]> {
-    const response = await this.sendRequest({
+    const response = await this.wsClient.sendRequest({
       type: 'mcp.server.tools',
       content: {
         serverId
@@ -58,19 +59,36 @@ export class MCPManager extends EventEmitter {
     return response.content.tools;
   }
 
-
+  /**
+   * Execute a tool on an MCP server
+   * @param serverId - ID of the server to execute the tool on
+   * @param toolName - Name of the tool to execute
+   * @param parameters - Tool parameters
+   * @returns Tool execution result
+   */
+  async executeMCPTool(serverId: string, toolName: string, parameters: any): Promise<any> {
+    const response = await this.wsClient.sendRequest({
+      type: 'mcp.tool.execute',
+      content: {
+        serverId,
+        toolName,
+        parameters
+      }
+    });
+    
+    return response.content.result;
+  }
 
   /**
    * Register event listeners for MCP events
-   * @param emitter - Event emitter to listen to
    */
-  registerEventListeners(emitter: EventEmitter): void {
-    emitter.on('mcp-server-list', (servers: MCPServer[]) => {
+  registerEventListeners(): void {
+    this.wsClient.on('mcp-server-list', (servers: MCPServer[]) => {
       console.log('MCP Manager handling mcp-server-list event with servers:', JSON.stringify(servers));
       this.emit('mcp-server-list', servers);
     });
     
-    emitter.on('mcp-tool-executed', (result: any) => {
+    this.wsClient.on('mcp-tool-executed', (result: any) => {
       this.emit('mcp-tool-executed', result);
     });
   }
