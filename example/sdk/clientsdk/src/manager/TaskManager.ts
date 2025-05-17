@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Task, TaskStatus } from '@agentswarmprotocol/types/common';
-import { WebSocketClient } from './WebSocketClient';
+import { WebSocketClient } from '../service/WebSocketClient';
 
 /**
  * Task request options
