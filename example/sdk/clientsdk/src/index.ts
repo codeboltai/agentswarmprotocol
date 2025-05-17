@@ -4,8 +4,9 @@ import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 
 import { WebSocketClient } from './service/WebSocketClient';
 import { TaskManager, TaskRequestOptions } from './manager/TaskManager';
-import { AgentManager, AgentFilters } from './manager/AgentManager';
+import { AgentManager } from './manager/AgentManager';
 import { MCPManager, MCPServerFilters } from './manager/MCPManager';
+import { AgentFilters } from './types';
 
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol

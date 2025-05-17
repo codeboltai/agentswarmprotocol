@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { MCPServer, MCPTool } from '@agentswarmprotocol/types/common';
-import { WebSocketClient } from './WebSocketClient';
+import { WebSocketClient } from '../service/WebSocketClient';
 
 /**
  * MCP server filter options
