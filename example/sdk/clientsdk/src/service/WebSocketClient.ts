@@ -348,16 +348,32 @@ export class WebSocketClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.send(message)
         .then(() => {
+          // If a specific event is provided with noTimeout, use event-based approach only
+          if (eventName && noTimeout) {
+            const eventHandler = (eventData: any) => {
+              // Check if this event is for our message ID
+              if (eventData && eventData.id === messageId) {
+                // Clean up
+                this.removeListener(eventName, eventHandler);
+                resolve(eventData);
+              }
+            };
+            
+            // Add the event listener
+            this.on(eventName, eventHandler);
+            return; // Skip pendingResponses logic entirely
+          }
+          
           let timeoutId: NodeJS.Timeout | null = null;
           
-          // If a specific event is provided, listen for that event
+          // If a specific event is provided (with timeout), listen for that event
           if (eventName) {
             const eventHandler = (eventData: any) => {
               // Check if this event is for our message ID
               if (eventData && eventData.id === messageId) {
                 // Clean up
                 this.removeListener(eventName, eventHandler);
-                if (timeoutId && !noTimeout) {
+                if (timeoutId) {
                   clearTimeout(timeoutId);
                 }
                 if (this.pendingResponses.has(messageId)) {
@@ -372,25 +388,23 @@ export class WebSocketClient extends EventEmitter {
             this.on(eventName, eventHandler);
           }
           
-          // Set timeout if not disabled
-          if (!noTimeout) {
-            timeoutId = setTimeout(() => {
-              if (eventName) {
-                this.removeAllListeners(eventName);
-              }
-              
-              if (this.pendingResponses.has(messageId)) {
-                this.pendingResponses.delete(messageId);
-                reject(new Error(`Timeout waiting for response to message ${messageId}`));
-              }
-            }, timeout);
-          }
+          // Set timeout
+          timeoutId = setTimeout(() => {
+            if (eventName) {
+              this.removeAllListeners(eventName);
+            }
+            
+            if (this.pendingResponses.has(messageId)) {
+              this.pendingResponses.delete(messageId);
+              reject(new Error(`Timeout waiting for response to message ${messageId}`));
+            }
+          }, timeout);
           
           // Store pending response
           this.pendingResponses.set(messageId, {
             resolve,
             reject,
-            timeout: timeoutId || setTimeout(() => {}, 0) // Use a dummy timeout if no real timeout
+            timeout: timeoutId
           });
         })
         .catch(reject);
