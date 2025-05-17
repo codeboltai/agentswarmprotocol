@@ -12,7 +12,6 @@ import {
   ServiceNotificationType
 } from './core/types';
 import { WebSocketManager } from './core/WebSocketManager';
-import { MessageHandler } from './handlers/MessageHandler';
 import { TaskHandler } from './handlers/TaskHandler';
 import { NotificationManager } from './services/NotificationManager';
 import { StatusManager } from './services/StatusManager';
@@ -28,7 +27,6 @@ class SwarmServiceSDK extends EventEmitter {
 
   // Module instances
   private webSocketManager: WebSocketManager;
-  private messageHandler: MessageHandler;
   private taskHandler: TaskHandler;
   private notificationManager: NotificationManager;
   private statusManager: StatusManager;
@@ -52,7 +50,6 @@ class SwarmServiceSDK extends EventEmitter {
       this.logger
     );
     
-    this.messageHandler = new MessageHandler(this.webSocketManager, this.logger);
     this.taskHandler = new TaskHandler(this.webSocketManager, this.serviceId, this.logger);
     this.notificationManager = new NotificationManager(this.webSocketManager, this.serviceId, this.logger);
     this.statusManager = new StatusManager(this.webSocketManager, this.serviceId, this.logger);
@@ -60,10 +57,6 @@ class SwarmServiceSDK extends EventEmitter {
     // Set up event forwarding
     this.setupEventForwarding();
     
-    // Handle special case for task execution messages
-    this.messageHandler.on('service.task.execute', (content, message) => {
-      this.taskHandler.handleServiceTask(message as ServiceTaskExecuteMessage);
-    });
 
     // Forward task notification events
     this.taskHandler.on('notification', (notification) => {
@@ -102,11 +95,38 @@ class SwarmServiceSDK extends EventEmitter {
     
     this.webSocketManager.on('disconnected', () => this.emit('disconnected'));
     this.webSocketManager.on('error', (error) => this.emit('error', error));
-    
-    // Forward MessageHandler events
-    this.messageHandler.on('welcome', (content) => this.emit('welcome', content));
-    this.messageHandler.on('registered', (content) => this.emit('registered', content));
-    this.messageHandler.on('notification-received', (content) => this.emit('notification-received', content));
+
+    this.webSocketManager.on('message', (message: BaseMessage) => {
+      // Emit for the specific message type
+      this.emit(message.type, message.content, message);
+      
+      // For standard message types
+      switch (message.type) {
+        case 'orchestrator.welcome':
+          this.emit('welcome', message.content);
+          break;
+          
+        case 'service.registered':
+          this.emit('registered', message.content);
+          break;
+          
+        case 'notification.received':
+          this.emit('notification-received', message.content);
+          break;
+          
+        case 'ping':
+          this.webSocketManager.send({ type: 'pong', id: message.id, content: {} } as BaseMessage);
+          break;
+          
+        case 'error':
+          this.emit('error', new Error(message.content ? message.content.error : 'Unknown error'));
+          break;
+          
+        case 'service.task.execute':
+          this.taskHandler.handleServiceTask(message as ServiceTaskExecuteMessage);
+          break;
+      }
+    });
   }
 
   //OK
@@ -127,6 +147,7 @@ class SwarmServiceSDK extends EventEmitter {
     return this;
   }
 
+  //OK
   /**
    * Register a task handler (new API style)
    * @param {string} taskName Name of the task to handle
@@ -137,14 +158,6 @@ class SwarmServiceSDK extends EventEmitter {
     return this;
   }
 
-
-  /**
-   * Handle incoming messages (exposed mainly for testing)
-   * @param {BaseMessage} message The message to handle
-   */
-  handleMessage(message: BaseMessage): void {
-    this.messageHandler.handleMessage(message);
-  }
 
   /**
    * Send a task result back to the orchestrator
