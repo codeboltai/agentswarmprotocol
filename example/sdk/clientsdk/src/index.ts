@@ -123,6 +123,14 @@ export class SwarmClientSDK extends EventEmitter {
         this.emit('task-notification', message.content);
         break;
         
+      case 'service.notification':
+        this.emit('service-notification', message.content);
+        break;
+        
+      case 'mcp.task.execution':
+        this.emit('mcp.task.execution', message.content);
+        break;
+        
       case 'error':
         this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
         break;
