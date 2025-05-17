@@ -109,6 +109,7 @@ class SwarmServiceSDK extends EventEmitter {
     this.messageHandler.on('notification-received', (content) => this.emit('notification-received', content));
   }
 
+  //OK
   /**
    * Connect to the orchestrator
    * @returns {Promise} Resolves when connected
@@ -117,6 +118,7 @@ class SwarmServiceSDK extends EventEmitter {
     return this.webSocketManager.connect().then(() => this);
   }
 
+  //OK
   /**
    * Disconnect from the orchestrator
    */
@@ -135,15 +137,6 @@ class SwarmServiceSDK extends EventEmitter {
     return this;
   }
 
-  /**
-   * Register a function handler (legacy API, kept for compatibility)
-   * @param {string} functionName Name of the function to handle
-   * @param {Function} handler Function to call
-   * @deprecated Use onTask instead
-   */
-  registerFunction(functionName: string, handler: TaskHandlerType): SwarmServiceSDK {
-    return this.onTask(functionName, handler);
-  }
 
   /**
    * Handle incoming messages (exposed mainly for testing)
@@ -211,6 +204,7 @@ class SwarmServiceSDK extends EventEmitter {
     return this.webSocketManager.sendAndWaitForResponse(message, timeout);
   }
 
+  //Ok
   /**
    * Set service status
    * @param status New status
