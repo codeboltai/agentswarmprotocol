@@ -2,15 +2,14 @@ import { Task, TaskStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
 import { EventEmitter } from 'events';
 import { TaskRequestOptions } from '../types';
-
-
+import { SwarmClientSDK } from '../index';
 
 /**
  * TaskManager - Handles task-related operations
  */
 export class TaskManager {
   private wsClient: WebSocketClient;
-  private sdk: EventEmitter;
+  private sdk: SwarmClientSDK;
 
   /**
    * Create a new TaskManager instance
@@ -19,7 +18,7 @@ export class TaskManager {
    */
   constructor(wsClient: WebSocketClient, sdk: EventEmitter) {
     this.wsClient = wsClient;
-    this.sdk = sdk;
+    this.sdk = sdk as SwarmClientSDK;
   }
 
   /**
@@ -50,36 +49,41 @@ export class TaskManager {
       return response.content;
     }
     
-    // Wait for task result
+    // Wait for task result using the central event handling in SDK
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        cleanup();
-        reject(new Error(`Task timeout after ${timeout}ms: ${taskId}`));
-      }, timeout);
+      let isResolved = false;
       
+      // Define handlers
       const resultHandler = (result: any) => {
-        if (result.taskId === taskId) {
+        if (result.taskId === taskId && !isResolved) {
+          isResolved = true;
           cleanup();
           resolve(result);
         }
       };
       
       const statusHandler = (status: any) => {
-        if (status.taskId === taskId && status.status === 'failed') {
+        if (status.taskId === taskId && status.status === 'failed' && !isResolved) {
+          isResolved = true;
           cleanup();
           reject(new Error(`Task failed: ${status.error?.message || 'Unknown error'}`));
         }
       };
       
-      const cleanup = () => {
-        clearTimeout(timeoutId);
-        this.sdk.removeListener('task-result', resultHandler);
-        this.sdk.removeListener('task-status', statusHandler);
+      const timeoutCallback = () => {
+        if (!isResolved) {
+          isResolved = true;
+          reject(new Error(`Task timeout after ${timeout}ms: ${taskId}`));
+        }
       };
       
-      // Listen to events from the SDK instead of from this instance
-      this.sdk.on('task-result', resultHandler);
-      this.sdk.on('task-status', statusHandler);
+      // Register handlers with the SDK
+      const cleanup = this.sdk.registerTaskListeners(taskId, {
+        resultHandler,
+        statusHandler,
+        timeout,
+        timeoutCallback
+      });
     });
   }
 

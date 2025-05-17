@@ -3,10 +3,10 @@ import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 
 import { WebSocketClient } from './service/WebSocketClient';
-import { TaskManager, TaskRequestOptions } from './manager/TaskManager';
+import { TaskManager } from './manager/TaskManager';
 import { AgentManager } from './manager/AgentManager';
 import { MCPManager, MCPServerFilters } from './manager/MCPManager';
-import { AgentFilters } from './types';
+import { AgentFilters, TaskRequestOptions } from './types';
 
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol
@@ -19,6 +19,13 @@ export class SwarmClientSDK extends EventEmitter {
   private agentManager: AgentManager;
   private taskManager: TaskManager;
   private mcpManager: MCPManager;
+  
+  // Store task listeners
+  private taskListeners: Map<string, {
+    resultHandler: (result: any) => void,
+    statusHandler: (status: any) => void,
+    timeoutId: NodeJS.Timeout | null
+  }> = new Map();
 
   /**
    * Create a new SwarmClientSDK instance
@@ -81,12 +88,28 @@ export class SwarmClientSDK extends EventEmitter {
         break;
         
       case 'task.result':
+        // Check if we have a registered listener for this task
+        const taskId = message.content.taskId;
+        const taskListener = this.taskListeners.get(taskId);
+        if (taskListener) {
+          taskListener.resultHandler(message.content);
+        }
+        
+        // Emit the event for others to listen
         this.emit('task-result', message.content);
         // Also emit task.update for backward compatibility with UI
         this.emit('task.update', message.content);
         break;
         
       case 'task.status':
+        // Check if we have a registered listener for this task
+        const statusTaskId = message.content.taskId;
+        const statusListener = this.taskListeners.get(statusTaskId);
+        
+        if (statusListener && message.content.status === 'failed') {
+          statusListener.statusHandler(message.content);
+        }
+        
         this.emit('task-status', message.content);
         // Also emit task.update for backward compatibility with UI
         this.emit('task.update', message.content);
@@ -111,6 +134,52 @@ export class SwarmClientSDK extends EventEmitter {
   }
 
   /**
+   * Register task event listeners
+   * @param taskId - The task ID to listen for
+   * @param options - Handler and timeout options
+   * @returns Cleanup function
+   */
+  registerTaskListeners(
+    taskId: string, 
+    options: {
+      resultHandler: (result: any) => void,
+      statusHandler: (status: any) => void,
+      timeout: number,
+      timeoutCallback: () => void
+    }
+  ): () => void {
+    const { resultHandler, statusHandler, timeout, timeoutCallback } = options;
+    
+    // Set timeout
+    const timeoutId = setTimeout(() => {
+      this.removeTaskListeners(taskId);
+      timeoutCallback();
+    }, timeout);
+    
+    // Store handlers
+    this.taskListeners.set(taskId, {
+      resultHandler,
+      statusHandler,
+      timeoutId
+    });
+    
+    // Return cleanup function
+    return () => this.removeTaskListeners(taskId);
+  }
+  
+  /**
+   * Remove task event listeners
+   * @param taskId - The task ID to remove listeners for
+   */
+  removeTaskListeners(taskId: string): void {
+    const listeners = this.taskListeners.get(taskId);
+    if (listeners && listeners.timeoutId) {
+      clearTimeout(listeners.timeoutId);
+    }
+    this.taskListeners.delete(taskId);
+  }
+
+  /**
    * Connect to the orchestrator
    * @returns Promise that resolves when connected
    */
@@ -124,6 +193,14 @@ export class SwarmClientSDK extends EventEmitter {
   disconnect(): void {
     this.wsClient.disconnect();
     this.wsClient.clearPendingResponses();
+    
+    // Clear all task listeners
+    for (const [taskId, listeners] of this.taskListeners.entries()) {
+      if (listeners.timeoutId) {
+        clearTimeout(listeners.timeoutId);
+      }
+    }
+    this.taskListeners.clear();
   }
 
   /**
