@@ -426,6 +426,145 @@ class MessageHandler {
       case 'service.notification':
         this.eventBus.emit('service.notification', message);
         return;
+        
+      case 'agent.status.update':
+        // Get agent by connection ID
+        const statusUpdateAgent = this.agents.getAgentByConnectionId(connectionId);
+        if (!statusUpdateAgent) {
+          return {
+            type: 'error',
+            content: { error: 'Agent not registered' }
+          };
+        }
+        
+        // Update agent status
+        const { status, message: statusMessage } = message.content;
+        if (!status) {
+          return {
+            type: 'error',
+            content: { error: 'Status is required for status update' }
+          };
+        }
+        
+        this.agents.updateAgentStatus(statusUpdateAgent.id, status, {
+          message: statusMessage,
+          updatedAt: new Date().toISOString()
+        });
+        
+        return {
+          type: 'agent.status.updated',
+          content: {
+            agentId: statusUpdateAgent.id,
+            status,
+            message: `Agent status updated to ${status}`
+          }
+        };
+        
+      case 'agent.list.request':
+        // Get agent by connection ID for attribution
+        const requestingAgent = this.agents.getAgentByConnectionId(connectionId);
+        if (!requestingAgent) {
+          return {
+            type: 'error',
+            content: { error: 'Agent not registered' }
+          };
+        }
+        
+        try {
+          const filters = message.content?.filters || {};
+          const agents = this.getAgentList(filters);
+          return {
+            type: 'agent.list.response',
+            content: { agents }
+          };
+        } catch (error) {
+          return {
+            type: 'error',
+            content: { error: error instanceof Error ? error.message : String(error) }
+          };
+        }
+        
+      case 'mcp.servers.list.request':
+        try {
+          const agent = this.agents.getAgentByConnectionId(connectionId);
+          if (!agent) {
+            return {
+              type: 'error',
+              content: { error: 'Agent not registered' }
+            };
+          }
+          
+          const result = this.handleMCPServersListRequest(agent);
+          return {
+            type: 'mcp.servers.list',
+            content: result
+          };
+        } catch (error) {
+          return {
+            type: 'error',
+            content: { error: error instanceof Error ? error.message : String(error) }
+          };
+        }
+        
+      case 'mcp.tools.list.request':
+        try {
+          const agent = this.agents.getAgentByConnectionId(connectionId);
+          if (!agent) {
+            return {
+              type: 'error',
+              content: { error: 'Agent not registered' }
+            };
+          }
+          
+          const serverId = message.content?.serverId;
+          if (!serverId) {
+            return {
+              type: 'error',
+              content: { error: 'Server ID is required' }
+            };
+          }
+          
+          const result = this.handleMCPToolsListRequest(serverId, agent);
+          return {
+            type: 'mcp.tools.list',
+            content: result
+          };
+        } catch (error) {
+          return {
+            type: 'error',
+            content: { error: error instanceof Error ? error.message : String(error) }
+          };
+        }
+        
+      case 'mcp.tool.execute.request':
+        try {
+          const agent = this.agents.getAgentByConnectionId(connectionId);
+          if (!agent) {
+            return {
+              type: 'error',
+              content: { error: 'Agent not registered' }
+            };
+          }
+          
+          const { serverId, toolName, parameters } = message.content || {};
+          if (!serverId || !toolName) {
+            return {
+              type: 'error',
+              content: { error: 'Server ID and tool name are required' }
+            };
+          }
+          
+          const result = this.handleMCPToolExecuteRequest(serverId, toolName, parameters || {}, agent);
+          return {
+            type: 'mcp.tool.execution.result',
+            content: result
+          };
+        } catch (error) {
+          return {
+            type: 'error',
+            content: { error: error instanceof Error ? error.message : String(error) }
+          };
+        }
 
       default:
         console.warn(`Unhandled message type in message-handler: ${type}`);

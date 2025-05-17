@@ -141,6 +141,27 @@ class AgentServer {
           }
           break;
           
+        case 'agent.list.request':
+          // Emit agent list request event
+          this.eventBus.emit('agent.list.request', message.content?.filters || {}, (result: any) => {
+            if (result.error) {
+              this.sendError(ws, result.error, message.id);
+              return;
+            }
+            
+            // Send the result back to the agent
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'agent.list.response',
+              content: {
+                agents: result
+              },
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
         case 'service.list':
           // Emit service list event
           this.eventBus.emit('client.service.list', message.content?.filters || {}, (services: any) => {
@@ -279,6 +300,109 @@ class AgentServer {
             content: {
               message: 'Agent status updated',
               status: message.content.status
+            },
+            requestId: message.id,
+            timestamp: Date.now().toString()
+          }));
+          break;
+          
+        case 'mcp.servers.list.request':
+          // Emit MCP servers list request event
+          this.eventBus.emit('mcp.servers.list.request', message.content?.filters || {}, (result: any) => {
+            if (result.error) {
+              this.sendError(ws, result.error, message.id);
+              return;
+            }
+            
+            // Send the result back to the agent
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'mcp.servers.list',
+              content: {
+                servers: result
+              },
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
+        case 'mcp.tools.list.request':
+          // Emit MCP tools list request event
+          if (!message.content?.serverId) {
+            this.sendError(ws, 'Missing serverId in request', message.id);
+            return;
+          }
+          
+          this.eventBus.emit('mcp.tools.list.request', message.content.serverId, (result: any) => {
+            if (result.error) {
+              this.sendError(ws, result.error, message.id);
+              return;
+            }
+            
+            // Send the result back to the agent
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'mcp.tools.list',
+              content: {
+                serverId: message.content.serverId,
+                tools: result
+              },
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
+        case 'mcp.tool.execute.request':
+          // Emit MCP tool execution request event
+          if (!message.content?.serverId || !message.content?.toolName) {
+            this.sendError(ws, 'Missing serverId or toolName in request', message.id);
+            return;
+          }
+          
+          // Get the agent information for proper attribution
+          const mcpAgent = this.agents.getAgentByConnectionId(ws.id);
+          if (!mcpAgent) {
+            this.sendError(ws, 'Agent not registered or unknown', message.id);
+            return;
+          }
+          
+          this.eventBus.emit('mcp.tool.execute.request', {
+            serverId: message.content.serverId,
+            toolName: message.content.toolName,
+            parameters: message.content.parameters || {},
+            agentId: mcpAgent.id,
+            timeout: message.content.timeout
+          }, (result: any) => {
+            if (result.error) {
+              this.sendError(ws, result.error, message.id);
+              return;
+            }
+            
+            // Send the result back to the agent
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'mcp.tool.execution.result',
+              content: {
+                serverId: message.content.serverId,
+                toolName: message.content.toolName,
+                result: result,
+                status: 'success'
+              },
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
+        case 'ping':
+          // Respond with pong message
+          ws.send(JSON.stringify({
+            id: uuidv4(),
+            type: 'pong',
+            content: {
+              timestamp: Date.now()
             },
             requestId: message.id,
             timestamp: Date.now().toString()
