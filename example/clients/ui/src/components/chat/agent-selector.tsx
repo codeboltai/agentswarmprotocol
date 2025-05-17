@@ -8,7 +8,7 @@ import {
 } from "../ui/select";
 import { RefreshCwIcon } from "lucide-react";
 import { Button } from "../ui/button";
-import { AgentInfo } from "@agentswarmprotocol/types";
+import { Agent as AgentInfo } from "@agentswarmprotocol/types/common";
 
 // Define message types
 interface AgentMessage {
@@ -23,8 +23,8 @@ interface ClientError {
 
 // Simple client interface that matches App.tsx
 interface SimpleClient {
-  getAgents: () => Promise<AgentInfo[]>;
-  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  getAgentsList: () => Promise<AgentInfo[]>;
+  sendRequestWaitForResponse: (message: Record<string, unknown>) => Promise<unknown>;
   connect: () => Promise<void>;
   disconnect: () => void;
   on(event: 'connected' | 'disconnected', listener: () => void): void;
@@ -56,7 +56,7 @@ export function AgentSelector({
     
     setIsLoading(true);
     try {
-      const agentList = await client.getAgents();
+      const agentList = await client.getAgentsList();
       // Only include online agents with chat capability
       const availableAgents = agentList.filter(
         (agent: AgentInfo) => 

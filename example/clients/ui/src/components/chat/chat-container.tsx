@@ -9,7 +9,7 @@ import {
   InfoCircledIcon
 } from "@radix-ui/react-icons";
 import { AgentSelector } from "./agent-selector";
-import { AgentInfo } from "@agentswarmprotocol/types";
+import { Agent as AgentInfo } from "@agentswarmprotocol/types/common";
 
 // Define message and error types for the SimpleClient interface
 interface AgentMessage {
@@ -24,8 +24,8 @@ interface ClientError {
 
 // Use the SimpleClient interface consistent with App.tsx
 interface SimpleClient {
-  getAgents: () => Promise<AgentInfo[]>;
-  sendMessage: (message: Record<string, unknown>) => Promise<unknown>;
+  getAgentsList: () => Promise<AgentInfo[]>;
+  sendRequestWaitForResponse: (message: Record<string, unknown>) => Promise<unknown>;
   connect: () => Promise<void>;
   disconnect: () => void;
   on(event: 'connected' | 'disconnected', listener: () => void): void;

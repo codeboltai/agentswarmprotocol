@@ -71,6 +71,7 @@ export declare class SwarmClientSDK extends EventEmitter {
      * @returns Array of agent objects
      */
     getAgentsList(filters?: AgentFilters): Promise<any[]>;
+    sendMessageDuringTask(taskId: string, message: any): Promise<any>;
     /**
      * List available MCP servers
      * @param filters - Optional filters

@@ -35,8 +35,7 @@ export class SwarmClientSDK extends EventEmitter {
     // Initialize managers with the WebSocketClient
     this.agentManager = new AgentManager(this.wsClient);
     this.mcpManager = new MCPManager(this.wsClient);
-    // Pass this instance to TaskManager for event listening
-    this.taskManager = new TaskManager(this.wsClient, this);
+    this.taskManager = new TaskManager(this.wsClient);
     
     // Set up event forwarding
     this.wsClient.on('connected', () => {
@@ -83,8 +82,6 @@ export class SwarmClientSDK extends EventEmitter {
         break;
         
       case 'task.result':
-     
-        
         // Emit the event for others to listen
         this.emit('task-result', message.content);
         break;
@@ -98,11 +95,27 @@ export class SwarmClientSDK extends EventEmitter {
       case 'task.created':
         this.emit('task-created', message.content);
         break;
+      
+      case 'task.childtask.created':
+        this.emit('task.childtask.created', message.content);
+        break;
+      
+      case 'task.childtask.status':
+        this.emit('task.childtask.status', message.content);
+        break;
+
+      case 'task.completed':
+        this.emit('task.completed', message.content);
+        break;
         
       case 'task.notification':
         this.emit('task-notification', message.content);
         break;
-        
+      
+      case 'task.requestmessage':
+        this.emit('task.requestmessage', message.content);
+        break;
+
       case 'service.notification':
         this.emit('service-notification', message.content);
         break;
@@ -121,9 +134,6 @@ export class SwarmClientSDK extends EventEmitter {
     }
   }
 
-  
-
-
   /**
    * Connect to the orchestrator
    * @returns Promise that resolves when connected
@@ -138,8 +148,6 @@ export class SwarmClientSDK extends EventEmitter {
   disconnect(): void {
     this.wsClient.disconnect();
     this.wsClient.clearPendingResponses();
-    
- 
   }
 
   /**
@@ -195,6 +203,10 @@ export class SwarmClientSDK extends EventEmitter {
    */
   async getAgentsList(filters: AgentFilters = {}): Promise<any[]> {
     return this.agentManager.getAgentsList(filters);
+  }
+
+  async sendMessageDuringTask(taskId: string, message: any): Promise<any> {
+    return this.taskManager.sendMessageDuringTask(taskId, message);
   }
 
   /**

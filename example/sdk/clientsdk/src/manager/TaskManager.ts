@@ -9,16 +9,13 @@ import { SwarmClientSDK } from '../index';
  */
 export class TaskManager {
   private wsClient: WebSocketClient;
-  private sdk: SwarmClientSDK;
 
   /**
    * Create a new TaskManager instance
    * @param wsClient - WebSocketClient instance
-   * @param sdk - SwarmClientSDK instance for event listening
    */
-  constructor(wsClient: WebSocketClient, sdk: EventEmitter) {
+  constructor(wsClient: WebSocketClient) {
     this.wsClient = wsClient;
-    this.sdk = sdk as SwarmClientSDK;
   }
 
   /**
@@ -43,6 +40,42 @@ export class TaskManager {
     });
       return response.content;
   
+  }
+
+  /**
+   * Send a message to a running task
+   * @param taskId - ID of the task to send the message to
+   * @param message - Message to send (can be string or structured data)
+   * @param options - Additional options like message type
+   * @returns Response from the message delivery
+   */
+  async sendMessageDuringTask(
+    taskId: string, 
+    message: string | Record<string, any>, 
+    options: { 
+      messageType?: string,
+      timeout?: number
+    } = {}
+  ): Promise<any> {
+    console.log(`Sending message to task ${taskId}`);
+    
+    const messageType = options.messageType || 'client.message';
+    const timeout = options.timeout || 30000;
+    
+    // Prepare message content
+    const messageContent = typeof message === 'string' 
+      ? { text: message } 
+      : message;
+    
+    // Send the message to the task without waiting for a response
+    const response = await this.wsClient.send({
+      type: 'task.message',
+      content: {
+        taskId,
+        messageType,
+        message: messageContent
+      }
+    });
   }
 
   /**

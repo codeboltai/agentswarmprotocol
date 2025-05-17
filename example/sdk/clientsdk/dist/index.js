@@ -23,8 +23,7 @@ class SwarmClientSDK extends events_1.EventEmitter {
         // Initialize managers with the WebSocketClient
         this.agentManager = new AgentManager_1.AgentManager(this.wsClient);
         this.mcpManager = new MCPManager_1.MCPManager(this.wsClient);
-        // Pass this instance to TaskManager for event listening
-        this.taskManager = new TaskManager_1.TaskManager(this.wsClient, this);
+        this.taskManager = new TaskManager_1.TaskManager(this.wsClient);
         // Set up event forwarding
         this.wsClient.on('connected', () => {
             this.emit('connected');
@@ -70,8 +69,20 @@ class SwarmClientSDK extends events_1.EventEmitter {
             case 'task.created':
                 this.emit('task-created', message.content);
                 break;
+            case 'task.childtask.created':
+                this.emit('task.childtask.created', message.content);
+                break;
+            case 'task.childtask.status':
+                this.emit('task.childtask.status', message.content);
+                break;
+            case 'task.completed':
+                this.emit('task.completed', message.content);
+                break;
             case 'task.notification':
                 this.emit('task-notification', message.content);
+                break;
+            case 'task.requestmessage':
+                this.emit('task.requestmessage', message.content);
                 break;
             case 'service.notification':
                 this.emit('service-notification', message.content);
@@ -149,6 +160,9 @@ class SwarmClientSDK extends events_1.EventEmitter {
      */
     async getAgentsList(filters = {}) {
         return this.agentManager.getAgentsList(filters);
+    }
+    async sendMessageDuringTask(taskId, message) {
+        return this.taskManager.sendMessageDuringTask(taskId, message);
     }
     /**
      * List available MCP servers
