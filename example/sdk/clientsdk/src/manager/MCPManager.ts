@@ -35,7 +35,7 @@ export class MCPManager extends EventEmitter {
    * @returns List of MCP servers
    */
   async listMCPServers(filters: MCPServerFilters = {}): Promise<MCPServer[]> {
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'mcp.server.list',
       content: { filters }
     });
@@ -49,7 +49,7 @@ export class MCPManager extends EventEmitter {
    * @returns List of tools
    */
   async getMCPServerTools(serverId: string): Promise<MCPTool[]> {
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'mcp.server.tools',
       content: {
         serverId
@@ -67,7 +67,7 @@ export class MCPManager extends EventEmitter {
    * @returns Tool execution result
    */
   async executeMCPTool(serverId: string, toolName: string, parameters: any): Promise<any> {
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'mcp.tool.execute',
       content: {
         serverId,

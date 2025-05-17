@@ -3,22 +3,8 @@
 import { EventEmitter } from 'events';
 import type * as WebSocketTypes from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 
-/**
- * Configuration options for WebSocketClient
- */
-export interface WebSocketClientConfig {
-  /** WebSocket URL of the orchestrator client interface */
-  orchestratorUrl?: string;
-  /** Whether to automatically reconnect on disconnection */
-  autoReconnect?: boolean;
-  /** Interval in ms to attempt reconnection */
-  reconnectInterval?: number;
-  /** Force the use of browser WebSocket implementation */
-  forceBrowserWebSocket?: boolean;
-  /** Default timeout for requests in milliseconds */
-  defaultTimeout?: number;
-}
 
 /**
  * Pending response entry type
@@ -373,7 +359,7 @@ export class WebSocketClient extends EventEmitter {
    * @param options - Additional options
    * @returns The response message
    */
-  async sendRequest(message: any, options: { timeout?: number } = {}): Promise<any> {
+  async sendRequestWaitForResponse(message: any, options: { timeout?: number } = {}): Promise<any> {
     if (!this.connected) {
       throw new Error('Not connected to orchestrator');
     }

@@ -1,19 +1,11 @@
 import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { ClientMessages } from '@agentswarmprotocol/types/messages';
+import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 
-import { WebSocketClient, WebSocketClientConfig } from './WebSocketClient';
-import { TaskManager, TaskRequestOptions } from './TaskManager';
-import { AgentManager, AgentFilters } from './AgentManager';
-import { MCPManager, MCPServerFilters } from './MCPManager';
-
-/**
- * Configuration options for the SDK
- */
-export interface SwarmClientSDKConfig extends WebSocketClientConfig {
-  /** Default timeout for requests in milliseconds */
-  defaultTimeout?: number;
-}
+import { WebSocketClient } from './service/WebSocketClient';
+import { TaskManager, TaskRequestOptions } from './manager/TaskManager';
+import { AgentManager, AgentFilters } from './manager/AgentManager';
+import { MCPManager, MCPServerFilters } from './manager/MCPManager';
 
 /**
  * SwarmClientSDK - Client SDK for Agent Swarm Protocol
@@ -31,7 +23,7 @@ export class SwarmClientSDK extends EventEmitter {
    * Create a new SwarmClientSDK instance
    * @param config - Configuration options
    */
-  constructor(config: SwarmClientSDKConfig = {}) {
+  constructor(config: WebSocketClientConfig = {}) {
     super();
     
     // Initialize WebSocket client
@@ -123,8 +115,8 @@ export class SwarmClientSDK extends EventEmitter {
    * @param options - Additional options
    * @returns The response message
    */
-  async sendRequest(message: Partial<BaseMessage>, options: { timeout?: number } = {}): Promise<any> {
-    return this.wsClient.sendRequest(message, options);
+  async sendRequestWaitForResponse(message: Partial<BaseMessage>, options: { timeout?: number } = {}): Promise<any> {
+    return this.wsClient.sendRequestWaitForResponse(message, options);
   }
 
   /**

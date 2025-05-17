@@ -51,7 +51,7 @@ export class AgentManager extends EventEmitter {
    * @returns Array of agent objects
    */
   async getAgentsList(filters: AgentFilters = {}): Promise<AgentType[]> {
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'agent.list',
       content: { filters }
     });

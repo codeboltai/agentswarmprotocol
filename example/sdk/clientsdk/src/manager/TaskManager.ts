@@ -41,7 +41,7 @@ export class TaskManager extends EventEmitter {
     console.log(`Sending task to agent ${agentName}`);
     
     // Create task
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'task.create',
       content: {
         agentName,
@@ -93,7 +93,7 @@ export class TaskManager extends EventEmitter {
    * @returns Task status
    */
   async getTaskStatus(taskId: string): Promise<{ status: TaskStatus; result?: any }> {
-    const response = await this.wsClient.sendRequest({
+    const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'task.status',
       content: {
         taskId
