@@ -5,9 +5,9 @@ import { ClientMessages } from '@agentswarmprotocol/types/messages';
 
 import { WebSocketClient, WebSocketClientConfig } from './WebSocketClient';
 import { MessageHandler } from './MessageHandler';
-import { TaskManager } from './TaskManager';
-import { AgentManager } from './AgentManager';
-import { MCPManager } from './MCPManager';
+import { TaskManager, TaskRequestOptions } from './TaskManager';
+import { AgentManager, AgentFilters } from './AgentManager';
+import { MCPManager, MCPServerFilters } from './MCPManager';
 
 /**
  * Configuration options for the SDK
@@ -27,9 +27,9 @@ export class SwarmClientSDK extends EventEmitter {
   private defaultTimeout: number;
   private clientId: string | null = null;
   
-  public agents: AgentManager;
-  public tasks: TaskManager;
-  public mcp: MCPManager;
+  private agentManager: AgentManager;
+  private taskManager: TaskManager;
+  private mcpManager: MCPManager;
 
   /**
    * Create a new SwarmClientSDK instance
@@ -47,9 +47,9 @@ export class SwarmClientSDK extends EventEmitter {
     this.messageHandler = new MessageHandler();
     
     // Initialize managers
-    this.tasks = new TaskManager(this.sendRequest.bind(this));
-    this.agents = new AgentManager(this.sendRequest.bind(this));
-    this.mcp = new MCPManager(this.sendRequest.bind(this));
+    this.taskManager = new TaskManager(this.sendRequest.bind(this));
+    this.agentManager = new AgentManager(this.sendRequest.bind(this));
+    this.mcpManager = new MCPManager(this.sendRequest.bind(this));
     
     // Set up event forwarding
     this.wsClient.on('message', async (message: any) => {
@@ -78,13 +78,20 @@ export class SwarmClientSDK extends EventEmitter {
     });
     
     // Set up event forwarding for task manager
-    this.tasks.registerEventListeners(this.messageHandler);
+    this.taskManager.registerEventListeners(this.messageHandler);
+    this.taskManager.on('task-created', (data) => this.emit('task-created', data));
+    this.taskManager.on('task-status', (data) => this.emit('task-status', data));
+    this.taskManager.on('task-result', (data) => this.emit('task-result', data));
+    this.taskManager.on('task-notification', (data) => this.emit('task-notification', data));
     
     // Set up event forwarding for agent manager
-    this.agents.registerEventListeners(this.messageHandler);
+    this.agentManager.registerEventListeners(this.messageHandler);
+    this.agentManager.on('agent-list', (data) => this.emit('agent-list', data));
     
     // Set up event forwarding for MCP manager
-    this.mcp.registerEventListeners(this.messageHandler);
+    this.mcpManager.registerEventListeners(this.messageHandler);
+    this.mcpManager.on('mcp-server-list', (data) => this.emit('mcp-server-list', data));
+    this.mcpManager.on('mcp-tool-executed', (data) => this.emit('mcp-tool-executed', data));
     
     // Forward remaining events
     this.messageHandler.on('orchestrator-error', (error: any) => {
@@ -156,8 +163,17 @@ export class SwarmClientSDK extends EventEmitter {
    * @param options - Additional options
    * @returns Task information
    */
-  async sendTask(agentName: string, taskData: any, options: any = {}): Promise<any> {
-    return this.tasks.sendTask(agentName, taskData, options);
+  async sendTask(agentName: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
+    return this.taskManager.sendTask(agentName, taskData, options);
+  }
+
+  /**
+   * Get the status of a task
+   * @param taskId - ID of the task to get status for
+   * @returns Task status
+   */
+  async getTaskStatus(taskId: string): Promise<any> {
+    return this.taskManager.getTaskStatus(taskId);
   }
 
   /**
@@ -165,8 +181,8 @@ export class SwarmClientSDK extends EventEmitter {
    * @param filters - Optional filters to apply to the agent list
    * @returns Array of agent objects
    */
-  async getAgents(filters = {}): Promise<any[]> {
-    return this.agents.getAgents(filters);
+  async getAgentsList(filters: AgentFilters = {}): Promise<any[]> {
+    return this.agentManager.getAgentsList(filters);
   }
 
   /**
@@ -174,14 +190,17 @@ export class SwarmClientSDK extends EventEmitter {
    * @param filters - Optional filters
    * @returns List of MCP servers
    */
-  async listMCPServers(filters = {}): Promise<any[]> {
-    return this.mcp.listMCPServers(filters);
+  async listMCPServers(filters: MCPServerFilters = {}): Promise<any[]> {
+    return this.mcpManager.listMCPServers(filters);
   }
-}
 
-export { WebSocketClient, MessageHandler, TaskManager, AgentManager, MCPManager };
-export * from './WebSocketClient';
-export * from './MessageHandler';
-export * from './TaskManager';
-export * from './AgentManager';
-export * from './MCPManager'; 
+  /**
+   * Get tools available on an MCP server
+   * @param serverId - ID of the server to get tools for
+   * @returns List of tools
+   */
+  async getMCPServerTools(serverId: string): Promise<any[]> {
+    return this.mcpManager.getMCPServerTools(serverId);
+  }
+
+} 

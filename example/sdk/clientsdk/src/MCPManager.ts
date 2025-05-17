@@ -58,25 +58,7 @@ export class MCPManager extends EventEmitter {
     return response.content.tools;
   }
 
-  /**
-   * Execute a tool on an MCP server
-   * @param serverId - ID of the server to execute the tool on
-   * @param toolName - Name of the tool to execute
-   * @param parameters - Tool parameters
-   * @returns Tool execution result
-   */
-  async executeMCPTool(serverId: string, toolName: string, parameters: any): Promise<any> {
-    const response = await this.sendRequest({
-      type: 'mcp.tool.execute',
-      content: {
-        serverId,
-        toolName,
-        parameters
-      }
-    });
-    
-    return response.content.result;
-  }
+
 
   /**
    * Register event listeners for MCP events

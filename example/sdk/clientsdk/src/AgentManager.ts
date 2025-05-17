@@ -49,7 +49,7 @@ export class AgentManager extends EventEmitter {
    * @param filters - Optional filters to apply to the agent list
    * @returns Array of agent objects
    */
-  async getAgents(filters: AgentFilters = {}): Promise<AgentType[]> {
+  async getAgentsList(filters: AgentFilters = {}): Promise<AgentType[]> {
     const response = await this.sendRequest({
       type: 'agent.list',
       content: { filters }
