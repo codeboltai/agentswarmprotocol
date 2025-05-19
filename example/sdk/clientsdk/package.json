@@ -4,6 +4,13 @@
   "description": "Client SDK for Agent Swarm Protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "browser": {
     "./dist/index.js": "./dist/index.js",
     "ws": false

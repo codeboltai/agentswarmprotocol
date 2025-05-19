@@ -87,8 +87,6 @@ class WebSocketClient extends events_1.EventEmitter {
         this.ws = null;
         this.forceBrowserWebSocket = config.forceBrowserWebSocket || false;
         this.pendingResponses = new Map();
-        // Set up message handling for responses
-        this.on('message', this.handleMessage.bind(this));
     }
     /**
      * Connect to the orchestrator client interface
@@ -117,7 +115,7 @@ class WebSocketClient extends events_1.EventEmitter {
                     browserWs.onmessage = async (event) => {
                         try {
                             const message = JSON.parse(event.data);
-                            this.emit('message', message);
+                            this.handleMessage(message);
                         }
                         catch (error) {
                             console.error('Error handling message:', error);
@@ -160,7 +158,7 @@ class WebSocketClient extends events_1.EventEmitter {
                     nodeWs.on('message', async (data) => {
                         try {
                             const message = JSON.parse(data.toString());
-                            this.emit('message', message);
+                            this.handleMessage(message);
                         }
                         catch (error) {
                             console.error('Error handling message:', error);
@@ -256,7 +254,6 @@ class WebSocketClient extends events_1.EventEmitter {
                 this.ws.close();
             }
             this.ws = null;
-            console.log('Disconnected from orchestrator');
         }
     }
     /**
@@ -300,7 +297,7 @@ class WebSocketClient extends events_1.EventEmitter {
             return;
         }
         // Just emit the raw message for central handling in the SDK
-        this.emit('message', message);
+        this.emit('raw-message', message);
         // Only handle clientId for welcome messages here
         if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {
             this.clientId = message.content.clientId;
