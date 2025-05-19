@@ -19,7 +19,7 @@ class TaskManager {
      * @param options - Additional options
      * @returns Task information
      */
-    async sendTask(agentId, taskData, options = {}) {
+    async sendTask(agentId, agentName, taskData, options = {}) {
         console.log(`Sending task to agent ${agentId}`);
         // Create task
         const response = await this.wsClient.sendRequestWaitForResponse({
@@ -27,6 +27,7 @@ class TaskManager {
             content: {
                 event: 'task.completed',
                 agentId,
+                agentName,
                 taskData
             }
         });
