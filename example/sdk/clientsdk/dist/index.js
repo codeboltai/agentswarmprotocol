@@ -142,8 +142,8 @@ class SwarmClientSDK extends events_1.EventEmitter {
      * @param options - Additional options
      * @returns Task information
      */
-    async sendTask(agentName, taskData, options = {}) {
-        return this.taskManager.sendTask(agentName, taskData, options);
+    async sendTask(agentId, taskData, options = {}) {
+        return this.taskManager.sendTask(agentId, taskData, options);
     }
     /**
      * Get the status of a task

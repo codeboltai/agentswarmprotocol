@@ -13,12 +13,12 @@ export declare class TaskManager {
     constructor(wsClient: WebSocketClient);
     /**
      * Send a task to an agent
-     * @param agentName - Name of the agent to send the task to
+     * @param agentId - Name of the agent to send the task to
      * @param taskData - Task data to send
      * @param options - Additional options
      * @returns Task information
      */
-    sendTask(agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
+    sendTask(agentId: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
     /**
      * Send a message to a running task
      * @param taskId - ID of the task to send the message to
