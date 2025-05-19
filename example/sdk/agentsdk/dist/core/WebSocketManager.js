@@ -23,44 +23,75 @@ class WebSocketManager extends events_1.EventEmitter {
      * @returns {Promise} Resolves when connected
      */
     connect() {
-        if (this.connected || this.connecting) {
+        if (this.connected) {
+            this.logger.debug('Already connected to orchestrator');
+            return Promise.resolve(this);
+        }
+        if (this.connecting) {
+            this.logger.debug('Already connecting to orchestrator');
             return Promise.resolve(this);
         }
         this.connecting = true;
+        this.logger.info(`Connecting to orchestrator at ${this.orchestratorUrl}`);
         return new Promise((resolve, reject) => {
             try {
+                // Create WebSocket connection with appropriate error handling
                 this.ws = new ws_1.default(this.orchestratorUrl);
                 this.ws.on('open', () => {
                     this.connected = true;
                     this.connecting = false;
+                    this.logger.info('Connected to orchestrator successfully');
                     this.emit('connected');
                     resolve(this);
                 });
                 this.ws.on('message', (data) => {
                     try {
                         const message = JSON.parse(data.toString());
+                        // Check if this is a response to a pending request
+                        if (message.requestId && this.pendingResponses.has(message.requestId)) {
+                            const pendingResponse = this.pendingResponses.get(message.requestId);
+                            if (pendingResponse) {
+                                clearTimeout(pendingResponse.timer);
+                                this.pendingResponses.delete(message.requestId);
+                                pendingResponse.resolve(message);
+                                return;
+                            }
+                        }
                         this.emit('message', message);
                     }
                     catch (err) {
                         const error = err;
+                        this.logger.error(`Failed to parse message: ${error.message}`);
                         this.emit('error', new Error(`Failed to parse message: ${error.message}`));
                     }
                 });
                 this.ws.on('error', (error) => {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    this.logger.error(`WebSocket error: ${errorMessage}`);
                     this.emit('error', error);
                     if (this.connecting) {
                         this.connecting = false;
                         reject(error);
                     }
                 });
-                this.ws.on('close', () => {
+                this.ws.on('close', (code, reason) => {
                     this.connected = false;
                     this.connecting = false;
+                    this.logger.info(`Disconnected from orchestrator. Code: ${code}, Reason: ${reason}`);
                     this.emit('disconnected');
+                    // Reject any pending responses with connection closed error
+                    for (const [id, pendingResponse] of this.pendingResponses.entries()) {
+                        clearTimeout(pendingResponse.timer);
+                        pendingResponse.reject(new Error('Connection closed'));
+                        this.pendingResponses.delete(id);
+                    }
                     if (this.autoReconnect) {
+                        this.logger.info(`Will attempt to reconnect in ${this.reconnectInterval}ms`);
                         setTimeout(() => {
                             this.connect().catch(err => {
-                                this.emit('error', new Error(`Reconnection failed: ${err.message}`));
+                                const reconnectError = err instanceof Error ? err.message : String(err);
+                                this.logger.error(`Reconnection failed: ${reconnectError}`);
+                                this.emit('error', new Error(`Reconnection failed: ${reconnectError}`));
                             });
                         }, this.reconnectInterval);
                     }
@@ -68,6 +99,8 @@ class WebSocketManager extends events_1.EventEmitter {
             }
             catch (err) {
                 this.connecting = false;
+                const connectionError = err instanceof Error ? err.message : String(err);
+                this.logger.error(`Failed to create WebSocket connection: ${connectionError}`);
                 reject(err);
             }
         });
@@ -114,11 +147,20 @@ class WebSocketManager extends events_1.EventEmitter {
      */
     sendAndWaitForResponse(message, timeout = 30000) {
         return new Promise((resolve, reject) => {
+            // Check if connected first
+            if (!this.connected) {
+                return reject(new Error('Not connected to orchestrator. Please ensure connection is established before sending messages.'));
+            }
+            // Validate message has an ID
+            if (!message.id) {
+                return reject(new Error('Message must have an ID to wait for response'));
+            }
             // Set up timeout
             const timer = setTimeout(() => {
                 if (this.pendingResponses.has(message.id)) {
                     this.pendingResponses.delete(message.id);
-                    reject(new Error(`Request timed out after ${timeout}ms`));
+                    this.logger.warn(`Request ${message.id} (${message.type}) timed out after ${timeout}ms`);
+                    reject(new Error(`Request timed out after ${timeout}ms. Type: ${message.type}`));
                 }
             }, timeout);
             // Store the pending response handlers
@@ -127,7 +169,11 @@ class WebSocketManager extends events_1.EventEmitter {
             this.send(message).catch(error => {
                 clearTimeout(timer);
                 this.pendingResponses.delete(message.id);
-                reject(error);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                this.logger.error(`Failed to send message ${message.id} (${message.type}): ${errorMessage}`);
+                reject(error instanceof Error
+                    ? error
+                    : new Error(`Failed to send message: ${errorMessage}`));
             });
         });
     }
