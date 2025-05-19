@@ -58,7 +58,7 @@ export declare class SwarmClientSDK extends EventEmitter {
      * @param options - Additional options
      * @returns Task information
      */
-    sendTask(agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
+    sendTask(agentId: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
     /**
      * Get the status of a task
      * @param taskId - ID of the task to get status for

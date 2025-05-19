@@ -183,8 +183,8 @@ export class SwarmClientSDK extends EventEmitter {
    * @param options - Additional options
    * @returns Task information
    */
-  async sendTask(agentName: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
-    return this.taskManager.sendTask(agentName, taskData, options);
+  async sendTask(agentId: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
+    return this.taskManager.sendTask(agentId, taskData, options);
   }
 
   /**

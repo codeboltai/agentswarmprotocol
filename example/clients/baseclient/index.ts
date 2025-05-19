@@ -7,7 +7,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Configuration for the orchestrator connection
 const sdk = new SwarmClientSDK({
-  orchestratorUrl: 'ws://localhost:3001' // Change this URL if your orchestrator runs elsewhere
+  orchestratorUrl: 'ws://100.95.18.39:3001' // Change this URL if your orchestrator runs elsewhere
 });
 
 async function main() {
@@ -26,9 +26,9 @@ async function main() {
     }
 
     // // Send a sample task to the first agent
-    const agentName = agents[0].name || agents[0].id || agents[0];
+    const agentId = agents[0].id;
     const taskData = { query: 'Hello from baseclient!' };
-    const task = await sdk.sendTask(agentName, taskData);
+    const task = await sdk.sendTask(agentId, taskData);
     console.log('Task created:', task);
   } catch (error) {
     console.error('Error in client:', error);

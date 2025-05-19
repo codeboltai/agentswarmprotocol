@@ -20,21 +20,21 @@ export class TaskManager {
 
   /**
    * Send a task to an agent
-   * @param agentName - Name of the agent to send the task to
+   * @param agentId - Name of the agent to send the task to
    * @param taskData - Task data to send
    * @param options - Additional options
    * @returns Task information
    */
-  async sendTask(agentName: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
+  async sendTask(agentId: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
 
-    console.log(`Sending task to agent ${agentName}`);
+    console.log(`Sending task to agent ${agentId}`);
     
     // Create task
     const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'task.create',
       content: {
         event: 'task.completed',
-        agentName,
+        agentId,
         taskData
       }
     });
