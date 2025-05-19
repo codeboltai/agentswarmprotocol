@@ -402,6 +402,111 @@ class Orchestrator {
       }
     });
 
+    // Handle agent list requests from agents
+    this.eventBus.on('agent.list.request', (filters: any, callback: Function) => {
+      try {
+        const agents = this.messageHandler.getAgentList(filters);
+        callback(agents);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+    
+    // Handle MCP servers list requests
+    this.eventBus.on('mcp.servers.list.request', (filters: any, callback: Function) => {
+      try {
+        const servers = this.mcp.getServerList(filters);
+        callback(servers);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+    
+    // Handle MCP tools list requests
+    this.eventBus.on('mcp.tools.list.request', (serverId: string, callback: Function) => {
+      try {
+        if (!serverId) {
+          callback({ error: 'Server ID is required' });
+          return;
+        }
+        
+        const tools = this.mcp.getToolList(serverId);
+        callback(tools);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+    
+    // Handle MCP tool execution requests
+    this.eventBus.on('mcp.tool.execute.request', (params: any, callback: Function) => {
+      try {
+        const { serverId, toolName, parameters, agentId } = params;
+        
+        if (!serverId || !toolName) {
+          callback({ error: 'Server ID and tool name are required' });
+          return;
+        }
+        
+        // Execute the tool
+        this.mcp.executeServerTool(serverId, toolName, parameters || {})
+          .then((result: any) => {
+            callback({
+              serverId,
+              toolName,
+              status: 'success',
+              result
+            });
+          })
+          .catch((error: Error) => {
+            callback({
+              serverId,
+              toolName,
+              status: 'error',
+              error: error.message
+            });
+          });
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    // Handle agent status update requests
+    this.eventBus.on('agent.status.update', (message: any, connectionId: string, callback: Function) => {
+      try {
+        const agent = this.agents.getAgentByConnectionId(connectionId);
+        if (!agent) {
+          callback({ error: 'Agent not registered or unknown' });
+          return;
+        }
+        
+        const { status, message: statusMessage } = message.content;
+        if (!status) {
+          callback({ error: 'Status is required for status update' });
+          return;
+        }
+        
+        // Update agent status in the registry
+        this.agents.updateAgentStatus(agent.id, status, {
+          message: statusMessage,
+          updatedAt: new Date().toISOString()
+        });
+        
+        // Notify about success
+        callback({
+          agentId: agent.id,
+          status,
+          message: `Agent status updated to ${status}`
+        });
+        
+        // Emit an event about the status change
+        this.eventBus.emit('agent.status.changed', agent.id, status, statusMessage);
+        
+        console.log(`Agent ${agent.name} (${agent.id}) status updated to ${status}`);
+      } catch (error) {
+        callback({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
     // Handle client messages to agents
     this.eventBus.on('client.message.agent', async (message: any, targetAgentId: string, callback: Function) => {
       try {
