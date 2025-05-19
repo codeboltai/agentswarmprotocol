@@ -78,9 +78,6 @@ export class WebSocketClient extends EventEmitter {
     this.ws = null;
     this.forceBrowserWebSocket = config.forceBrowserWebSocket || false;
     this.pendingResponses = new Map();
-    
-    // Set up message handling for responses
-    this.on('message', this.handleMessage.bind(this));
   }
 
   /**
@@ -116,7 +113,7 @@ export class WebSocketClient extends EventEmitter {
           browserWs.onmessage = async (event) => {
             try {
               const message = JSON.parse(event.data as string);
-              this.emit('message', message);
+              this.handleMessage(message);
             } catch (error) {
               console.error('Error handling message:', error);
               this.emit('error', error);
@@ -164,7 +161,7 @@ export class WebSocketClient extends EventEmitter {
           nodeWs.on('message', async (data: WebSocketTypes.Data) => {
             try {
               const message = JSON.parse(data.toString());
-              this.emit('message', message);
+              this.handleMessage(message);
             } catch (error) {
               console.error('Error handling message:', error);
               this.emit('error', error);
@@ -262,7 +259,6 @@ export class WebSocketClient extends EventEmitter {
       }
       
       this.ws = null;
-      console.log('Disconnected from orchestrator');
     }
   }
 
@@ -311,7 +307,7 @@ export class WebSocketClient extends EventEmitter {
     }
     
     // Just emit the raw message for central handling in the SDK
-    this.emit('message', message);
+    this.emit('raw-message', message);
     
     // Only handle clientId for welcome messages here
     if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {

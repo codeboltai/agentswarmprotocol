@@ -222,7 +222,34 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         timeout: 30000,
         clientId: undefined
     }) {
-        return this.serviceManager.executeServiceTask(serviceId, functionName, params, options);
+        // First verify we have the serviceId
+        if (!serviceId) {
+            this.logger.error('executeServiceTask called with empty serviceId');
+            return Promise.reject(new Error('Service ID is required for executing a service task'));
+        }
+        this.logger.debug(`Executing service task "${functionName}" on service "${serviceId}"`);
+        try {
+            return this.serviceManager.executeServiceTask(serviceId, functionName, params, options)
+                .catch(error => {
+                // Enhance error messages for better troubleshooting
+                if (error.message.includes('Connection not found')) {
+                    this.logger.error(`Service connection error: Unable to find service "${serviceId}". Make sure the service is running and connected.`);
+                    throw new Error(`Service "${serviceId}" is not connected or does not exist. Please verify the service is running and properly registered.`);
+                }
+                // Handle other common errors
+                if (error.message.includes('timed out')) {
+                    this.logger.error(`Service task timed out: "${functionName}" on service "${serviceId}"`);
+                    throw new Error(`Service task "${functionName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
+                }
+                // Pass through other errors
+                throw error;
+            });
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to execute service task: ${errorMessage}`);
+            return Promise.reject(error instanceof Error ? error : new Error(errorMessage));
+        }
     }
     //OK
     /**

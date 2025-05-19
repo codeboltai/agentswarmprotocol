@@ -1,0 +1,20 @@
+{
+  "name": "@agentswarmprotocol/baseclient",
+  "version": "1.0.0",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "type": "commonjs",
+  "private": true,
+  "scripts": {
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "dev": "ts-node index.ts"
+  },
+  "dependencies": {
+    "@agentswarmprotocol/clientsdk": "file:../../sdk/clientsdk"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2"
+  }
+}

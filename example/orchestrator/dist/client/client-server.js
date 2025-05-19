@@ -60,6 +60,18 @@ class ClientServer {
         this.eventBus.on('task.error', (clientId, message) => {
             this.forwardTaskErrorToClient(clientId, message);
         });
+        // Listen for task notifications
+        this.eventBus.on('task.notification', (clientId, content) => {
+            this.forwardTaskNotificationToClient(clientId, content);
+        });
+        // Listen for service notifications
+        this.eventBus.on('service.notification', (clientId, content) => {
+            this.forwardServiceNotificationToClient(clientId, content);
+        });
+        // Listen for MCP task executions
+        this.eventBus.on('mcp.task.execution', (clientId, content) => {
+            this.forwardMCPTaskExecutionToClient(clientId, content);
+        });
     }
     async start() {
         // Create HTTP server for clients
@@ -146,6 +158,12 @@ class ClientServer {
                     break;
                 case 'client.message':
                     await this.handleClientDirectMessage(message, ws);
+                    break;
+                case 'mcp.server.tools':
+                    await this.handleClientMCPServerTools(message, ws);
+                    break;
+                case 'mcp.tool.execute':
+                    await this.handleClientMCPToolExecution(message, ws);
                     break;
                 default:
                     this.sendToClient(ws, {
@@ -261,6 +279,84 @@ class ClientServer {
                 id: message.id, // Use id for consistency
                 content: {
                     servers: result
+                }
+            });
+        });
+    }
+    // Handle MCP server tools request from client
+    async handleClientMCPServerTools(message, ws) {
+        console.log(`Processing MCP server tools request: ${JSON.stringify(message)}`);
+        if (!message.content?.serverId) {
+            return this.sendToClient(ws, {
+                type: 'error',
+                id: message.id,
+                content: {
+                    error: 'Invalid request',
+                    details: 'Server ID is required'
+                }
+            });
+        }
+        // Emit MCP server tools request event
+        this.eventBus.emit('client.mcp.server.tools', message.content.serverId, (result) => {
+            if (result.error) {
+                this.sendToClient(ws, {
+                    type: 'error',
+                    id: message.id,
+                    content: {
+                        error: 'Error getting MCP server tools',
+                        details: result.error
+                    }
+                });
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'mcp.server.tools',
+                id: message.id,
+                content: {
+                    serverId: message.content.serverId,
+                    tools: result
+                }
+            });
+        });
+    }
+    // Handle MCP tool execution request from client
+    async handleClientMCPToolExecution(message, ws) {
+        console.log(`Processing MCP tool execution request: ${JSON.stringify(message)}`);
+        if (!message.content?.serverId || !message.content?.toolName) {
+            return this.sendToClient(ws, {
+                type: 'error',
+                id: message.id,
+                content: {
+                    error: 'Invalid request',
+                    details: 'Server ID and tool name are required'
+                }
+            });
+        }
+        // Emit MCP tool execution request event
+        this.eventBus.emit('client.mcp.tool.execute', {
+            serverId: message.content.serverId,
+            toolName: message.content.toolName,
+            parameters: message.content.parameters || {},
+            clientId: ws.id
+        }, (result) => {
+            if (result.error) {
+                this.sendToClient(ws, {
+                    type: 'error',
+                    id: message.id,
+                    content: {
+                        error: 'Error executing MCP tool',
+                        details: result.error
+                    }
+                });
+                return;
+            }
+            this.sendToClient(ws, {
+                type: 'mcp.tool.execution',
+                id: message.id,
+                content: {
+                    serverId: message.content.serverId,
+                    toolName: message.content.toolName,
+                    result: result
                 }
             });
         });
@@ -399,6 +495,45 @@ class ClientServer {
             id: (0, uuid_1.v4)(),
             type: 'task.error',
             content: message
+        });
+    }
+    // Forward task notifications to clients
+    forwardTaskNotificationToClient(clientId, content) {
+        const clientWs = this.getClientConnection(clientId);
+        if (!clientWs) {
+            console.log(`Client ${clientId} is not connected, cannot forward task notification`);
+            return;
+        }
+        this.sendToClient(clientWs, {
+            id: (0, uuid_1.v4)(),
+            type: 'task.notification',
+            content: content
+        });
+    }
+    // Forward service notifications to clients
+    forwardServiceNotificationToClient(clientId, content) {
+        const clientWs = this.getClientConnection(clientId);
+        if (!clientWs) {
+            console.log(`Client ${clientId} is not connected, cannot forward service notification`);
+            return;
+        }
+        this.sendToClient(clientWs, {
+            id: (0, uuid_1.v4)(),
+            type: 'service.notification',
+            content: content
+        });
+    }
+    // Forward MCP task executions to clients
+    forwardMCPTaskExecutionToClient(clientId, content) {
+        const clientWs = this.getClientConnection(clientId);
+        if (!clientWs) {
+            console.log(`Client ${clientId} is not connected, cannot forward MCP task execution`);
+            return;
+        }
+        this.sendToClient(clientWs, {
+            id: (0, uuid_1.v4)(),
+            type: 'mcp.task.execution',
+            content: content
         });
     }
     /**
