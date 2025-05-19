@@ -297,7 +297,7 @@ class WebSocketClient extends events_1.EventEmitter {
             return;
         }
         // Just emit the raw message for central handling in the SDK
-        this.emit('raw-message', message);
+        this.emit('message', message);
         // Only handle clientId for welcome messages here
         if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {
             this.clientId = message.content.clientId;

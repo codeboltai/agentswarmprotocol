@@ -11,10 +11,11 @@
     "dev": "ts-node index.ts"
   },
   "dependencies": {
-    "@agentswarmprotocol/clientsdk": "file:../../sdk/clientsdk"
+    "@agentswarmprotocol/clientsdk": "file:../../sdk/clientsdk",
+    "chalk": "^4.1.2"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
   }
 }

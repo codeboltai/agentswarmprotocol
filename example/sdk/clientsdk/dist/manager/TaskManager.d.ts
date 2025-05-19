@@ -18,7 +18,7 @@ export declare class TaskManager {
      * @param options - Additional options
      * @returns Task information
      */
-    sendTask(agentId: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
+    sendTask(agentId: string, agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
     /**
      * Send a message to a running task
      * @param taskId - ID of the task to send the message to

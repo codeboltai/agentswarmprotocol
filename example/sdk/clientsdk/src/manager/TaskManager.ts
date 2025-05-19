@@ -25,7 +25,7 @@ export class TaskManager {
    * @param options - Additional options
    * @returns Task information
    */
-  async sendTask(agentId: string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
+  async sendTask(agentId: string, agentName:string, taskData: any, options: TaskRequestOptions = {}): Promise<any> {
 
     console.log(`Sending task to agent ${agentId}`);
     
@@ -35,6 +35,7 @@ export class TaskManager {
       content: {
         event: 'task.completed',
         agentId,
+        agentName,
         taskData
       }
     });
