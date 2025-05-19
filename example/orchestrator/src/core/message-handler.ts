@@ -54,6 +54,14 @@ class MessageHandler {
    */
   async handleTaskCreation(message: BaseMessage, clientId: string) {
     const { agentName, agentId, taskData } = message.content;
+ 
+    console.log(`Task creation request received: ${JSON.stringify({
+      agentName,
+      agentId,
+      hasTaskData: !!taskData,
+      taskDataType: taskData ? typeof taskData : 'undefined',
+      taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
+    })}`);
 
     if (!taskData) {
       throw new Error('Invalid task creation request: taskData is required');

@@ -49,6 +49,16 @@ export class TaskHandler extends EventEmitter {
       return;
     }
 
+    // Add detailed logging about the message and task data
+    this.logger.info(`Processing task ${taskId} (type: ${taskType || 'undefined'})`);
+    this.logger.info(`Task message structure: ${JSON.stringify({
+      hasContent: !!message.content,
+      contentKeys: message.content ? Object.keys(message.content) : [],
+      taskDataType: taskData ? typeof taskData : 'undefined',
+      taskDataIsEmpty: taskData ? (typeof taskData === 'object' ? Object.keys(taskData).length === 0 : false) : true,
+      taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
+    })}`);
+
     // Emit task event
     this.emit('task', taskData, message);
     

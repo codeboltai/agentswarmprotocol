@@ -113,6 +113,14 @@ class AgentServer {
 
   async handleMessage(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
     console.log(`Received agent message: ${JSON.stringify(message)}`);
+    console.log(`Message content structure: ${JSON.stringify({
+      contentType: message.content ? typeof message.content : 'undefined',
+      hasTaskId: message.content?.taskId ? true : false,
+      hasType: message.content?.type ? true : false,
+      hasData: message.content?.data ? true : false,
+      dataType: message.content?.data ? typeof message.content.data : 'undefined',
+      dataIsEmpty: message.content?.data ? Object.keys(message.content.data).length === 0 : true
+    })}`);
     
     if (!message.type) {
       return this.sendError(ws, 'Invalid message format: type is required', message.id);

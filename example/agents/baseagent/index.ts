@@ -5,7 +5,7 @@ const agent = new SwarmAgentSDK({
   name: 'SimpleAgent',
   description: 'A basic agent that processes text input',
   capabilities: ['text-processing'],
-  orchestratorUrl : 'ws://100.90.91.1:3000/'
+  orchestratorUrl : 'ws://localhost:3000/'
 });
 
 // Connect to the orchestrator
@@ -18,31 +18,16 @@ agent.connect()
   });
 
 // Register a task handler for text processing
-agent.onMessage('client.task.create', async (taskData: any, metadata: any) => {
-  console.log('Received text processing task:', taskData);
-  
-  // Process the text (simple transformation example)
-  const processedText = taskData.text.toUpperCase();
-  
-  // Send task message to update on progress
-  agent.sendMessage(metadata.taskId, {
-    type: 'progress',
-    message: 'Processing text...',
-    progress: 50
+agent.on('task.create', (task) => {
+    console.log(`Received task: ${JSON.stringify(task)}`);
+    console.log(`Task structure: ${JSON.stringify({
+      type: typeof task,
+      keys: typeof task === 'object' ? Object.keys(task) : 'n/a',
+      hasTaskType: task && task.taskType ? true : false,
+      hasQuery: task && task.query ? true : false,
+      hasMessage: task && task.message ? true : false
+    })}`);
   });
-  
-  // Small delay to simulate processing
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Return the result
-  return {
-    processedText,
-    metadata: {
-      processedAt: new Date().toISOString(),
-      transformationType: 'uppercase'
-    }
-  };
-});
 
 // Listen for errors
 agent.on('error', (error) => {

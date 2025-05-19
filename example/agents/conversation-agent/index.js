@@ -33,6 +33,17 @@ async function startConversationAgent() {
     
     agent.on('task', (task) => {
       console.log(`Received task: ${JSON.stringify(task)}`);
+      console.log(`Task structure: ${JSON.stringify({
+        type: typeof task,
+        keys: typeof task === 'object' ? Object.keys(task) : 'n/a',
+        hasTaskType: task && task.taskType ? true : false,
+        hasQuery: task && task.query ? true : false,
+        hasMessage: task && task.message ? true : false
+      })}`);
+    });
+    
+    agent.on('task-notification-sent', (taskId, notification) => {
+      console.log(`Task notification sent for ${taskId}: ${notification.message} (${notification.type})`);
     });
     
     agent.on('task-sent', (taskId, result) => {
