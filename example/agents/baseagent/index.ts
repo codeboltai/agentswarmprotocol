@@ -4,7 +4,8 @@ import { SwarmAgentSDK } from '@agent-swarm/agent-sdk';
 const agent = new SwarmAgentSDK({
   name: 'SimpleAgent',
   description: 'A basic agent that processes text input',
-  capabilities: ['text-processing']
+  capabilities: ['text-processing'],
+  orchestratorUrl : 'ws://100.90.91.1:3000/'
 });
 
 // Connect to the orchestrator
@@ -17,7 +18,7 @@ agent.connect()
   });
 
 // Register a task handler for text processing
-agent.onMessage('text-processing', async (taskData: any, metadata: any) => {
+agent.onMessage('client.task.create', async (taskData: any, metadata: any) => {
   console.log('Received text processing task:', taskData);
   
   // Process the text (simple transformation example)
