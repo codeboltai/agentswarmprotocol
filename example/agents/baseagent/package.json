@@ -1,0 +1,19 @@
+{
+  "name": "baseagent",
+  "version": "1.0.0",
+  "description": "A simple base agent for Agent Swarm Protocol",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "build": "tsc",
+    "dev": "ts-node-dev --respawn index.ts"
+  },
+  "dependencies": {
+    "@agent-swarm/agent-sdk": "file:../../sdk/agentsdk"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^4.9.5"
+  }
+} 
