@@ -48,7 +48,7 @@ async function main() {
     }
 
     // Send a sample task to the first agent
-    const taskData = { query: 'Hello from baseclient!' };
+    const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };
     const task = await sdk.sendTask(agents[0].id, agents[0].name , taskData);
     console.log('Task created:', task);
     
