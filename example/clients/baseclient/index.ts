@@ -48,9 +48,18 @@ async function main() {
     }
 
     // Send a sample task to the first agent
-    const taskData = { query: 'Hello from baseclient!' };
+    const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };
     const task = await sdk.sendTask(agents[0].id, agents[0].name , taskData);
     console.log('Task created:', task);
+    
+    // Add a listener for task notifications
+    sdk.on('task-notification', (notification) => {
+      console.log('Task notification received:', notification);
+    });
+    
+    // Wait for some time to receive notifications
+    console.log('Listening for task notifications for 30 seconds...');
+    await new Promise(resolve => setTimeout(resolve, 30000));
   } catch (error) {
     console.error('Error in client:', error);
   } finally {

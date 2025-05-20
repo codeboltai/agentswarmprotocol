@@ -150,6 +150,9 @@ class ConversationAgent extends SwarmAgentSDK {
     // Send task status update - Started
     await this.sendTaskStatus(this.currentMessageId, 'started');
     
+    // Send first notification - received message
+    await this.sendTaskNotification(this.currentMessageId, `Received your message: "${message.substring(0, 30)}${message.length > 30 ? '...' : ''}"`, 'info');
+    
     // Get or create conversation context
     if (!this.conversations.has(conversationId)) {
       this.logger.warn(`Conversation ${conversationId} not found, initializing`);
@@ -189,11 +192,25 @@ class ConversationAgent extends SwarmAgentSDK {
     // Send task status update - Processing
     await this.sendTaskStatus(metadata.taskId, 'processing');
     
+    // Send second notification - analyzing message
+    await this.sendTaskNotification(
+      this.currentMessageId, 
+      `Analyzing message... Detected intents: ${intents.join(', ') || 'none'}, Sentiment: ${sentiment}`, 
+      'processing'
+    );
+    
     // Check if this is a research-related query and available agents are provided
     const isResearchQuery = this.isResearchQuery(message);
     let researchResult = null;
     
     if (isResearchQuery && context.availableAgents) {
+      // Send third notification - research query
+      await this.sendTaskNotification(
+        this.currentMessageId,
+        `Detected research query. Looking for information...`,
+        'processing'
+      );
+      
       const researchAgent = context.availableAgents.find(agent => 
         agent.name === 'Research Agent' || 
         (agent.capabilities && agent.capabilities.includes('research'))
@@ -239,6 +256,13 @@ class ConversationAgent extends SwarmAgentSDK {
     
     // Update conversation context
     this.conversations.set(conversationId, convoContext);
+    
+    // Send final notification - response ready
+    await this.sendTaskNotification(
+      this.currentMessageId,
+      `Response ready. Message length: ${responseData.response.length} characters`,
+      'completed'
+    );
     
     this.logger.info(`Sending conversation:message response for "${message}"`);
     this.logger.info(`Response debug info: ${JSON.stringify({
@@ -298,6 +322,39 @@ class ConversationAgent extends SwarmAgentSDK {
       }
     } catch (error) {
       this.logger.error(`Failed to send task status update: ${error.message}`);
+    }
+  }
+
+  /**
+   * Send a task notification to the orchestrator
+   * @param {string} taskId - The ID of the task
+   * @param {string} message - The notification message
+   * @param {string} type - The notification type (info, processing, warning, error, completed)
+   * @param {Object} data - Additional data to include
+   */
+  async sendTaskNotification(taskId, message, type = 'info', data = {}) {
+    // If no taskId is provided, use the current message ID or generate a new one
+    if (!taskId) {
+      const messageId = this.currentMessageId || `task-${uuidv4().substring(0, 8)}`;
+      this.logger.info(`No taskId provided for notification, using generated ID: ${messageId}`);
+      taskId = messageId;
+    }
+
+    try {
+      // Send task notification
+      this.logger.info(`Sending task notification (${type}): ${message} for task ${taskId}`);
+      await this.send({
+        type: 'task.notification',
+        content: {
+          taskId,
+          message,
+          type,
+          timestamp: new Date().toISOString(),
+          data
+        }
+      });
+    } catch (error) {
+      this.logger.error(`Failed to send task notification: ${error.message}`);
     }
   }
 
@@ -391,6 +448,28 @@ class ConversationAgent extends SwarmAgentSDK {
    */
   async handleDefaultOrConvertTask(task, metadata) {
     this.logger.warn(`Trying to determine task type from payload: ${JSON.stringify(task)}`);
+    this.logger.info(`Task metadata: ${JSON.stringify(metadata)}`);
+    
+    // Store taskId from metadata for notifications
+    if (metadata && metadata.taskId) {
+      this.currentMessageId = metadata.taskId;
+    } else if (metadata && metadata.id) {
+      this.currentMessageId = metadata.id;
+    } else if (metadata && metadata.content && metadata.content.taskId) {
+      this.currentMessageId = metadata.content.taskId;
+    }
+    
+    // Check if this task data might be nested in metadata
+    if (metadata && metadata.content && metadata.content.data && Object.keys(task).length === 0) {
+      this.logger.info('Task data appears to be in metadata, extracting');
+      task = metadata.content.data;
+      this.logger.info(`Extracted task data: ${JSON.stringify(task)}`);
+    }
+    
+    // Send initial notification
+    if (this.currentMessageId) {
+      await this.sendTaskNotification(this.currentMessageId, "Starting to process your request...", "info");
+    }
     
     // Check if this is a conversation message task but the type is missing or in a different field
     if (task.taskType === 'conversation:message' || 
@@ -401,13 +480,27 @@ class ConversationAgent extends SwarmAgentSDK {
       return this.handleConversationMessage(task, metadata);
     }
     
+    // Check if this is a simple query message
+    if (task.query && typeof task.query === 'string') {
+      this.logger.info('Detected simple query format, treating as conversation message');
+      
+      // Send second notification
+      if (this.currentMessageId) {
+        await this.sendTaskNotification(this.currentMessageId, `Received query: "${task.query.substring(0, 30)}${task.query.length > 30 ? '...' : ''}"`, "processing");
+      }
+      
+      // Create a conversation-style task from the query
+      const conversationId = uuidv4();
+      return this.handleConversationMessage({
+        conversationId,
+        message: task.query,
+        context: {}
+      }, metadata);
+    }
+    
     // Otherwise fall back to the default handler
     return this.handleDefaultTask(task, metadata);
   }
-
-
-
-
 
   /**
    * Handle default tasks
@@ -422,9 +515,50 @@ class ConversationAgent extends SwarmAgentSDK {
       input: task.input ? typeof task.input : 'undefined',
       conversationId: task.conversationId,
       hasMessage: !!task.message,
+      hasQuery: !!task.query,
       metadata: metadata,
       fullTask: JSON.stringify(task)
     })}`);
+    
+    // Send notification about unknown task
+    if (this.currentMessageId) {
+      await this.sendTaskNotification(
+        this.currentMessageId, 
+        `Processing unknown task type: ${task.taskType || 'undefined'}`,
+        "warning"
+      );
+    }
+    
+    // Handle simple query format {"query": "some message"}
+    if (task.query && typeof task.query === 'string') {
+      this.logger.info('Detected simple query format, treating as conversation message');
+      
+      // Send notification about query
+      if (this.currentMessageId) {
+        await this.sendTaskNotification(
+          this.currentMessageId,
+          `Converting query to conversation: "${task.query.substring(0, 30)}${task.query.length > 30 ? '...' : ''}"`,
+          "processing"
+        );
+      }
+      
+      // Create a conversation-style task from the query
+      const conversationId = uuidv4();
+      return this.handleConversationMessage({
+        conversationId,
+        message: task.query,
+        context: {}
+      }, metadata);
+    }
+    
+    // Final notification before sending unsupported response
+    if (this.currentMessageId) {
+      await this.sendTaskNotification(
+        this.currentMessageId,
+        "Cannot process this task type. Sending fallback response.",
+        "error"
+      );
+    }
     
     return {
       message: `Unsupported task type: ${task.taskType || 'undefined'}`,
@@ -866,7 +1000,27 @@ class ConversationAgent extends SwarmAgentSDK {
     return response;
   }
 
-
+  /**
+   * Override send method to emit events for task notifications
+   * @param {Object} message - The message to send
+   * @returns {Promise<Object>} - The sent message
+   */
+  async send(message) {
+    // Check if this is a task notification and emit an event
+    if (message.type === 'task.notification') {
+      const taskId = message.content?.taskId;
+      if (taskId) {
+        this.emit('task-notification-sent', taskId, {
+          message: message.content.message,
+          type: message.content.type,
+          timestamp: message.content.timestamp
+        });
+      }
+    }
+    
+    // Call the parent class send method
+    return super.send(message);
+  }
 }
 
 module.exports = ConversationAgent; 

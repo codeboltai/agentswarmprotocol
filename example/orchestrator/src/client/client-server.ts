@@ -198,7 +198,7 @@ class ClientServer {
   
   // Handle task creation request from client
   async handleClientTaskCreation(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    // Emit task creation event and wait for response
+    // Emit task creation event and wait for response (which now only resolves on task completion)
     this.eventBus.emit('client.task.create', message, ws.id, (result: any) => {
       if (result.error) {
         this.sendToClient(ws, {
@@ -212,13 +212,14 @@ class ClientServer {
         return;
       }
       
-      // Notify client of task creation
+      // The task is now completed - send the result
       this.sendToClient(ws, {
-        type: 'task.created',
+        type: 'task.result',
         id: message.id,
         content: result
       });
     });
+    // Note: The task.created notification is now sent directly in the orchestrator's event handler
   }
   
   // Handle task status request from client
