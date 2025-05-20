@@ -125,20 +125,26 @@ class SwarmAgentSDK extends EventEmitter {
 
     // For standard message types
     switch (message.type) {
-      case 'task.execute':
-        this.taskHandler.handleTask(message as TaskExecuteMessage);
+      case 'agent.registered':
+        this.emit('registered', message.content);
         break;
       case 'orchestrator.welcome':
         this.emit('welcome', message.content);
         break;
-      case 'agent.request.accepted':
+      case 'task.execute':
+        this.taskHandler.handleTask(message as TaskExecuteMessage);
+        break;
+      case 'task.messageresponse':
+        this.emit('task.messageresponse', message.content);
+        break;
+      case 'childagent.request.accepted':
         this.emit('agent-request-accepted', message.content);
         break;
-      case 'agent.response':
-        this.emit('agent-response', message.content);
+      case 'childagent.response':
+        this.emit('childagent.response', message.content);
         break;
-      case 'agent.registered':
-        this.emit('registered', message.content);
+      case 'service.request.accepted':
+        this.emit('service-request-accepted', message.content);
         break;
       case 'service.response':
         this.emit('service-response', message.content);
@@ -149,7 +155,6 @@ class SwarmAgentSDK extends EventEmitter {
       case 'error':
         this.emit('error', new Error(message.content ? message.content.error : 'Unknown error'));
         break;
-      // MCP message types
       case 'mcp.servers.list':
         this.emit('mcp-servers-list', message.content);
         break;
