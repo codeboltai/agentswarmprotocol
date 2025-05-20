@@ -5,8 +5,9 @@ import { TaskExecuteMessage, TaskHandler as TaskHandlerType } from '../core/type
 import { WebSocketManager } from '../core/WebSocketManager';
 
 export class TaskHandler extends EventEmitter {
-  private taskHandlers: Map<string, TaskHandlerType> = new Map();
-  private defaultTaskHandler: TaskHandlerType | null = null;
+  // Remove taskHandlers map since we'll only have one handler
+  // private taskHandlers: Map<string, TaskHandlerType> = new Map();
+  private taskHandler: TaskHandlerType | null = null;
 
   constructor(
     private webSocketManager: WebSocketManager,
@@ -17,21 +18,11 @@ export class TaskHandler extends EventEmitter {
   }
 
   /**
-   * Register a task handler for a specific task type
-   * @param taskType Type of task to handle
+   * Set the task handler for all incoming tasks
    * @param handler Handler function
    */
-  registerTaskHandler(taskType: string, handler: TaskHandlerType): this {
-    this.taskHandlers.set(taskType, handler);
-    return this;
-  }
-
-  /**
-   * Register a default task handler for when no specific handler is found
-   * @param handler Handler function
-   */
-  registerDefaultTaskHandler(handler: TaskHandlerType): this {
-    this.defaultTaskHandler = handler;
+  onTask(handler: TaskHandlerType): this {
+    this.taskHandler = handler;
     return this;
   }
 
@@ -41,7 +32,6 @@ export class TaskHandler extends EventEmitter {
    */
   async handleTask(message: TaskExecuteMessage): Promise<void> {
     const taskId = message.content?.taskId;
-    const taskType = message.content?.type;
     const taskData = message.content?.data;
     
     if (!taskId) {
@@ -50,7 +40,7 @@ export class TaskHandler extends EventEmitter {
     }
 
     // Add detailed logging about the message and task data
-    this.logger.info(`Processing task ${taskId} (type: ${taskType || 'undefined'})`);
+    this.logger.info(`Processing task ${taskId}`);
     this.logger.info(`Task message structure: ${JSON.stringify({
       hasContent: !!message.content,
       contentKeys: message.content ? Object.keys(message.content) : [],
@@ -61,28 +51,18 @@ export class TaskHandler extends EventEmitter {
 
     // Emit task event
     this.emit('task', taskData, message);
-    
-    if (taskType) {
-      this.emit(`task.${taskType}`, taskData, message);
-    }
 
     try {
-      // Find the appropriate handler
-      let handler = this.defaultTaskHandler;
-      
-      if (taskType && this.taskHandlers.has(taskType)) {
-        handler = this.taskHandlers.get(taskType)!;
-      }
-      
-      if (!handler) {
-        throw new Error(`No handler registered for task type: ${taskType}`);
+      // Check if we have a handler
+      if (!this.taskHandler) {
+        throw new Error('No task handler registered');
       }
       
       // Update task status
       this.sendTaskStatus(taskId, 'started');
       
       // Execute the handler
-      const result = await handler(taskData, message);
+      const result = await this.taskHandler(taskData, message);
       
       // Send the result
       this.sendTaskResult(taskId, result);
@@ -142,7 +122,7 @@ export class TaskHandler extends EventEmitter {
    * @param taskId ID of the task
    * @param content Message content
    */
-  sendMessage(taskId: string, content: any): void {
+  sendTaskMessage(taskId: string, content: any): void {
     this.webSocketManager.send({
       id: uuidv4(),
       type: 'task.message',
@@ -152,5 +132,31 @@ export class TaskHandler extends EventEmitter {
         message: content
       }
     } as BaseMessage);
+  }
+
+  /**
+   * Send a request message during task execution and wait for a response
+   * @param taskId ID of the task being executed
+   * @param content Request content
+   * @param timeout Timeout in milliseconds
+   * @returns Promise that resolves with the response
+   */
+  requestMessageDuringTask(taskId: string, content: any, timeout = 30000): Promise<any> {
+    const requestId = uuidv4();
+    return this.webSocketManager.sendAndWaitForResponse({
+      id: requestId,
+      type: 'task.requestmessage',
+      content: {
+        agentId: this.agentId,
+        taskId,
+        request: content
+      }
+    } as BaseMessage, timeout)
+    .then(response => {
+      if (response.content && response.content.result) {
+        return response.content.result;
+      }
+      return response.content;
+    });
   }
 } 

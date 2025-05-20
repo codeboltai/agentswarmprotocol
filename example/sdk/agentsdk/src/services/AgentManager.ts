@@ -33,7 +33,6 @@ export class AgentManager {
       id: uuidv4(),
       type: 'agent.status',
       content: {
-        agentId: this.agentId,
         status
       }
     } as BaseMessage);
@@ -49,7 +48,7 @@ export class AgentManager {
   //   type: taskType,
   //   ...taskData
   // };
-  async requestAgentTask(targetAgentName: string, taskData: any, timeout = 30000): Promise<any> {
+  async executeChildAgentTask(targetAgentName: string, taskData: any, timeout = 30000): Promise<any> {
     const response = await this.webSocketManager.sendAndWaitForResponse({
       id: uuidv4(),
       type: 'agent.request',
