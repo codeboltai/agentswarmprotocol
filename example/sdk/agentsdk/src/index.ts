@@ -244,15 +244,6 @@ class SwarmAgentSDK extends EventEmitter {
   }
 
   // Service Manager methods
-  /**
-   * Request a service
-   * @param serviceName Name of the service
-   * @param params Service parameters
-   * @param timeout Request timeout
-   */
-  requestService(serviceName: string, params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    return this.serviceManager.requestService(serviceName, params, timeout);
-  }
 
   /**
    * Convenience method for executing a service
@@ -322,6 +313,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.serviceManager.getServiceList(filters);
   }
 
+  //Ok
   // MCP Manager methods
   //OK
   /**

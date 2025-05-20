@@ -67,6 +67,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.webSocketManager.on('disconnected', () => this.emit('disconnected'));
         this.webSocketManager.on('error', (error) => this.emit('error', error));
         // Forward MessageHandler events
+        this.messageHandler.on('message', (message) => this.emit('raw-message', message));
         this.messageHandler.on('welcome', (content) => this.emit('welcome', content));
         this.messageHandler.on('agent-request-accepted', (content) => this.emit('agent-request-accepted', content));
         this.messageHandler.on('agent-response', (content) => this.emit('agent-response', content));
