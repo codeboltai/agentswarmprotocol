@@ -4,6 +4,7 @@ import { EventEmitter } from 'events';
 import { AgentRegistry } from '../registry/agent-registry';
 import { AgentTaskRegistry } from './utils/tasks/agent-task-registry';
 import { ServiceRegistry } from '../registry/service-registry';
+import { ClientRegistry } from '../registry/client-registry';
 import { ServiceTaskRegistry } from './utils/tasks/service-task-registry';
 import AgentServer from '../agent/agent-server';
 import ClientServer from '../client/client-server';
@@ -35,6 +36,7 @@ class Orchestrator {
   private agents: AgentRegistry;
   private tasks: AgentTaskRegistry;
   private services: ServiceRegistry;
+  private clients: ClientRegistry;
   private serviceTasks: ServiceTaskRegistry;
   private pendingResponses: Record<string, PendingResponse>;
   private eventBus: EventEmitter;
@@ -63,6 +65,7 @@ class Orchestrator {
     this.agents = new AgentRegistry();
     this.tasks = new AgentTaskRegistry();
     this.services = new ServiceRegistry();
+    this.clients = new ClientRegistry();
     this.serviceTasks = new ServiceTaskRegistry();
     this.pendingResponses = {}; // Track pending responses
     
@@ -78,6 +81,7 @@ class Orchestrator {
       tasks: this.tasks,
       services: this.services,
       serviceTasks: this.serviceTasks,
+      clients: this.clients,
       eventBus: this.eventBus,
       mcp: this.mcp
     });
@@ -92,7 +96,10 @@ class Orchestrator {
     
     this.clientServer = new ClientServer(
       this.eventBus, 
-      { clientPort: this.clientPort }
+      { 
+        clientPort: this.clientPort,
+        clientRegistry: this.clients
+      }
     );
     
     this.serviceServer = new ServiceServer(
