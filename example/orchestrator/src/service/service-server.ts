@@ -164,7 +164,6 @@ class ServiceServer {
         case 'service.task.result':
           // Emit task result event
           this.eventBus.emit('service.task.result.received', message);
-          this.eventBus.emit('response.message', message);
           break;
           
         case 'service.task.notification':
@@ -341,8 +340,6 @@ class ServiceServer {
           }
         }
         
-        // Remove the event listener to prevent memory leaks
-        this.eventBus.removeListener('response.message', responseHandler);
         
         // Resolve the promise with the response
         resolve(response);
@@ -370,7 +367,6 @@ class ServiceServer {
       };
       
       // Add listener for response
-      this.eventBus.on('response.message', responseHandler);
       
       // Store the response callback
       if (!this.pendingResponses[messageId]) {

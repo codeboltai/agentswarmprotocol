@@ -112,6 +112,7 @@ class Orchestrator {
     this.setupEventListeners();
   }
 
+  //OK
   private setupEventListeners(): void {
     // Listen for task created events
     this.eventBus.on('task.created', (taskId: string, agentId: string, clientId: string, taskData: any) => {
@@ -632,6 +633,7 @@ class Orchestrator {
     });
   }
 
+  //OK
   /**
    * Start the orchestrator and all its servers
    */
@@ -661,6 +663,7 @@ class Orchestrator {
     }
   }
 
+  //Ok
   /**
    * Initialize MCP servers from configuration
    */
@@ -690,6 +693,7 @@ class Orchestrator {
     }
   }
 
+  // Can skip this logic and rely on the Agent.register() method
   /**
    * Initialize agents from configuration
    */
@@ -706,6 +710,7 @@ class Orchestrator {
     }
   }
 
+  // Can skip this logic and rely on the Service.register() method
   /**
    * Initialize services from configuration
    */
@@ -722,6 +727,7 @@ class Orchestrator {
     }
   }
 
+  //LOW LEVEL FUNCTION
   /**
    * Send a message to a WebSocket connection or to a connection ID and wait for a response
    * @param wsOrConnectionId - WebSocket object or connection ID
@@ -788,6 +794,7 @@ class Orchestrator {
     return responsePromise;
   }
 
+  // This should be removed and replaced with specific handlers for each message type
   /**
    * Handle response messages for outstanding requests
    */
