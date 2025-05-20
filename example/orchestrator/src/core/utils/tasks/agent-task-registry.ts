@@ -515,23 +515,52 @@ class AgentTaskRegistry {
     return this.getAllTasks(filters).length;
   }
 
-  // Add missing getTasks method
-  getTasks(filters?: any): any[] {
-    const tasksArray = Array.from(this.tasks.values());
+  /**
+   * Get tasks with filtering
+   * @param {object} filters - Filter criteria
+   * @returns {Task[]} Array of tasks matching the filter criteria
+   */
+  getTasks(filters: {
+    agentId?: string;
+    clientId?: string;
+    status?: TaskStatus | TaskStatus[];
+    type?: string;
+  } = {}): Task[] {
+    let result = Array.from(this.tasks.values());
     
-    if (!filters) {
-      return tasksArray;
+    // Filter by agent ID
+    if (filters.agentId) {
+      result = result.filter(task => 
+        task.agentId === filters.agentId || 
+        task.assigneeId === filters.agentId
+      );
     }
     
-    return tasksArray.filter(task => {
-      // Apply filters
-      for (const [key, value] of Object.entries(filters)) {
-        if (task[key] !== value) {
-          return false;
-        }
+    // Filter by client ID
+    if (filters.clientId) {
+      result = result.filter(task => task.clientId === filters.clientId);
+    }
+    
+    // Filter by status, supporting both single status and array of statuses
+    if (filters.status) {
+      if (Array.isArray(filters.status)) {
+        result = result.filter(task => 
+          filters.status && filters.status.includes(task.status)
+        );
+      } else {
+        result = result.filter(task => task.status === filters.status);
       }
-      return true;
-    });
+    }
+    
+    // Filter by task type
+    if (filters.type) {
+      result = result.filter(task => 
+        task.type === filters.type || 
+        (task.taskData && task.taskData.taskType === filters.type)
+      );
+    }
+    
+    return result;
   }
 }
 

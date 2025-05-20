@@ -5,6 +5,7 @@ The ASP Orchestrator is a component designed to manage services and tasks within
 ## Features
 
 - **Agent Management**: Register and track agent properties, capabilities, and status
+- **Connection Management**: Efficiently handle WebSocket connections for agents with clean separation between connection and agent data
 - **Service Registry**: Catalog of services offered by agents with their input/output schemas
 - **Task Management**: Create, assign, and track task status across the system
 - **Agent-Task Matching**: Find suitable agents for tasks based on capabilities
@@ -23,6 +24,16 @@ The main controller that integrates all aspects of the system:
 - Handles task creation and assignment
 - Provides system-wide statistics
 - Manages MCP server connections
+
+### Agent Registry
+
+Manages agents with improved connection handling:
+
+- Separates connected and disconnected agent states for better lifecycle management
+- Handles WebSocket connections alongside agent metadata
+- Maintains a registry of pending connections during authentication process
+- Provides efficient lookups by agent ID, name, or connection ID
+- Supports smooth transitions between connection states
 
 ### Service Registry
 
@@ -47,6 +58,41 @@ Manages Model Context Protocol servers:
 - MCP server registration and connection
 - Tool discovery and execution
 - Protocol-compliant communication
+
+## Connection Management
+
+The orchestrator implements an improved connection management system that separates the concerns of agent identity from connection state:
+
+### Key Features
+
+1. **Separation of Agent Identity and Connections**: Agents and their WebSocket connections are managed independently, allowing for better lifecycle management.
+
+2. **Connection State Tracking**: The system tracks three connection states:
+   - Pending: New connections that haven't been authenticated or associated with an agent
+   - Connected: Active WebSocket connections that are associated with registered agents
+   - Disconnected: Agents that were previously connected but have lost their connection
+
+3. **Efficient Lookups**: The system provides fast lookups by:
+   - Connection ID
+   - Agent ID
+   - Agent name
+
+4. **Smooth Reconnection**: When agents disconnect and reconnect, their state is properly maintained and tasks can be resumed.
+
+5. **Task Management on Disconnect**: When an agent disconnects, any pending tasks are automatically handled:
+   - Tasks are marked as failed with appropriate error messages
+   - Clients are notified about the task failure
+   - Resources are properly cleaned up
+
+### Implementation
+
+The connection management system is implemented across three main components:
+
+1. **AgentRegistry**: Maintains the mappings between agents and connections
+2. **AgentServer**: Handles WebSocket connections and initial registration
+3. **MessageHandler**: Provides business logic for connection events
+
+This system ensures robust handling of agent connections, disconnections, and reconnections, creating a more resilient and maintainable orchestrator.
 
 ## Usage
 

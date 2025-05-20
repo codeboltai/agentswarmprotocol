@@ -111,41 +111,78 @@ class Orchestrator {
       console.log(`Task ${taskId} created for agent ${agentId} by client ${clientId}`);
       
       // Get the agent connection
-      const agent = this.agents.getAgentById(agentId);
-      if (agent && agent.connectionId) {
-        // Check if we have the actual connection object
-        const connection = (agent as any).connection;
-        if (!connection) {
-          console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent connection not found`);
-          this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent connection not found' });
-          return;
-        }
-
-        // Create a task message to send to the agent
-        const taskMessage = {
-          id: taskId,
-          type: 'task.execute',
-          content: {
-            taskId: taskId,
-            type: taskData.taskType,
-            data: taskData
+      const connection = this.agents.getConnectionByAgentId(agentId);
+      if (!connection) {
+        console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent connection not found`);
+        this.tasks.updateTaskStatus(taskId, 'failed', { 
+          error: 'Agent connection not found',
+          metadata: {
+            failedAt: new Date().toISOString()
           }
-        };
+        });
         
-        // Send the task to the agent
-        try {
-          connection.send(JSON.stringify({
-            ...taskMessage,
-            timestamp: Date.now().toString()
-          }));
-          console.log(`Task ${taskId} sent to agent ${agentId}`);
-        } catch (error) {
-          console.error(`Error sending task to agent: ${error instanceof Error ? error.message : String(error)}`);
-          this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Failed to send task to agent' });
+        // Notify client if one is specified
+        if (clientId) {
+          this.clientServer.sendMessageToClient(clientId, {
+            id: uuidv4(),
+            type: 'task.error',
+            content: {
+              taskId,
+              error: 'Agent connection not found',
+              message: 'Cannot deliver task to agent: not connected'
+            }
+          });
         }
-      } else {
-        console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent not connected`);
-        this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent not connected' });
+        return;
+      }
+
+      // Create a task message to send to the agent
+      const taskMessage = {
+        id: taskId,
+        type: 'task.execute',
+        content: {
+          taskId: taskId,
+          type: taskData.taskType,
+          data: taskData
+        }
+      };
+      
+      // Send the task to the agent
+      try {
+        connection.send(JSON.stringify({
+          ...taskMessage,
+          timestamp: Date.now().toString()
+        }));
+        console.log(`Task ${taskId} sent to agent ${agentId}`);
+        
+        // Update task status to in_progress
+        this.tasks.updateTaskStatus(taskId, 'in_progress', {
+          note: 'Task sent to agent',
+          metadata: {
+            sentAt: new Date().toISOString()
+          }
+        });
+      } catch (error) {
+        console.error(`Error sending task to agent: ${error instanceof Error ? error.message : String(error)}`);
+        this.tasks.updateTaskStatus(taskId, 'failed', { 
+          error: error instanceof Error ? error.message : String(error),
+          metadata: {
+            failedAt: new Date().toISOString()
+          }
+        });
+        
+        // Notify client
+        if (clientId) {
+          this.clientServer.sendMessageToClient(clientId, {
+            id: uuidv4(),
+            type: 'task.error',
+            content: {
+              taskId,
+              error: 'Failed to send task to agent',
+              message: error instanceof Error ? error.message : String(error)
+            }
+          });
+        }
       }
     });
     
@@ -690,75 +727,58 @@ class Orchestrator {
     message: any, 
     options: SendOptions = {}
   ): Promise<any> {
-    return new Promise((resolve, reject) => {
-      let ws: WebSocketWithId;
-      
-      // If a connection ID was provided, try to find the WebSocket
-      if (typeof wsOrConnectionId === 'string') {
-        // Try to find agent connection
-        const agent = this.agents.getAgentByConnectionId(wsOrConnectionId);
-        if (agent && (agent as any).connection) {
-          ws = (agent as any).connection;
-        } else {
-          // If not an agent, check if it's a service
-          const service = this.services.getServiceByConnectionId(wsOrConnectionId);
-          if (service && (service as any).connection) {
-            ws = (service as any).connection;
-          } else {
-            return reject(new Error(`Connection not found for ID: ${wsOrConnectionId}`));
-          }
-        }
-      } else {
-        // WebSocket object was directly provided
-        ws = wsOrConnectionId;
-      }
-      
-      const messageId = message.id || uuidv4();
-      
-      // Ensure message has an ID
-      if (!message.id) {
-        message.id = messageId;
-      }
-      
-      // Add timestamp if not present
-      if (!message.timestamp) {
-        message.timestamp = Date.now().toString();
-      }
-      
-      // Convert message to string
-      const messageString = JSON.stringify(message);
-      
-      // Set up timeout for response
-      const timeout = options.timeout || 30000; // Default 30 seconds timeout
-      const timer = setTimeout(() => {
-        if (this.pendingResponses[messageId]) {
-          delete this.pendingResponses[messageId];
-          reject(new Error(`Request timed out after ${timeout}ms: ${message.type}`));
-        }
+    const messageId = message.id || uuidv4();
+    const timeout = options.timeout || 30000;
+    
+    // Ensure the message has an ID
+    if (!message.id) {
+      message.id = messageId;
+    }
+    
+    // Create a promise that will be resolved with the response
+    const responsePromise = new Promise((resolve, reject) => {
+      // Set a timeout to reject the promise
+      const timeoutId = setTimeout(() => {
+        delete this.pendingResponses[messageId];
+        reject(new Error(`Request timed out after ${timeout}ms`));
       }, timeout);
       
-      // Store the handlers
+      // Store the pending response information
       this.pendingResponses[messageId] = {
         resolve,
         reject,
-        timer
+        timer: timeoutId
       };
-      
-      // Send the message
-      try {
-        ws.send(messageString, (error: Error | undefined) => {
-          if (error) {
-            clearTimeout(timer);
-            delete this.pendingResponses[messageId];
-            reject(error);
-          }
-        });
-      } catch (error) {
-        clearTimeout(timer);
-        delete this.pendingResponses[messageId];
-        reject(error);
-      }
     });
+    
+    // Determine if we need to get a WebSocket from a connection ID
+    let ws: WebSocketWithId;
+    
+    if (typeof wsOrConnectionId === 'string') {
+      // Get the WebSocket from the connection ID
+      const connection = this.agents.getConnection(wsOrConnectionId);
+      
+      if (!connection) {
+        delete this.pendingResponses[messageId];
+        throw new Error(`Connection with ID ${wsOrConnectionId} not found`);
+      }
+      
+      ws = connection as WebSocketWithId;
+    } else {
+      // Use the provided WebSocket
+      ws = wsOrConnectionId;
+    }
+    
+    // Add timestamp to the message if not already present
+    if (!message.timestamp) {
+      message.timestamp = Date.now().toString();
+    }
+    
+    // Send the message to the client
+    ws.send(JSON.stringify(message));
+    
+    // Wait for the response
+    return responsePromise;
   }
 
   /**

@@ -5,7 +5,8 @@ import {
   PendingResponse, 
   SendOptions,
   BaseMessage,
-  Agent
+  Agent,
+  AgentStatus
 } from '../../../types/common';
 import { AgentRegistry } from '../registry/agent-registry';
 import { EventEmitter } from 'events';
@@ -42,7 +43,7 @@ class AgentServer {
     config: AgentServerConfig = {},
     messageHandler?: any
   ) {
-    this.agents = agents; // Only needed for connection tracking
+    this.agents = agents; // Registry for agent management
     this.eventBus = eventBus;
     this.port = config.port || parseInt(process.env.PORT || '3000', 10);
     this.pendingResponses = {}; // Track pending responses
@@ -70,7 +71,7 @@ class AgentServer {
       
       console.log(`New agent connection established: ${connectionId}`);
       
-      // Store the WebSocket connection in the registry
+      // Add as a pending connection in registry
       this.agents.addPendingConnection(connectionId, ws);
       
       // Handle incoming messages from agents
@@ -116,8 +117,6 @@ class AgentServer {
 
     return this;
   }
-
-
 
   async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
     console.log(`Received agent message: ${JSON.stringify(message)}`);
@@ -500,6 +499,69 @@ class AgentServer {
     }
   }
 
+  /**
+   * Handle agent registration
+   * @param message - Registration message
+   * @param connectionId - Agent connection ID
+   * @returns Registration result
+   */
+  handleAgentRegistration(message: BaseMessage, connectionId: string): any {
+    if (!message.content) {
+      return { error: 'Invalid agent registration: content is required' };
+    }
+    
+    // Extract agent data from the message
+    const {
+      id,
+      name,
+      description,
+      status = 'online',
+      capabilities = [],
+      manifest = null
+    } = message.content;
+    
+    // Validate required fields
+    if (!id) {
+      return { error: 'Invalid agent registration: id is required' };
+    }
+    
+    if (!name) {
+      return { error: 'Invalid agent registration: name is required' };
+    }
+    
+    try {
+      // Create the agent object
+      const agent: Agent = {
+        id,
+        name,
+        capabilities: capabilities || [],
+        status: status as AgentStatus || 'online',
+        connectionId,
+        registeredAt: new Date().toISOString(),
+        manifest: manifest || (description ? { description } : undefined)
+      };
+      
+      // Register the agent in the registry with the connection id
+      this.agents.registerAgent(agent, connectionId);
+      
+      // Log the registration event
+      console.log(`Agent ${name} (${id}) registered successfully with connection ${connectionId}`);
+      
+      // Emit event for agent registration
+      this.eventBus.emit('agent.registered', id, connectionId);
+      
+      return {
+        id,
+        name,
+        status,
+        message: 'Agent registered successfully'
+      };
+    } catch (error) {
+      console.error(`Error registering agent: ${error instanceof Error ? error.message : String(error)}`);
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   // Helper method to send a message and wait for a response
   async sendAndWaitForResponse(agentId: string, message: BaseMessage, options: SendOptions = {}): Promise<any> {
     const timeout = options.timeout || 30000; // Default 30 second timeout
@@ -560,63 +622,6 @@ class AgentServer {
       // Send the message
       this.send(agentId, message);
     });
-  }
-
-  /**
-   * Handle agent registration
-   * @param message - Registration message
-   * @param connectionId - Agent connection ID
-   * @returns Registration result
-   */
-  handleAgentRegistration(message: BaseMessage, connectionId: string): any {
-    const { name, capabilities, manifest } = message.content;
-
-    if (!name) {
-      throw new Error('Agent name is required');
-    }
-
-    // Check if there's a pre-configured agent with this name
-    const agentConfig = this.agents.getAgentConfigurationByName(name);
-
-    // Register the agent
-    const agent: Agent = {
-      id: agentConfig ? agentConfig.id : uuidv4(),
-      name,
-      // Use pre-configured capabilities if available, otherwise use provided capabilities or default to empty array
-      capabilities: agentConfig ? [...new Set([...agentConfig.capabilities, ...(capabilities || [])])] : capabilities || [],
-      // Merge provided manifest with pre-configured metadata
-      manifest: {
-        ...(manifest || {}),
-        ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
-      },
-      connectionId: connectionId,
-      status: 'online',
-      registeredAt: new Date().toISOString()
-    };
-
-    // Get the WebSocket connection
-    const connection = this.agents.getConnection(connectionId);
-    if (connection) {
-      (agent as any).connection = connection;
-    }
-
-    this.agents.registerAgent(agent);
-
-    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
-    if (agentConfig) {
-      console.log(`Applied pre-configured settings for agent: ${name}`);
-    }
-
-    // Notify the messageHandler about the registration for any business logic
-    if (this.messageHandler) {
-      this.eventBus.emit('agent.registered', agent.id, connectionId);
-    }
-
-    return {
-      agentId: agent.id,
-      name: agent.name,
-      message: 'Agent successfully registered'
-    };
   }
 
   stop(): void {

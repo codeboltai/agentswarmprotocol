@@ -358,18 +358,61 @@ class MessageHandler {
 
   /**
    * Handle agent disconnection
-   * @param connectionId - ID of the disconnected agent
+   * @param connectionId - The connection ID of the disconnected agent
    */
   handleAgentDisconnected(connectionId: string): void {
+    // Get the agent before removing the connection
     const agent = this.agents.getAgentByConnectionId(connectionId);
+    
     if (agent) {
-      console.log(`Agent disconnected: ${agent.name}`);
-
-      // Remove the connection object
-      (agent as any).connection = undefined;
-
+      console.log(`Agent disconnected: ${agent.name} (${agent.id})`);
+      
       // Update agent status to offline
-      this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
+      this.agents.updateAgentStatus(agent.id, 'offline', {
+        disconnectedAt: new Date().toISOString(),
+        lastConnectionId: connectionId
+      });
+      
+      // Emit event for agent disconnection
+      this.eventBus.emit('agent.status.changed', agent.id, 'offline');
+      
+      // Cancel any pending tasks for this agent
+      this.handleAgentTasksOnDisconnect(agent.id);
+    } else {
+      console.log(`Unknown agent disconnected with connection ID: ${connectionId}`);
+    }
+  }
+
+  /**
+   * Handle pending tasks when an agent disconnects
+   * @param agentId - The ID of the disconnected agent
+   */
+  private handleAgentTasksOnDisconnect(agentId: string): void {
+    // Find all tasks assigned to this agent that are still pending or in_progress
+    const agentTasks = this.tasks.getTasks({
+      agentId,
+      status: ['pending', 'in_progress']
+    });
+    
+    if (agentTasks.length > 0) {
+      console.log(`Handling ${agentTasks.length} pending tasks for disconnected agent ${agentId}`);
+      
+      // Update status for all tasks
+      for (const task of agentTasks) {
+        this.tasks.updateTaskStatus(task.id, 'failed', {
+          error: 'Agent disconnected before task completion',
+          disconnectedAt: new Date().toISOString()
+        });
+        
+        // If there's a client waiting for this task, notify them
+        if (task.clientId) {
+          this.eventBus.emit('task.error', task.clientId, task.id, {
+            message: 'Agent disconnected before task completion',
+            taskId: task.id,
+            agentId
+          });
+        }
+      }
     }
   }
 

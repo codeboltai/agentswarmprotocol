@@ -8,13 +8,13 @@ import { Agent as BaseAgent, AgentStatus, AgentRegistry as IAgentRegistry } from
 // Extended Agent interface for backward compatibility
 interface Agent extends BaseAgent {
   statusDetails?: any;
-  connection?: any; // WebSocket connection object
 }
 
 interface ConnectedAgent {
   agent: Agent;
   connection: any;
   connectionId: string;
+  connectedAt: string;
   status: AgentStatus;
 }
 
@@ -34,20 +34,14 @@ interface PendingConnection {
 }
 
 export class AgentRegistry implements IAgentRegistry {
-  private agents: Map<string, Agent>;
-  private agentsByName: Map<string, Agent>;
-  private agentsByConnectionId: Map<string, Agent>;
-  private agentConfigurations: Map<string, AgentConfiguration>;
-  private connections: Map<string, any>; // Map of connectionId to WebSocket
+  private connectedAgents: Map<string, ConnectedAgent>; // Map of connectionId to ConnectedAgent
   private pendingConnections: Map<string, PendingConnection>; // Connections waiting for agent.register
+  private agentConfigurations: Map<string, AgentConfiguration>; // Maps agent IDs to preconfigured settings
 
   constructor() {
-    this.agents = new Map(); // Maps agent IDs to agent objects
-    this.agentsByName = new Map(); // Maps agent names to agent objects
-    this.agentsByConnectionId = new Map(); // Maps connection IDs to agent objects
-    this.agentConfigurations = new Map(); // Maps agent IDs to preconfigured settings
-    this.connections = new Map(); // Maps connection IDs to WebSocket objects
+    this.connectedAgents = new Map(); // Maps connection IDs to Agent objects (with status indicating connected/disconnected)
     this.pendingConnections = new Map(); // Connections waiting for agent.register
+    this.agentConfigurations = new Map(); // Maps agent IDs to preconfigured settings
   }
 
   /**
@@ -64,7 +58,6 @@ export class AgentRegistry implements IAgentRegistry {
     };
     
     this.pendingConnections.set(connectionId, pendingConnection);
-    this.connections.set(connectionId, connection); // Also store in connections map
     
     return pendingConnection;
   }
@@ -79,11 +72,28 @@ export class AgentRegistry implements IAgentRegistry {
   }
 
   /**
+   * Find an agent by name
+   * @param name - Name of the agent to find
+   * @returns The agent or undefined if not found
+   */
+  private findAgentByName(name: string): Agent | undefined {
+    // Search for agents by name in connected agents
+    for (const connectedAgent of this.connectedAgents.values()) {
+      if (connectedAgent.agent.name === name) {
+        return connectedAgent.agent;
+      }
+    }
+    
+    return undefined;
+  }
+
+  /**
    * Register a new agent or update an existing one
    * @param {Agent} agent - The agent object to register
+   * @param {string} connectionId - The connection ID for the agent
    * @returns {Agent} The registered agent
    */
-  registerAgent(agent: Agent): Agent {
+  registerAgent(agent: Agent, connectionId?: string): Agent {
     if (!agent.id) {
       throw new Error('Agent ID is required');
     }
@@ -92,54 +102,83 @@ export class AgentRegistry implements IAgentRegistry {
       throw new Error('Agent name is required');
     }
     
-    // Check if an agent with the same name already exists
-    const existingAgentWithSameName = this.agentsByName.get(agent.name);
+    // Check if an agent with the same name already exists but with a different ID
+    const existingAgentWithSameName = this.findAgentByName(agent.name);
     if (existingAgentWithSameName && existingAgentWithSameName.id !== agent.id) {
       // If an agent with the same name exists but with a different ID, update its status to offline
       existingAgentWithSameName.status = 'offline';
-      this.agents.set(existingAgentWithSameName.id, existingAgentWithSameName);
-    }
-    
-    // If the agent has a connectionId, try to get the connection object
-    if (agent.connectionId && !agent.connection) {
-      const connection = this.connections.get(agent.connectionId);
-      if (connection) {
-        agent.connection = connection;
-      }
       
-      // Remove from pending connections if it was there
-      this.pendingConnections.delete(agent.connectionId);
+      // Remove any connected agent entry with the same name if it exists
+      for (const [connId, connectedAgent] of this.connectedAgents.entries()) {
+        if (connectedAgent.agent.id === existingAgentWithSameName.id) {
+          connectedAgent.status = 'offline';
+          connectedAgent.agent.status = 'offline';
+          connectedAgent.agent.statusDetails = {
+            disconnectedAt: new Date().toISOString(),
+            disconnectedReason: 'Replaced by agent with same name'
+          };
+          break;
+        }
+      }
     }
     
-    // Store the agent
-    this.agents.set(agent.id, agent);
-    this.agentsByName.set(agent.name, agent);
-    
-    if (agent.connectionId) {
-      this.agentsByConnectionId.set(agent.connectionId, agent);
+    // If connectionId is provided, use it to create/update a connected agent
+    if (connectionId) {
+      // Get the connection from pending connections
+      const pendingConnection = this.pendingConnections.get(connectionId);
+      if (pendingConnection) {
+        // If the agent already exists with another connection, update it
+        let existingEntry: ConnectedAgent | undefined;
+        
+        // Search for existing agent by ID
+        for (const [existingConnId, connectedAgent] of this.connectedAgents.entries()) {
+          if (connectedAgent.agent.id === agent.id) {
+            existingEntry = connectedAgent;
+            
+            // If an agent is found with a different connection, mark it as inactive
+            if (existingConnId !== connectionId) {
+              this.connectedAgents.delete(existingConnId);
+            }
+            
+            break;
+          }
+        }
+        
+        // Create a connected agent entry (new or updated)
+        const connectedAgent: ConnectedAgent = {
+          agent: {
+            ...agent,
+            status: 'online'
+          },
+          connection: pendingConnection.connection,
+          connectionId,
+          connectedAt: pendingConnection.connectedAt,
+          status: 'online'
+        };
+        
+        this.connectedAgents.set(connectionId, connectedAgent);
+        
+        // Remove from pending connections
+        this.pendingConnections.delete(connectionId);
+      }
+    } else {
+      // No connection provided - create an offline agent entry with a null connection ID
+      // We'll store this in the connectedAgents map with status 'offline' for consistency
+      const offlineAgent: ConnectedAgent = {
+        agent: {
+          ...agent,
+          status: 'offline'
+        },
+        connection: null,
+        connectionId: `offline_${agent.id}`,
+        connectedAt: new Date().toISOString(),
+        status: 'offline'
+      };
+      
+      this.connectedAgents.set(offlineAgent.connectionId, offlineAgent);
     }
     
     return agent;
-  }
-
-  /**
-   * Set a WebSocket connection for a specific connection ID
-   * @param connectionId - The connection ID
-   * @param connection - The WebSocket connection object
-   * @returns true if set successfully
-   */
-  setConnection(connectionId: string, connection: any): boolean {
-    if (!connectionId) {
-      return false;
-    }
-    
-    // Store the connection
-    this.connections.set(connectionId, connection);
-    
-    // Add to pending connections as well
-    this.addPendingConnection(connectionId, connection);
-    
-    return true;
   }
 
   /**
@@ -148,7 +187,32 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns The WebSocket connection object or undefined if not found
    */
   getConnection(connectionId: string): any {
-    return this.connections.get(connectionId);
+    // First check connected agents
+    const connectedAgent = this.connectedAgents.get(connectionId);
+    if (connectedAgent && connectedAgent.status === 'online') {
+      return connectedAgent.connection;
+    }
+    
+    // Then check pending connections
+    const pendingConnection = this.pendingConnections.get(connectionId);
+    if (pendingConnection) {
+      return pendingConnection.connection;
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Get a connected agent by connection ID
+   * @param connectionId - The connection ID
+   * @returns The connected agent or undefined if not found
+   */
+  getConnectedAgent(connectionId: string): ConnectedAgent | undefined {
+    const agent = this.connectedAgents.get(connectionId);
+    if (agent && agent.status === 'online') {
+      return agent;
+    }
+    return undefined;
   }
   
   /**
@@ -157,39 +221,58 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns The WebSocket connection object or undefined if not found
    */
   getConnectionByAgentId(agentId: string): any {
-    const agent = this.getAgentById(agentId);
-    if (!agent || !agent.connectionId) {
-      return undefined;
+    // Find agent in connected agents with online status
+    for (const connectedAgent of this.connectedAgents.values()) {
+      if (connectedAgent.agent.id === agentId && connectedAgent.status === 'online') {
+        return connectedAgent.connection;
+      }
     }
     
-    return this.getConnection(agent.connectionId);
+    return undefined;
   }
 
   /**
    * Associate an agent with a WebSocket connection
    * @param agentId - The agent ID
    * @param connectionId - The connection ID
-   * @param connection - The WebSocket connection object
    * @returns true if successful
    */
-  associateAgentWithConnection(agentId: string, connectionId: string, connection: any): boolean {
+  associateAgentWithConnection(agentId: string, connectionId: string): boolean {
+    // Find the agent by ID
     const agent = this.getAgentById(agentId);
     if (!agent) {
       return false;
     }
     
-    // Update the agent's connectionId
-    agent.connectionId = connectionId;
-    agent.connection = connection; // For backward compatibility
+    // Get the connection from pending connections
+    const pendingConnection = this.pendingConnections.get(connectionId);
+    if (!pendingConnection) {
+      return false;
+    }
     
-    // Store the updated agent
-    this.agents.set(agentId, agent);
-    this.agentsByConnectionId.set(connectionId, agent);
+    // Create a connected agent entry
+    const connectedAgent: ConnectedAgent = {
+      agent: {
+        ...agent,
+        status: 'online'
+      },
+      connection: pendingConnection.connection,
+      connectionId,
+      connectedAt: pendingConnection.connectedAt,
+      status: 'online'
+    };
     
-    // Store the connection
-    this.connections.set(connectionId, connection);
+    // If the agent had a previous connection, update its status
+    for (const [existingConnId, existing] of this.connectedAgents.entries()) {
+      if (existing.agent.id === agentId && existingConnId !== connectionId) {
+        this.connectedAgents.delete(existingConnId);
+      }
+    }
     
-    // Remove from pending connections if it was there
+    // Store the new connection
+    this.connectedAgents.set(connectionId, connectedAgent);
+    
+    // Remove from pending connections
     this.pendingConnections.delete(connectionId);
     
     return true;
@@ -201,180 +284,165 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns true if successfully removed
    */
   removeConnection(connectionId: string): boolean {
-    const wasRemoved = this.connections.delete(connectionId);
-    
-    // Also update any agent that was using this connection
-    const agent = this.getAgentByConnectionId(connectionId);
-    if (agent) {
-      // Create a new agent object without the connection properties
-      const { connectionId: _, connection: __, ...agentWithoutConnection } = agent;
-      const updatedAgent = {
-        ...agentWithoutConnection,
-        status: 'offline' as AgentStatus
+    // If it's a connected agent, update the status to offline but keep the agent in the registry
+    const connectedAgent = this.connectedAgents.get(connectionId);
+    if (connectedAgent) {
+      connectedAgent.agent.status = 'offline';
+      connectedAgent.status = 'offline';
+      connectedAgent.agent.statusDetails = {
+        disconnectedAt: new Date().toISOString(),
+        lastConnectionId: connectionId
       };
       
-      this.agents.set(agent.id, updatedAgent as Agent);
-      this.agentsByConnectionId.delete(connectionId);
+      // Keep entry in registry with updated status
+      return true;
     }
     
-    // Remove from pending connections if it was there
-    this.pendingConnections.delete(connectionId);
+    // Check if it's a pending connection
+    if (this.pendingConnections.has(connectionId)) {
+      this.pendingConnections.delete(connectionId);
+      return true;
+    }
     
-    return wasRemoved;
+    return false;
   }
 
   /**
    * Get an agent by ID
-   * @param {string} agentId - The ID of the agent to get
-   * @returns {Agent|undefined} The agent object or undefined if not found
+   * @param agentId - The agent ID
+   * @returns The agent or undefined if not found
    */
   getAgentById(agentId: string): Agent | undefined {
-    return this.agents.get(agentId);
+    // Check all agents in the registry (both online and offline)
+    for (const connectedAgent of this.connectedAgents.values()) {
+      if (connectedAgent.agent.id === agentId) {
+        return connectedAgent.agent;
+      }
+    }
+    
+    return undefined;
   }
 
   /**
    * Get an agent by name
-   * @param {string} agentName - The name of the agent to get
-   * @returns {Agent|undefined} The agent object or undefined if not found
+   * @param agentName - The agent name
+   * @returns The agent or undefined if not found
    */
   getAgentByName(agentName: string): Agent | undefined {
-    return this.agentsByName.get(agentName);
+    return this.findAgentByName(agentName);
   }
 
   /**
    * Get an agent by connection ID
-   * @param {string} connectionId - The connection ID to look up
-   * @returns {Agent|undefined} The agent object or undefined if not found
+   * @param connectionId - The connection ID
+   * @returns The agent or undefined if not found
    */
   getAgentByConnectionId(connectionId: string): Agent | undefined {
-    return this.agentsByConnectionId.get(connectionId);
+    const connectedAgent = this.connectedAgents.get(connectionId);
+    return connectedAgent ? connectedAgent.agent : undefined;
   }
 
   /**
-   * Get agent WebSocket connection by connection ID
-   * @param connectionId - The connection ID of the agent
-   * @returns The WebSocket connection object or undefined if not found
-   */
-  getAgentConnection(connectionId: string): any {
-    // For backward compatibility, first try the old way
-    const agent = this.getAgentByConnectionId(connectionId);
-    if (agent?.connection) {
-      return agent.connection;
-    }
-    
-    // Then try the new way
-    return this.getConnection(connectionId);
-  }
-
-  /**
-   * Get all registered agents
-   * @param {Object} options - Filter options
-   * @returns {Array<Agent>} List of matching agents
+   * Get all agents, optionally filtered by status and capabilities
+   * @param options - Optional filters
+   * @returns Array of agents
    */
   getAllAgents(options: { status?: AgentStatus; capabilities?: string[] } = {}): Agent[] {
-    let agents = Array.from(this.agents.values());
+    const { status, capabilities } = options;
+    let result: Agent[] = [];
     
-    // Filter by status if provided
-    if (options.status) {
-      agents = agents.filter(agent => agent.status === options.status);
+    // Add all agents (both online and offline)
+    for (const connectedAgent of this.connectedAgents.values()) {
+      result.push(connectedAgent.agent);
     }
     
-    // Filter by capabilities if provided
-    if (options.capabilities && options.capabilities.length > 0) {
-      agents = agents.filter(agent => {
-        return options.capabilities!.every(cap => 
-          agent.capabilities && agent.capabilities.includes(cap)
-        );
-      });
+    // Filter by status if specified
+    if (status) {
+      result = result.filter(agent => agent.status === status);
     }
     
-    return agents;
+    // Filter by capabilities if specified
+    if (capabilities && capabilities.length > 0) {
+      result = result.filter(agent => 
+        capabilities.every(cap => agent.capabilities?.includes(cap))
+      );
+    }
+    
+    return result;
   }
 
   /**
-   * Update an agent's status
-   * @param {string} agentId - The ID of the agent to update
-   * @param {AgentStatus} status - The new status
-   * @param {any} details - Optional status details
-   * @returns {Agent|null} The updated agent or null if not found
+   * Get all connected agents (with online status)
+   * @returns Array of connected agent objects
+   */
+  getAllConnectedAgents(): ConnectedAgent[] {
+    return Array.from(this.connectedAgents.values())
+      .filter(agent => agent.status === 'online');
+  }
+
+  /**
+   * Update the status of an agent
+   * @param agentId - The agent ID
+   * @param status - The new status
+   * @param details - Optional status details
+   * @returns The updated agent or null if not found
    */
   updateAgentStatus(agentId: string, status: AgentStatus, details?: any): Agent | null {
-    const agent = this.getAgentById(agentId);
-    if (!agent) {
-      return null;
+    // Find the agent in our registry
+    for (const connectedAgent of this.connectedAgents.values()) {
+      if (connectedAgent.agent.id === agentId) {
+        // Update agent status
+        connectedAgent.agent.status = status;
+        connectedAgent.status = status;
+        
+        if (details) {
+          connectedAgent.agent.statusDetails = details;
+        }
+        
+        return connectedAgent.agent;
+      }
     }
     
-    agent.status = status;
-    
-    // Add details if provided
-    if (details) {
-      agent.statusDetails = details;
-    }
-    
-    this.agents.set(agentId, agent);
-    
-    return agent;
+    return null;
   }
 
   /**
    * Remove an agent by ID
-   * @param {string} agentId - The ID of the agent to remove
-   * @returns {boolean} True if the agent was removed, false otherwise
+   * @param agentId - The agent ID to remove
+   * @returns true if successfully removed
    */
   removeAgent(agentId: string): boolean {
-    const agent = this.getAgentById(agentId);
-    if (!agent) {
-      return false;
+    // Check all agent entries
+    for (const [connectionId, connectedAgent] of this.connectedAgents.entries()) {
+      if (connectedAgent.agent.id === agentId) {
+        this.connectedAgents.delete(connectionId);
+        return true;
+      }
     }
     
-    this.agents.delete(agentId);
-    
-    if (agent.name) {
-      this.agentsByName.delete(agent.name);
-    }
-    
-    if (agent.connectionId) {
-      this.agentsByConnectionId.delete(agent.connectionId);
-      // We don't remove the WebSocket connection here in case it's needed for cleanup
-    }
-    
-    return true;
+    return false;
   }
 
   /**
-   * Remove an agent by connection ID
-   * @param {string} connectionId - The connection ID of the agent to remove
-   * @returns {boolean} True if the agent was removed, false otherwise
-   */
-  removeAgentByConnectionId(connectionId: string): boolean {
-    const agent = this.getAgentByConnectionId(connectionId);
-    if (!agent) {
-      return false;
-    }
-    
-    return this.removeAgent(agent.id);
-  }
-
-  /**
-   * Find agents that have specific capabilities
-   * @param {string[]} capabilities - List of required capabilities
-   * @param {Object} options - Additional filter options
-   * @returns {Agent[]} List of matching agents
+   * Find agents by capabilities
+   * @param capabilities - Array of required capabilities
+   * @param options - Optional filters
+   * @returns Array of matching agents
    */
   findAgentsByCapabilities(
     capabilities: string[], 
     options: { status?: AgentStatus } = {}
   ): Agent[] {
-    return this.getAllAgents({
-      ...options,
-      capabilities
-    });
+    const agents = this.getAllAgents(options);
+    return agents.filter(agent => 
+      capabilities.every(cap => agent.capabilities?.includes(cap))
+    );
   }
 
   /**
-   * Get the number of registered agents
-   * @param {Object} options - Filter options
-   * @returns {number} The number of agents
+   * Get the count of agents, optionally filtered by status
+   * @param options - Optional filters
+   * @returns Number of agents
    */
   getAgentCount(options: { status?: AgentStatus } = {}): number {
     return this.getAllAgents(options).length;
@@ -382,45 +450,48 @@ export class AgentRegistry implements IAgentRegistry {
 
   /**
    * Add a configuration for an agent
-   * @param {string} agentName - The name to associate with this configuration
-   * @param {object} configuration - The agent configuration
+   * @param agentName - The agent name
+   * @param configuration - The agent configuration
    */
   addAgentConfiguration(agentName: string, configuration: any): void {
-    if (!agentName) {
-      throw new Error('Agent name is required for configuration');
+    if (!configuration.id) {
+      throw new Error('Agent configuration must include an ID');
     }
     
-    const agentConfig: AgentConfiguration = {
-      id: configuration.id || `config-${Date.now()}`,
+    this.agentConfigurations.set(configuration.id, {
+      id: configuration.id,
       name: agentName,
       capabilities: configuration.capabilities || [],
       metadata: configuration.metadata || {},
       configuredAt: new Date().toISOString()
-    };
+    });
     
-    // Store by name for easier lookup
-    this.agentConfigurations.set(agentName, agentConfig);
+    // Check if the agent is already connected and update its information
+    const agent = this.findAgentByName(agentName);
+    if (agent) {
+      agent.capabilities = configuration.capabilities || agent.capabilities;
+      if (configuration.metadata) {
+        agent.manifest = agent.manifest || {};
+        agent.manifest.metadata = { 
+          ...(agent.manifest.metadata || {}), 
+          ...configuration.metadata 
+        };
+      }
+    }
   }
 
   /**
-   * Set configuration for an agent that will connect later
-   * @param {string} agentId - The ID to associate with this configuration
-   * @param {Object} configuration - The agent configuration
-   * @returns {AgentConfiguration} The stored configuration
+   * Set configuration for an agent by ID
+   * @param agentId - The agent ID
+   * @param configuration - The configuration object
+   * @returns The agent configuration
    */
   setAgentConfiguration(agentId: string, configuration: {
     name: string;
     capabilities?: string[];
     metadata?: Record<string, any>;
   }): AgentConfiguration {
-    if (!agentId) {
-      throw new Error('Agent ID is required for configuration');
-    }
-    
-    if (!configuration.name) {
-      throw new Error('Agent name is required for configuration');
-    }
-    
+    // Create the agent configuration
     const agentConfig: AgentConfiguration = {
       id: agentId,
       name: configuration.name,
@@ -432,30 +503,52 @@ export class AgentRegistry implements IAgentRegistry {
     // Store the configuration
     this.agentConfigurations.set(agentId, agentConfig);
     
+    // Update the agent if it exists
+    const agent = this.getAgentById(agentId);
+    if (agent) {
+      agent.name = configuration.name;
+      agent.capabilities = configuration.capabilities || agent.capabilities;
+      if (configuration.metadata) {
+        agent.manifest = agent.manifest || {};
+        agent.manifest.metadata = { 
+          ...(agent.manifest.metadata || {}), 
+          ...configuration.metadata 
+        };
+      }
+      
+      // Update in the registry
+      for (const connectedAgent of this.connectedAgents.values()) {
+        if (connectedAgent.agent.id === agentId) {
+          connectedAgent.agent = agent;
+          break;
+        }
+      }
+    }
+    
     return agentConfig;
   }
-  
+
   /**
-   * Get an agent configuration by ID
-   * @param {string} agentId - The ID of the configuration to get
-   * @returns {AgentConfiguration|null} The agent configuration or null if not found
+   * Get configuration for an agent by ID
+   * @param agentId - The agent ID
+   * @returns The agent configuration or null if not found
    */
   getAgentConfiguration(agentId: string): AgentConfiguration | null {
     return this.agentConfigurations.get(agentId) || null;
   }
-  
+
   /**
-   * Get an agent configuration by name
-   * @param {string} name - The name of the configuration to get
-   * @returns {any|null} The agent configuration or null if not found
+   * Get configuration for an agent by name
+   * @param name - The agent name
+   * @returns The agent configuration or null if not found
    */
-  getAgentConfigurationByName(name: string): any | null {
-    // Try to find a configuration with this name
+  getAgentConfigurationByName(name: string): AgentConfiguration | null {
     for (const config of this.agentConfigurations.values()) {
       if (config.name === name) {
         return config;
       }
     }
+    
     return null;
   }
 } 
