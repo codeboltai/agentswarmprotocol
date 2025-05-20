@@ -3,19 +3,13 @@
  * Responsible for managing agent registrations, capabilities, and connections
  */
 
-import { Agent as BaseAgent, AgentStatus, AgentRegistry as IAgentRegistry } from "../../../types/common";
+import { Agent, AgentStatus, AgentRegistry as IAgentRegistry } from "../../../types/common";
 
-// Extended Agent interface for backward compatibility
-interface Agent extends BaseAgent {
-  statusDetails?: any;
-}
+
 
 interface ConnectedAgent {
   agent: Agent;
   connection: any;
-  connectionId: string;
-  connectedAt: string;
-  status: AgentStatus;
 }
 
 interface AgentConfiguration {
@@ -111,7 +105,7 @@ export class AgentRegistry implements IAgentRegistry {
       // Remove any connected agent entry with the same name if it exists
       for (const [connId, connectedAgent] of this.connectedAgents.entries()) {
         if (connectedAgent.agent.id === existingAgentWithSameName.id) {
-          connectedAgent.status = 'offline';
+          // Update agent status
           connectedAgent.agent.status = 'offline';
           connectedAgent.agent.statusDetails = {
             disconnectedAt: new Date().toISOString(),
@@ -148,12 +142,10 @@ export class AgentRegistry implements IAgentRegistry {
         const connectedAgent: ConnectedAgent = {
           agent: {
             ...agent,
-            status: 'online'
+            status: 'online',
+            connectionId
           },
-          connection: pendingConnection.connection,
-          connectionId,
-          connectedAt: pendingConnection.connectedAt,
-          status: 'online'
+          connection: pendingConnection.connection
         };
         
         this.connectedAgents.set(connectionId, connectedAgent);
@@ -167,15 +159,13 @@ export class AgentRegistry implements IAgentRegistry {
       const offlineAgent: ConnectedAgent = {
         agent: {
           ...agent,
-          status: 'offline'
+          status: 'offline',
+          connectionId: `offline_${agent.id}`
         },
-        connection: null,
-        connectionId: `offline_${agent.id}`,
-        connectedAt: new Date().toISOString(),
-        status: 'offline'
+        connection: null
       };
       
-      this.connectedAgents.set(offlineAgent.connectionId, offlineAgent);
+      this.connectedAgents.set(offlineAgent.agent.connectionId, offlineAgent);
     }
     
     return agent;
@@ -189,7 +179,7 @@ export class AgentRegistry implements IAgentRegistry {
   getConnection(connectionId: string): any {
     // First check connected agents
     const connectedAgent = this.connectedAgents.get(connectionId);
-    if (connectedAgent && connectedAgent.status === 'online') {
+    if (connectedAgent && connectedAgent.agent.status === 'online') {
       return connectedAgent.connection;
     }
     
@@ -209,7 +199,7 @@ export class AgentRegistry implements IAgentRegistry {
    */
   getConnectedAgent(connectionId: string): ConnectedAgent | undefined {
     const agent = this.connectedAgents.get(connectionId);
-    if (agent && agent.status === 'online') {
+    if (agent && agent.agent.status === 'online') {
       return agent;
     }
     return undefined;
@@ -223,7 +213,7 @@ export class AgentRegistry implements IAgentRegistry {
   getConnectionByAgentId(agentId: string): any {
     // Find agent in connected agents with online status
     for (const connectedAgent of this.connectedAgents.values()) {
-      if (connectedAgent.agent.id === agentId && connectedAgent.status === 'online') {
+      if (connectedAgent.agent.id === agentId && connectedAgent.agent.status === 'online') {
         return connectedAgent.connection;
       }
     }
@@ -254,12 +244,10 @@ export class AgentRegistry implements IAgentRegistry {
     const connectedAgent: ConnectedAgent = {
       agent: {
         ...agent,
-        status: 'online'
+        status: 'online',
+        connectionId
       },
-      connection: pendingConnection.connection,
-      connectionId,
-      connectedAt: pendingConnection.connectedAt,
-      status: 'online'
+      connection: pendingConnection.connection
     };
     
     // If the agent had a previous connection, update its status
@@ -288,7 +276,6 @@ export class AgentRegistry implements IAgentRegistry {
     const connectedAgent = this.connectedAgents.get(connectionId);
     if (connectedAgent) {
       connectedAgent.agent.status = 'offline';
-      connectedAgent.status = 'offline';
       connectedAgent.agent.statusDetails = {
         disconnectedAt: new Date().toISOString(),
         lastConnectionId: connectionId
@@ -377,7 +364,7 @@ export class AgentRegistry implements IAgentRegistry {
    */
   getAllConnectedAgents(): ConnectedAgent[] {
     return Array.from(this.connectedAgents.values())
-      .filter(agent => agent.status === 'online');
+      .filter(agent => agent.agent.status === 'online');
   }
 
   /**
@@ -393,7 +380,6 @@ export class AgentRegistry implements IAgentRegistry {
       if (connectedAgent.agent.id === agentId) {
         // Update agent status
         connectedAgent.agent.status = status;
-        connectedAgent.status = status;
         
         if (details) {
           connectedAgent.agent.statusDetails = details;

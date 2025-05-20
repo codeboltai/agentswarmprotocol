@@ -67,6 +67,7 @@ export interface Agent {
     /** Any other fields */
     [key: string]: any;
   };
+  statusDetails?: any;
 }
 
 /**
