@@ -244,17 +244,7 @@ class SwarmAgentSDK extends EventEmitter {
   }
 
   // Service Manager methods
-
-  /**
-   * Convenience method for executing a service
-   * @param serviceName Name of the service
-   * @param params Parameters to pass
-   * @param timeout Request timeout
-   */
-  executeService(serviceName: string, params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    return this.serviceManager.requestService(serviceName, params, timeout);
-  }
-
+  //OK  
   /**
    * Execute a service task
    * @param serviceId Service ID or name
@@ -264,7 +254,7 @@ class SwarmAgentSDK extends EventEmitter {
    */
   executeServiceTask(
     serviceId: string,
-    functionName: string,
+    toolName: string,
     params: Record<string, any> = {},
     options = {
       timeout: 30000,
@@ -277,10 +267,10 @@ class SwarmAgentSDK extends EventEmitter {
       return Promise.reject(new Error('Service ID is required for executing a service task'));
     }
     
-    this.logger.debug(`Executing service task "${functionName}" on service "${serviceId}"`);
+    this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}"`);
     
     try {
-      return this.serviceManager.executeServiceTask(serviceId, functionName, params, options)
+      return this.serviceManager.executeServiceTask(serviceId, toolName, params, options)
         .catch(error => {
           // Enhance error messages for better troubleshooting
           if (error.message.includes('Connection not found')) {
@@ -290,8 +280,8 @@ class SwarmAgentSDK extends EventEmitter {
           
           // Handle other common errors
           if (error.message.includes('timed out')) {
-            this.logger.error(`Service task timed out: "${functionName}" on service "${serviceId}"`);
-            throw new Error(`Service task "${functionName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
+            this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}"`);
+            throw new Error(`Service task "${toolName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
           }
           
           // Pass through other errors
@@ -314,6 +304,16 @@ class SwarmAgentSDK extends EventEmitter {
   }
 
   //Ok
+  /**
+   * Get a list of tools for a specific service
+   * @param serviceId Service ID or name
+   * @param options Optional parameters (e.g., timeout)
+   */
+  getServiceToolList(serviceId: string, options: { timeout?: number } = {}): Promise<any[]> {
+    return this.serviceManager.getServiceToolList(serviceId, options);
+  }
+
+ 
   // MCP Manager methods
   //OK
   /**

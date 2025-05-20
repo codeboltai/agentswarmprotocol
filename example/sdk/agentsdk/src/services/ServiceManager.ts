@@ -9,54 +9,24 @@ export class ServiceManager {
     private logger: Console = console
   ) {}
 
-  /**
-   * Request or execute a service
-   * @param serviceName Name of the service
-   * @param params Service parameters
-   * @param timeout Request timeout
-   */
-  async requestService(serviceName: string, params: Record<string, any> = {}, timeout = 30000): Promise<any> {
-    try {
-      this.logger.debug(`Requesting service "${serviceName}" with params:`, params);
-      
-      const response = await this.webSocketManager.sendAndWaitForResponse({
-        id: uuidv4(),
-        type: 'service.request',
-        content: {
-          service: serviceName,
-          params
-        }
-      } as BaseMessage, timeout);
-      
-      if (response.content.error) {
-        throw new Error(response.content.error);
-      }
-      
-      return response.content.result;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Failed to request service "${serviceName}": ${errorMessage}`);
-      throw error instanceof Error ? error : new Error(errorMessage);
-    }
-  }
 
   /**
    * Execute a service task
    * @param serviceId Service ID or name
-   * @param functionName Function name
+   * @param toolName Tool name
    * @param params Parameters
    * @param options Additional options
    */
   async executeServiceTask(
     serviceId: string,
-    functionName: string,
+    toolName: string,
     params: Record<string, any> = {},
     options: ServiceTaskOptions = {}
   ): Promise<any> {
     const { timeout = 30000, clientId } = options;
     const requestId = uuidv4();
     
-    this.logger.debug(`Executing service task "${functionName}" on service "${serviceId}" with params:`, params);
+    this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}" with params:`, params);
     
     try {
       // Make the request
@@ -65,7 +35,7 @@ export class ServiceManager {
         type: 'service.task.execute',
         content: {
           serviceId,
-          functionName,
+          toolName,
           params,
           clientId,
           // Include timestamp for tracking
@@ -88,11 +58,11 @@ export class ServiceManager {
       }
       
       if (errorMessage.includes('timed out')) {
-        this.logger.error(`Service task timed out: "${functionName}" on service "${serviceId}" after ${timeout}ms`);
-        throw new Error(`Service task "${functionName}" timed out after ${timeout}ms. The service might be unresponsive.`);
+        this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}" after ${timeout}ms`);
+        throw new Error(`Service task "${toolName}" timed out after ${timeout}ms. The service might be unresponsive.`);
       }
       
-      this.logger.error(`Failed to execute service task "${functionName}" on service "${serviceId}": ${errorMessage}`);
+      this.logger.error(`Failed to execute service task "${toolName}" on service "${serviceId}": ${errorMessage}`);
       throw error instanceof Error ? error : new Error(errorMessage);
     }
   }
@@ -118,6 +88,28 @@ export class ServiceManager {
       
       // Return empty array instead of throwing on service list failures
       // This allows the application to continue even if service discovery fails
+      return [];
+    }
+  }
+
+  /**
+   * Get a list of tools for a specific service
+   * @param serviceId Service ID or name
+   * @param options Optional parameters (e.g., timeout)
+   */
+  async getServiceToolList(serviceId: string, options: { timeout?: number } = {}): Promise<any[]> {
+    const { timeout = 30000 } = options;
+    try {
+      this.logger.debug(`Getting tool list for service: ${serviceId}`);
+      const response = await this.webSocketManager.sendAndWaitForResponse({
+        id: uuidv4(),
+        type: 'service.tools.list',
+        content: { serviceId }
+      } as BaseMessage, timeout);
+      return response.content.tools || [];
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to get service tool list for service ${serviceId}: ${errorMessage}`);
       return [];
     }
   }
