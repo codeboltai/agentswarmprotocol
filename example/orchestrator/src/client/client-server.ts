@@ -3,6 +3,7 @@ import * as http from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, PendingResponse, SendOptions } from '../../../types/common';
 import { EventEmitter } from 'events';
+import { ClientRegistry, Client } from '../registry/client-registry';
 
 // Extended WebSocket interface with ID
 interface WebSocketWithId extends WebSocket.WebSocket {
@@ -11,6 +12,7 @@ interface WebSocketWithId extends WebSocket.WebSocket {
 
 interface ClientServerConfig {
   clientPort?: number;
+  clientRegistry?: ClientRegistry;
 }
 
 /**
@@ -23,12 +25,14 @@ class ClientServer {
   private pendingResponses: Record<string, PendingResponse>;
   private clientServer: http.Server;
   private clientWss: WebSocket.Server;
+  private clientRegistry: ClientRegistry;
   
   constructor(eventBus: EventEmitter, config: ClientServerConfig = {}) {
     this.eventBus = eventBus;
     this.clientPort = config.clientPort || parseInt(process.env.CLIENT_PORT || '3001', 10);
     this.clientConnections = new Map(); // Store client connections
     this.pendingResponses = {}; // Track pending responses
+    this.clientRegistry = config.clientRegistry || new ClientRegistry();
     // Initialize clientServer and clientWss to null as they'll be set in start()
     this.clientServer = null as unknown as http.Server;
     this.clientWss = null as unknown as WebSocket.Server;
@@ -84,6 +88,13 @@ class ClientServer {
       console.log(`New client connection established: ${clientId}`);
       this.clientConnections.set(clientId, clientWs);
       
+      // Register the client in the registry with the connection ID
+      this.clientRegistry.registerClient({
+        id: clientId,
+        connectionId: clientId,
+        status: 'online'
+      });
+      
       // Handle incoming messages from clients
       ws.on('message', async (message: WebSocket.Data) => {
         try {
@@ -106,6 +117,12 @@ class ClientServer {
       ws.on('close', () => {
         console.log(`Client connection closed: ${clientId}`);
         this.clientConnections.delete(clientId);
+        
+        // Update client status in registry
+        this.clientRegistry.handleDisconnection(clientId);
+        
+        // Emit event for MessageHandler
+        this.eventBus.emit('client.disconnected', clientId);
       });
       
       // Send welcome message to client
@@ -145,6 +162,14 @@ class ClientServer {
     
     try {
       switch (message.type) {
+        case 'client.register':
+          await this.handleClientRegistration(message, ws);
+          break;
+          
+        case 'client.list':
+          await this.handleClientList(message, ws);
+          break;
+          
         case 'task.create':
           await this.handleClientTaskCreation(message, ws);
           break;
@@ -194,6 +219,57 @@ class ClientServer {
         }
       });
     }
+  }
+  
+  // Handle client registration
+  async handleClientRegistration(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
+    const content = message.content || {};
+    const clientId = ws.id;
+    
+    // Update client in registry with provided information
+    const client = this.clientRegistry.updateClient({
+      id: clientId,
+      name: content.name,
+      metadata: content.metadata || {},
+      status: 'online'
+    });
+    
+    // Respond with success
+    this.sendToClient(ws, {
+      id: message.id || uuidv4(),
+      type: 'client.register.response',
+      content: {
+        success: true,
+        client: {
+          id: client.id,
+          name: client.name,
+          status: client.status,
+          registeredAt: client.registeredAt,
+          lastActiveAt: client.lastActiveAt
+        }
+      }
+    });
+    
+    // Notify about client registration/update
+    this.eventBus.emit('client.registered', client);
+  }
+  
+  // Handle client list request
+  async handleClientList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
+    const content = message.content || {};
+    const filters = content.filters || {};
+    
+    // Emit event to get the client list from MessageHandler
+    this.eventBus.emit('client.list.request', filters, (clients: Client[]) => {
+      // Send response
+      this.sendToClient(ws, {
+        id: message.id || uuidv4(),
+        type: 'client.list.response',
+        content: {
+          clients: clients
+        }
+      });
+    });
   }
   
   // Handle task creation request from client
@@ -586,21 +662,24 @@ class ClientServer {
    * @returns The WebSocket connection or undefined if not found
    */
   getClientConnection(clientId: string): WebSocketWithId | undefined {
-    if (!clientId || typeof clientId !== 'string') {
-      console.warn(`Invalid client ID passed to getClientConnection: ${typeof clientId}`);
-      return undefined;
+    // First check if we have a connection directly with this ID
+    const directConnection = this.clientConnections.get(clientId);
+    if (directConnection) {
+      return directConnection;
     }
     
-    const connection = this.clientConnections.get(clientId);
-    if (!connection) {
-      console.debug(`No connection found for client ID: ${clientId}`);
+    // If not, check if this is a client ID that has a different connection ID
+    const client = this.clientRegistry.getClientById(clientId);
+    if (client && client.connectionId) {
+      return this.clientConnections.get(client.connectionId);
     }
-    return connection;
+    
+    return undefined;
   }
   
   // Check if client is connected
   hasClientConnection(clientId: string): boolean {
-    return this.clientConnections.has(clientId);
+    return this.getClientConnection(clientId) !== undefined;
   }
   
   // Stop the client server
@@ -690,20 +769,25 @@ class ClientServer {
    * @param message - The message to send
    */
   sendMessageToClient(clientId: string, message: any): void {
-    if (!clientId || typeof clientId !== 'string') {
-      console.warn(`Invalid client ID passed to sendMessageToClient: ${typeof clientId}`);
+    const connection = this.getClientConnection(clientId);
+    if (!connection) {
+      console.warn(`Cannot send message to client ${clientId}: No active connection`);
       return;
     }
     
-    const clientWs = this.getClientConnection(clientId);
-    if (clientWs) {
-      try {
-        this.sendToClient(clientWs, message);
-      } catch (error) {
-        console.error(`Error sending message to client ${clientId}:`, error);
+    try {
+      this.sendToClient(connection, message);
+      
+      // Update client's lastActiveAt timestamp
+      const client = this.clientRegistry.getClientById(clientId);
+      if (client) {
+        this.clientRegistry.updateClient({
+          ...client,
+          lastActiveAt: new Date().toISOString()
+        });
       }
-    } else {
-      console.warn(`Cannot send message to client ${clientId}: Client not connected`);
+    } catch (error) {
+      console.error(`Error sending message to client ${clientId}:`, error);
     }
   }
 }

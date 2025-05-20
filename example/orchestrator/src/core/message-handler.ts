@@ -23,7 +23,12 @@ import {
 } from '@agentswarmprotocol/types/dist/messages';
 import { EventEmitter } from 'events';
 import { ServiceRegistry } from '../registry/service-registry';
+import { ClientRegistry, Client } from '../registry/client-registry';
 
+// Extend MessageHandlerConfig to include clients
+interface ExtendedMessageHandlerConfig extends MessageHandlerConfig {
+  clients?: ClientRegistry;
+}
 
 /**
  * MessageHandler - Centralizes business logic for handling messages in ASP
@@ -34,19 +39,33 @@ class MessageHandler {
   private tasks: AgentTaskRegistry;
   private services: ServiceRegistry;
   private serviceTasks?: ServiceTaskRegistry;
+  private clients?: ClientRegistry;
   private eventBus: EventEmitter;
   private mcp: MCPInterface;
 
-  constructor(config: MessageHandlerConfig) {
+  constructor(config: ExtendedMessageHandlerConfig) {
     this.agents = config.agents;
     this.tasks = config.tasks;
     this.services = config.services as ServiceRegistry;
     this.serviceTasks = config.serviceTasks;
+    this.clients = config.clients;
     this.eventBus = config.eventBus;
     this.mcp = config.mcp;
     
     // Listen for agent registration events
     this.eventBus.on('agent.registered', this.handleAgentRegistered.bind(this));
+    
+    // Listen for client registration events
+    this.eventBus.on('client.registered', this.handleClientRegistered.bind(this));
+    
+    // Listen for client list requests
+    this.eventBus.on('client.list.request', (filters: any, callback: Function) => {
+      const clientList = this.getClientList(filters);
+      callback(clientList);
+    });
+    
+    // Listen for client disconnection events
+    this.eventBus.on('client.disconnected', this.handleClientDisconnected.bind(this));
   }
 
   /**
@@ -60,6 +79,52 @@ class MessageHandler {
     
     // For example, initialize any tasks or settings for the agent
     // Or notify other components about the new agent
+  }
+
+  /**
+   * Handle client registered event
+   * @param client The client that was registered
+   */
+  private handleClientRegistered(client: Client): void {
+    // Perform any additional business logic needed when a client is registered
+    console.log(`MessageHandler: Client ${client.id} registered${client.name ? ` as ${client.name}` : ''}`);
+    
+    // For example, initialize any settings for the client
+    // Or notify other components about the new client
+  }
+
+  /**
+   * Get list of registered clients
+   * @param {Object} filters - Optional filters for the client list
+   * @returns {Array} List of clients
+   */
+  getClientList(filters: { status?: string } = {}) {
+    if (!this.clients) return [];
+    
+    return this.clients.getAllClients({
+      status: filters.status as any
+    }).map(client => ({
+      id: client.id,
+      name: client.name,
+      status: client.status,
+      registeredAt: client.registeredAt,
+      lastActiveAt: client.lastActiveAt
+    }));
+  }
+
+  /**
+   * Handle client disconnection
+   * @param connectionId The connection ID of the client
+   */
+  handleClientDisconnected(connectionId: string): void {
+    if (!this.clients) return;
+    
+    const client = this.clients.handleDisconnection(connectionId);
+    if (client) {
+      console.log(`Client disconnected: ${client.id}${client.name ? ` (${client.name})` : ''}`);
+      // Emit event for client disconnection
+      this.eventBus.emit('client.disconnected', client);
+    }
   }
 
   /**
