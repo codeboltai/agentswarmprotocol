@@ -117,62 +117,7 @@ class AgentServer {
     return this;
   }
 
-  /**
-   * Handle agent registration
-   * @param message - Registration message
-   * @param connectionId - Agent connection ID
-   * @returns Registration result
-   */
-  handleAgentRegistration(message: BaseMessage, connectionId: string): any {
-    const { name, capabilities, manifest } = message.content;
 
-    if (!name) {
-      throw new Error('Agent name is required');
-    }
-
-    // Check if there's a pre-configured agent with this name
-    const agentConfig = this.agents.getAgentConfigurationByName(name);
-
-    // Register the agent
-    const agent: Agent = {
-      id: agentConfig ? agentConfig.id : uuidv4(),
-      name,
-      // Use pre-configured capabilities if available, otherwise use provided capabilities or default to empty array
-      capabilities: agentConfig ? [...new Set([...agentConfig.capabilities, ...(capabilities || [])])] : capabilities || [],
-      // Merge provided manifest with pre-configured metadata
-      manifest: {
-        ...(manifest || {}),
-        ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
-      },
-      connectionId: connectionId,
-      status: 'online',
-      registeredAt: new Date().toISOString()
-    };
-
-    // Get the WebSocket connection
-    const connection = this.agents.getConnection(connectionId);
-    if (connection) {
-      (agent as any).connection = connection;
-    }
-
-    this.agents.registerAgent(agent);
-
-    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
-    if (agentConfig) {
-      console.log(`Applied pre-configured settings for agent: ${name}`);
-    }
-
-    // Notify the messageHandler about the registration for any business logic
-    if (this.messageHandler) {
-      this.eventBus.emit('agent.registered', agent.id, connectionId);
-    }
-
-    return {
-      agentId: agent.id,
-      name: agent.name,
-      message: 'Agent successfully registered'
-    };
-  }
 
   async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
     console.log(`Received agent message: ${JSON.stringify(message)}`);
@@ -615,6 +560,63 @@ class AgentServer {
       // Send the message
       this.send(agentId, message);
     });
+  }
+
+  /**
+   * Handle agent registration
+   * @param message - Registration message
+   * @param connectionId - Agent connection ID
+   * @returns Registration result
+   */
+  handleAgentRegistration(message: BaseMessage, connectionId: string): any {
+    const { name, capabilities, manifest } = message.content;
+
+    if (!name) {
+      throw new Error('Agent name is required');
+    }
+
+    // Check if there's a pre-configured agent with this name
+    const agentConfig = this.agents.getAgentConfigurationByName(name);
+
+    // Register the agent
+    const agent: Agent = {
+      id: agentConfig ? agentConfig.id : uuidv4(),
+      name,
+      // Use pre-configured capabilities if available, otherwise use provided capabilities or default to empty array
+      capabilities: agentConfig ? [...new Set([...agentConfig.capabilities, ...(capabilities || [])])] : capabilities || [],
+      // Merge provided manifest with pre-configured metadata
+      manifest: {
+        ...(manifest || {}),
+        ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
+      },
+      connectionId: connectionId,
+      status: 'online',
+      registeredAt: new Date().toISOString()
+    };
+
+    // Get the WebSocket connection
+    const connection = this.agents.getConnection(connectionId);
+    if (connection) {
+      (agent as any).connection = connection;
+    }
+
+    this.agents.registerAgent(agent);
+
+    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
+    if (agentConfig) {
+      console.log(`Applied pre-configured settings for agent: ${name}`);
+    }
+
+    // Notify the messageHandler about the registration for any business logic
+    if (this.messageHandler) {
+      this.eventBus.emit('agent.registered', agent.id, connectionId);
+    }
+
+    return {
+      agentId: agent.id,
+      name: agent.name,
+      message: 'Agent successfully registered'
+    };
   }
 
   stop(): void {

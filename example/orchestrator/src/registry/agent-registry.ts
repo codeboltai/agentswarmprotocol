@@ -11,6 +11,13 @@ interface Agent extends BaseAgent {
   connection?: any; // WebSocket connection object
 }
 
+interface ConnectedAgent {
+  agent: Agent;
+  connection: any;
+  connectionId: string;
+  status: AgentStatus;
+}
+
 interface AgentConfiguration {
   id: string;
   name: string;
