@@ -22,7 +22,7 @@ export declare class AgentManager {
      * @param taskData Task data
      * @param timeout Request timeout
      */
-    requestAgentTask(targetAgentName: string, taskData: any, timeout?: number): Promise<any>;
+    executeChildAgentTask(targetAgentName: string, taskData: any, timeout?: number): Promise<any>;
     /**
      * Register a handler for agent requests
      * @param taskType Type of task to handle

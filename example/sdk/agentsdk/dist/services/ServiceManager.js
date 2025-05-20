@@ -8,44 +8,16 @@ class ServiceManager {
         this.logger = logger;
     }
     /**
-     * Request or execute a service
-     * @param serviceName Name of the service
-     * @param params Service parameters
-     * @param timeout Request timeout
-     */
-    async requestService(serviceName, params = {}, timeout = 30000) {
-        try {
-            this.logger.debug(`Requesting service "${serviceName}" with params:`, params);
-            const response = await this.webSocketManager.sendAndWaitForResponse({
-                id: (0, uuid_1.v4)(),
-                type: 'service.request',
-                content: {
-                    service: serviceName,
-                    params
-                }
-            }, timeout);
-            if (response.content.error) {
-                throw new Error(response.content.error);
-            }
-            return response.content.result;
-        }
-        catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error(`Failed to request service "${serviceName}": ${errorMessage}`);
-            throw error instanceof Error ? error : new Error(errorMessage);
-        }
-    }
-    /**
      * Execute a service task
      * @param serviceId Service ID or name
-     * @param functionName Function name
+     * @param toolName Tool name
      * @param params Parameters
      * @param options Additional options
      */
-    async executeServiceTask(serviceId, functionName, params = {}, options = {}) {
+    async executeServiceTask(serviceId, toolName, params = {}, options = {}) {
         const { timeout = 30000, clientId } = options;
         const requestId = (0, uuid_1.v4)();
-        this.logger.debug(`Executing service task "${functionName}" on service "${serviceId}" with params:`, params);
+        this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}" with params:`, params);
         try {
             // Make the request
             const response = await this.webSocketManager.sendAndWaitForResponse({
@@ -53,7 +25,7 @@ class ServiceManager {
                 type: 'service.task.execute',
                 content: {
                     serviceId,
-                    functionName,
+                    toolName,
                     params,
                     clientId,
                     // Include timestamp for tracking
@@ -73,10 +45,10 @@ class ServiceManager {
                 throw new Error(`Connection not found for service "${serviceId}". Ensure the service is running and properly registered.`);
             }
             if (errorMessage.includes('timed out')) {
-                this.logger.error(`Service task timed out: "${functionName}" on service "${serviceId}" after ${timeout}ms`);
-                throw new Error(`Service task "${functionName}" timed out after ${timeout}ms. The service might be unresponsive.`);
+                this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}" after ${timeout}ms`);
+                throw new Error(`Service task "${toolName}" timed out after ${timeout}ms. The service might be unresponsive.`);
             }
-            this.logger.error(`Failed to execute service task "${functionName}" on service "${serviceId}": ${errorMessage}`);
+            this.logger.error(`Failed to execute service task "${toolName}" on service "${serviceId}": ${errorMessage}`);
             throw error instanceof Error ? error : new Error(errorMessage);
         }
     }
@@ -99,6 +71,28 @@ class ServiceManager {
             this.logger.error(`Failed to get service list: ${errorMessage}`);
             // Return empty array instead of throwing on service list failures
             // This allows the application to continue even if service discovery fails
+            return [];
+        }
+    }
+    /**
+     * Get a list of tools for a specific service
+     * @param serviceId Service ID or name
+     * @param options Optional parameters (e.g., timeout)
+     */
+    async getServiceToolList(serviceId, options = {}) {
+        const { timeout = 30000 } = options;
+        try {
+            this.logger.debug(`Getting tool list for service: ${serviceId}`);
+            const response = await this.webSocketManager.sendAndWaitForResponse({
+                id: (0, uuid_1.v4)(),
+                type: 'service.tools.list',
+                content: { serviceId }
+            }, timeout);
+            return response.content.tools || [];
+        }
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to get service tool list for service ${serviceId}: ${errorMessage}`);
             return [];
         }
     }

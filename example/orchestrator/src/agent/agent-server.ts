@@ -303,94 +303,59 @@ class AgentServer {
           }));
           break;
           
-        case 'mcp.servers.list.request':
-          // Emit MCP servers list request event
-          this.eventBus.emit('mcp.servers.list.request', message.content?.filters || {}, (result: any) => {
-            if (result.error) {
-              this.sendError(ws, result.error, message.id);
-              return;
-            }
+        case 'mcp.servers.list':
+          // Direct SDK-style request for MCP servers list
+          // Forward to the message handler for processing
+          try {
+            const response = this.messageHandler.handleMessage(message, ws.id);
             
-            // Send the result back to the agent
-            ws.send(JSON.stringify({
-              id: uuidv4(),
-              type: 'mcp.servers.list',
-              content: {
-                servers: result
-              },
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            }));
-          });
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
           break;
           
-        case 'mcp.tools.list.request':
-          // Emit MCP tools list request event
-          if (!message.content?.serverId) {
-            this.sendError(ws, 'Missing serverId in request', message.id);
-            return;
-          }
-          
-          this.eventBus.emit('mcp.tools.list.request', message.content.serverId, (result: any) => {
-            if (result.error) {
-              this.sendError(ws, result.error, message.id);
-              return;
-            }
+        case 'mcp.tools.list':
+          // Direct SDK-style request for MCP tools list
+          try {
+            const response = this.messageHandler.handleMessage(message, ws.id);
             
-            // Send the result back to the agent
-            ws.send(JSON.stringify({
-              id: uuidv4(),
-              type: 'mcp.tools.list',
-              content: {
-                serverId: message.content.serverId,
-                tools: result
-              },
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            }));
-          });
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
           break;
           
-        case 'mcp.tool.execute.request':
-          // Emit MCP tool execution request event
-          if (!message.content?.serverId || !message.content?.toolName) {
-            this.sendError(ws, 'Missing serverId or toolName in request', message.id);
-            return;
-          }
-          
-          // Get the agent information for proper attribution
-          const mcpAgent = this.agents.getAgentByConnectionId(ws.id);
-          if (!mcpAgent) {
-            this.sendError(ws, 'Agent not registered or unknown', message.id);
-            return;
-          }
-          
-          this.eventBus.emit('mcp.tool.execute.request', {
-            serverId: message.content.serverId,
-            toolName: message.content.toolName,
-            parameters: message.content.parameters || {},
-            agentId: mcpAgent.id,
-            timeout: message.content.timeout
-          }, (result: any) => {
-            if (result.error) {
-              this.sendError(ws, result.error, message.id);
-              return;
-            }
+        case 'mcp.tool.execute':
+          // Direct SDK-style request for MCP tool execution
+          try {
+            const response = this.messageHandler.handleMessage(message, ws.id);
             
-            // Send the result back to the agent
-            ws.send(JSON.stringify({
-              id: uuidv4(),
-              type: 'mcp.tool.execution.result',
-              content: {
-                serverId: message.content.serverId,
-                toolName: message.content.toolName,
-                result: result,
-                status: 'success'
-              },
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            }));
-          });
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
           break;
           
         case 'ping':
@@ -404,6 +369,69 @@ class AgentServer {
             requestId: message.id,
             timestamp: Date.now().toString()
           }));
+          break;
+          
+        case 'mcp.servers.list.request':
+          // For backward compatibility, handle the old mcp.servers.list.request format
+          try {
+            const response = this.messageHandler.handleMessage({
+              ...message,
+              type: 'mcp.servers.list'
+            }, ws.id);
+            
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
+          break;
+          
+        case 'mcp.tools.list.request':
+          // For backward compatibility, handle the old mcp.tools.list.request format
+          try {
+            const response = this.messageHandler.handleMessage({
+              ...message,
+              type: 'mcp.tools.list'
+            }, ws.id);
+            
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
+          break;
+          
+        case 'mcp.tool.execute.request':
+          // For backward compatibility, handle the old mcp.tool.execute.request format
+          try {
+            const response = this.messageHandler.handleMessage({
+              ...message,
+              type: 'mcp.tool.execute'
+            }, ws.id);
+            
+            if (response) {
+              ws.send(JSON.stringify({
+                ...response,
+                id: uuidv4(),
+                requestId: message.id,
+                timestamp: Date.now().toString()
+              }));
+            }
+          } catch (error) {
+            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+          }
           break;
           
         default:

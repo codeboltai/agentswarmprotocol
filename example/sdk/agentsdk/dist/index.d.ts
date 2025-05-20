@@ -2,8 +2,8 @@
  * SwarmAgentSDK - Base class for creating agents that connect to the Agent Swarm Protocol
  */
 import { EventEmitter } from 'events';
-import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
-import { AgentConfig, MessageHandler, TaskHandler } from './core/types';
+import { AgentStatus } from '@agentswarmprotocol/types/common';
+import { AgentConfig, TaskHandler } from './core/types';
 declare class SwarmAgentSDK extends EventEmitter {
     protected agentId: string;
     protected name: string;
@@ -13,7 +13,6 @@ declare class SwarmAgentSDK extends EventEmitter {
     protected manifest: Record<string, any>;
     protected logger: Console;
     private webSocketManager;
-    private messageHandler;
     private taskHandler;
     private agentManager;
     private serviceManager;
@@ -24,6 +23,22 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     private setupEventForwarding;
     /**
+     * Send registration message to the orchestrator
+     * @private
+     */
+    private sendRegistration;
+    /**
+     * Process an incoming message and route it appropriately
+     * @param {BaseMessage} message The message to process
+     * @private
+     */
+    private processMessage;
+    /**
+     * Send a pong response for the given messageId
+     * @private
+     */
+    private sendPong;
+    /**
      * Connect to the orchestrator
      * @returns {Promise} Resolves when connected
      */
@@ -33,33 +48,21 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     disconnect(): SwarmAgentSDK;
     /**
-     * Expose the handleMessage method (mainly for testing)
-     * @param {BaseMessage} message The message to handle
+     * Set agent status
+     * @param status New status
      */
-    handleMessage(message: BaseMessage): void;
+    setStatus(status: AgentStatus): Promise<void>;
     /**
-     * Register a message handler for a specific message type
-     * @param messageType Type of message to handle
+     * Register a handler for all tasks
      * @param handler Handler function
      */
-    onMessage(messageType: string, handler: MessageHandler): SwarmAgentSDK;
+    onTask(handler: TaskHandler): SwarmAgentSDK;
     /**
      * Send a message during task execution
      * @param taskId ID of the task being executed
      * @param content Message content
      */
-    sendMessage(taskId: string, content: any): void;
-    /**
-     * Register a task handler for a specific task type
-     * @param taskType Type of task to handle
-     * @param handler Handler function
-     */
-    registerTaskHandler(taskType: string, handler: TaskHandler): SwarmAgentSDK;
-    /**
-     * Register a default task handler for when no specific handler is found
-     * @param handler Handler function
-     */
-    registerDefaultTaskHandler(handler: TaskHandler): SwarmAgentSDK;
+    sendTaskMessage(taskId: string, content: any): void;
     /**
      * Send a task result back to the orchestrator
      * @param taskId ID of the task
@@ -67,53 +70,25 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     sendTaskResult(taskId: string, result: any): void;
     /**
-     * Send a message to the orchestrator
-     * @param message Message to send
-     */
-    send(message: BaseMessage): Promise<BaseMessage>;
-    /**
-     * Send a message and wait for a response
-     * @param message Message to send
+     * Send a request message during task execution and wait for a response
+     * @param taskId ID of the task being executed
+     * @param content Request content
      * @param timeout Timeout in milliseconds
+     * @returns Promise that resolves with the response content
      */
-    sendAndWaitForResponse(message: BaseMessage, timeout?: number): Promise<BaseMessage>;
-    /**
-     * Request another agent to perform a task
-     * @param targetAgentName Name of the target agent
-     * @param taskData Task data
-     * @param timeout Request timeout
-     */
-    requestAgentTask(targetAgentName: string, taskData: any, timeout?: number): Promise<any>;
+    requestMessageDuringTask(taskId: string, content: any, timeout?: number): Promise<any>;
     /**
      * Get list of agents
      * @param filters Filter criteria
      */
     getAgentList(filters?: Record<string, any>): Promise<any[]>;
     /**
-     * Set agent status
-     * @param status New status
-     */
-    setStatus(status: AgentStatus): Promise<void>;
-    /**
-     * Register a handler for agent requests
-     * @param taskType Type of task to handle
-     * @param handler Handler function
-     */
-    onAgentRequest(taskType: string, handler: TaskHandler): SwarmAgentSDK;
-    /**
-     * Request a service
-     * @param serviceName Name of the service
-     * @param params Service parameters
+     * Request another agent to perform a task
+     * @param targetAgentName Name of the target agent
+     * @param taskData Task data
      * @param timeout Request timeout
      */
-    requestService(serviceName: string, params?: Record<string, any>, timeout?: number): Promise<any>;
-    /**
-     * Convenience method for executing a service
-     * @param serviceName Name of the service
-     * @param params Parameters to pass
-     * @param timeout Request timeout
-     */
-    executeService(serviceName: string, params?: Record<string, any>, timeout?: number): Promise<any>;
+    executeChildAgentTask(targetAgentName: string, taskData: any, timeout?: number): Promise<any>;
     /**
      * Execute a service task
      * @param serviceId Service ID or name
@@ -121,7 +96,7 @@ declare class SwarmAgentSDK extends EventEmitter {
      * @param params Parameters
      * @param options Additional options
      */
-    executeServiceTask(serviceId: string, functionName: string, params?: Record<string, any>, options?: {
+    executeServiceTask(serviceId: string, toolName: string, params?: Record<string, any>, options?: {
         timeout: number;
         clientId: string | undefined;
     }): Promise<any>;
@@ -130,6 +105,14 @@ declare class SwarmAgentSDK extends EventEmitter {
      * @param filters Filter criteria
      */
     getServiceList(filters?: Record<string, any>): Promise<any[]>;
+    /**
+     * Get a list of tools for a specific service
+     * @param serviceId Service ID or name
+     * @param options Optional parameters (e.g., timeout)
+     */
+    getServiceToolList(serviceId: string, options?: {
+        timeout?: number;
+    }): Promise<any[]>;
     /**
      * Get list of MCP servers
      * @param filters Filter criteria
