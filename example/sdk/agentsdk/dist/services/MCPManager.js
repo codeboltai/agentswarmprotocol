@@ -13,15 +13,23 @@ class MCPManager {
      * @param timeout Request timeout
      */
     async getMCPServers(filters = {}, timeout = 30000) {
-        const response = await this.webSocketManager.sendAndWaitForResponse({
-            id: (0, uuid_1.v4)(),
-            type: 'mcp.servers.request',
-            content: { filters }
-        }, timeout);
-        if (response.content.error) {
-            throw new Error(response.content.error);
+        try {
+            this.logger.debug(`Getting MCP servers list with filters:`, filters);
+            const response = await this.webSocketManager.sendAndWaitForResponse({
+                id: (0, uuid_1.v4)(),
+                type: 'mcp.servers.list',
+                content: { filters }
+            }, timeout);
+            if (response.content && response.content.error) {
+                throw new Error(response.content.error);
+            }
+            return response.content.servers || [];
         }
-        return response.content.servers || [];
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to get MCP servers list: ${errorMessage}`);
+            throw error instanceof Error ? error : new Error(errorMessage);
+        }
     }
     /**
      * Get list of tools for an MCP server
@@ -29,15 +37,26 @@ class MCPManager {
      * @param timeout Request timeout
      */
     async getMCPTools(serverId, timeout = 30000) {
-        const response = await this.webSocketManager.sendAndWaitForResponse({
-            id: (0, uuid_1.v4)(),
-            type: 'mcp.tools.request',
-            content: { serverId }
-        }, timeout);
-        if (response.content.error) {
-            throw new Error(response.content.error);
+        try {
+            this.logger.debug(`Getting tools list for MCP server: ${serverId}`);
+            if (!serverId) {
+                throw new Error('Server ID is required to list MCP tools');
+            }
+            const response = await this.webSocketManager.sendAndWaitForResponse({
+                id: (0, uuid_1.v4)(),
+                type: 'mcp.tools.list',
+                content: { serverId }
+            }, timeout);
+            if (response.content && response.content.error) {
+                throw new Error(response.content.error);
+            }
+            return response.content.tools || [];
         }
-        return response.content.tools || [];
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to get MCP tools for server ${serverId}: ${errorMessage}`);
+            throw error instanceof Error ? error : new Error(errorMessage);
+        }
     }
     /**
      * Execute an MCP tool
@@ -47,19 +66,38 @@ class MCPManager {
      * @param timeout Request timeout
      */
     async executeMCPTool(serverId, toolName, parameters = {}, timeout = 60000) {
-        const response = await this.webSocketManager.sendAndWaitForResponse({
-            id: (0, uuid_1.v4)(),
-            type: 'mcp.tool.execute',
-            content: {
-                serverId,
-                tool: toolName,
-                parameters
+        try {
+            this.logger.debug(`Executing MCP tool "${toolName}" on server "${serverId}" with parameters:`, parameters);
+            if (!serverId) {
+                throw new Error('Server ID is required to execute an MCP tool');
             }
-        }, timeout);
-        if (response.content.error) {
-            throw new Error(response.content.error);
+            if (!toolName) {
+                throw new Error('Tool name is required to execute an MCP tool');
+            }
+            const response = await this.webSocketManager.sendAndWaitForResponse({
+                id: (0, uuid_1.v4)(),
+                type: 'mcp.tool.execute',
+                content: {
+                    serverId,
+                    toolName,
+                    parameters
+                }
+            }, timeout);
+            if (response.content && response.content.error) {
+                throw new Error(response.content.error);
+            }
+            // Handle response format which might come in content.result
+            if (response.content && response.content.result !== undefined) {
+                return response.content.result;
+            }
+            // In case the result is directly in the content
+            return response.content;
         }
-        return response.content.result;
+        catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Failed to execute MCP tool "${toolName}" on server "${serverId}": ${errorMessage}`);
+            throw error instanceof Error ? error : new Error(errorMessage);
+        }
     }
 }
 exports.MCPManager = MCPManager;

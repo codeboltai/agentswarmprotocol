@@ -98,9 +98,14 @@ class SwarmAgentSDK extends EventEmitter {
     return this.webSocketManager.send({
       type: 'agent.register',
       content: {
+        id: this.agentId,
+        agentId: this.agentId,
         name: this.name,
         capabilities: this.capabilities,
-        manifest: this.manifest
+        manifest: {
+          ...this.manifest,
+          id: this.agentId
+        }
       }
     } as BaseMessage);
   }

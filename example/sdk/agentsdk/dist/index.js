@@ -91,20 +91,26 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.emit(message.type, message.content, message);
         // For standard message types
         switch (message.type) {
-            case 'task.execute':
-                this.taskHandler.handleTask(message);
+            case 'agent.registered':
+                this.emit('registered', message.content);
                 break;
             case 'orchestrator.welcome':
                 this.emit('welcome', message.content);
                 break;
-            case 'agent.request.accepted':
+            case 'task.execute':
+                this.taskHandler.handleTask(message);
+                break;
+            case 'task.messageresponse':
+                this.emit('task.messageresponse', message.content);
+                break;
+            case 'childagent.request.accepted':
                 this.emit('agent-request-accepted', message.content);
                 break;
-            case 'agent.response':
-                this.emit('agent-response', message.content);
+            case 'childagent.response':
+                this.emit('childagent.response', message.content);
                 break;
-            case 'agent.registered':
-                this.emit('registered', message.content);
+            case 'service.request.accepted':
+                this.emit('service-request-accepted', message.content);
                 break;
             case 'service.response':
                 this.emit('service-response', message.content);
@@ -115,15 +121,53 @@ class SwarmAgentSDK extends events_1.EventEmitter {
             case 'error':
                 this.emit('error', new Error(message.content ? message.content.error : 'Unknown error'));
                 break;
-            // MCP message types
             case 'mcp.servers.list':
-                this.emit('mcp-servers-list', message.content);
+                try {
+                    // Handle different response formats
+                    const servers = message.content.servers || message.content;
+                    if (!Array.isArray(servers)) {
+                        this.logger.warn('Received mcp.servers.list without proper servers array', message.content);
+                        this.emit('mcp-servers-list', []);
+                    }
+                    else {
+                        this.emit('mcp-servers-list', servers);
+                    }
+                }
+                catch (error) {
+                    this.logger.error('Error handling mcp.servers.list message:', error);
+                    this.emit('mcp-servers-list', []);
+                }
                 break;
             case 'mcp.tools.list':
-                this.emit('mcp-tools-list', message.content);
+                try {
+                    // Handle different response formats
+                    const tools = message.content.tools || message.content;
+                    if (!Array.isArray(tools)) {
+                        this.logger.warn('Received mcp.tools.list without proper tools array', message.content);
+                        this.emit('mcp-tools-list', []);
+                    }
+                    else {
+                        this.emit('mcp-tools-list', tools);
+                    }
+                }
+                catch (error) {
+                    this.logger.error('Error handling mcp.tools.list message:', error);
+                    this.emit('mcp-tools-list', []);
+                }
                 break;
             case 'mcp.tool.execution.result':
-                this.emit('mcp-tool-execution-result', message.content);
+                try {
+                    // Handle different response formats
+                    const result = message.content.result !== undefined ? message.content.result : message.content;
+                    this.emit('mcp-tool-execution-result', result);
+                }
+                catch (error) {
+                    this.logger.error('Error handling mcp.tool.execution.result message:', error);
+                    this.emit('mcp-tool-execution-result', null);
+                }
+                break;
+            default:
+                this.logger.debug(`Unhandled message type: ${message.type}`);
                 break;
         }
     }

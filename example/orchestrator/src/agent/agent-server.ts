@@ -513,6 +513,7 @@ class AgentServer {
     // Extract agent data from the message
     const {
       id,
+      agentId,
       name,
       description,
       status = 'online',
@@ -520,11 +521,10 @@ class AgentServer {
       manifest = null
     } = message.content;
     
-    // Validate required fields
-    if (!id) {
-      return { error: 'Invalid agent registration: id is required' };
-    }
+    // Use id or agentId if provided, or generate a new one
+    const actualId = id || agentId || manifest?.id || uuidv4();
     
+    // Validate required fields
     if (!name) {
       return { error: 'Invalid agent registration: name is required' };
     }
@@ -532,7 +532,7 @@ class AgentServer {
     try {
       // Create the agent object
       const agent: Agent = {
-        id,
+        id: actualId,
         name,
         capabilities: capabilities || [],
         status: status as AgentStatus || 'online',
@@ -545,16 +545,17 @@ class AgentServer {
       this.agents.registerAgent(agent, connectionId);
       
       // Log the registration event
-      console.log(`Agent ${name} (${id}) registered successfully with connection ${connectionId}`);
+      console.log(`Agent ${name} (${actualId}) registered successfully with connection ${connectionId}`);
       
       // Emit event for agent registration
-      this.eventBus.emit('agent.registered', id, connectionId);
+      this.eventBus.emit('agent.registered', actualId, connectionId);
       
       return {
-        id,
+        id: actualId,
+        agentId: actualId, // Include both formats for compatibility
         name,
         status,
-        message: 'Agent registered successfully'
+        message: 'Agent successfully registered'
       };
     } catch (error) {
       console.error(`Error registering agent: ${error instanceof Error ? error.message : String(error)}`);

@@ -1,17 +1,26 @@
 import { SwarmAgentSDK } from '@agent-swarm/agent-sdk';
 import { v4 as uuidv4 } from 'uuid';
+import { TaskExecuteMessage } from '@agent-swarm/agent-sdk/dist/core/types';
+
+// Generate a fixed agent ID that won't change between reconnects
+const AGENT_ID = uuidv4();
+console.log(`Using Agent ID: ${AGENT_ID}`);
 
 // Create a new simple agent
 const agent = new SwarmAgentSDK({
+  agentId: AGENT_ID,
   name: 'SimpleAgent',
   description: 'A basic agent that processes text input',
   capabilities: ['text-processing'],
-  orchestratorUrl : 'ws://localhost:3000/'
+  orchestratorUrl: 'ws://localhost:3000/',
+  manifest: {
+    id: AGENT_ID // Explicitly include ID in manifest
+  }
 });
 
-// Register a task handler for text-processing tasks
-agent.registerTaskHandler('text-processing', async (taskData, taskMessage) => {
-  console.log('Processing text task:', taskData);
+// Register a single task handler for all tasks
+agent.onTask(async (taskData: any, taskMessage: TaskExecuteMessage) => {
+  console.log('Processing task:', taskData);
   
   // Extract the query content from the task data
   const queryContent = typeof taskData === 'object' && taskData.query ? 
@@ -19,17 +28,12 @@ agent.registerTaskHandler('text-processing', async (taskData, taskMessage) => {
     JSON.stringify(taskData);
   
   // Send a notification message to indicate task has started
-  await agent.send({
-    id: uuidv4(),
-    type: 'task.status',
-    content: {
-      taskId: taskMessage.content.taskId,
-      status: 'in_progress',
-      message: 'Starting text-processing task...',
-      timestamp: new Date().toISOString(),
-      result: {
-        inProgress: true
-      }
+  agent.sendTaskMessage(taskMessage.content.taskId, {
+    status: 'in_progress',
+    message: 'Starting task processing...',
+    timestamp: new Date().toISOString(),
+    result: {
+      inProgress: true
     }
   });
   
@@ -37,17 +41,12 @@ agent.registerTaskHandler('text-processing', async (taskData, taskMessage) => {
   await new Promise(resolve => setTimeout(resolve, 100));
   
   // Send an additional notification before completing
-  await agent.send({
-    id: uuidv4(),
-    type: 'task.status',
-    content: {
-      taskId: taskMessage.content.taskId,
-      status: 'in_progress',
-      message: 'Text processing in progress...',
-      timestamp: new Date().toISOString(),
-      result: {
-        inProgress: true
-      }
+  agent.sendTaskMessage(taskMessage.content.taskId, {
+    status: 'in_progress',
+    message: 'Processing in progress...',
+    timestamp: new Date().toISOString(),
+    result: {
+      inProgress: true
     }
   });
   
@@ -59,99 +58,6 @@ agent.registerTaskHandler('text-processing', async (taskData, taskMessage) => {
     processed: true,
     originalText: queryContent,
     processedText: `Processed: ${queryContent}`,
-    timestamp: new Date().toISOString()
-  };
-  
-  return result;
-});
-
-// Register an empty string handler for tasks with no type
-agent.registerTaskHandler('', async (taskData, taskMessage) => {
-  console.log('Processing task with empty type:', taskData);
-  
-  // Extract the query content from the task data
-  const queryContent = typeof taskData === 'object' && taskData.query ? 
-    taskData.query : 
-    JSON.stringify(taskData);
-  
-  // Send a notification message before completing the task
-  await agent.send({
-    id: uuidv4(),
-    type: 'task.status',
-    content: {
-      taskId: taskMessage.content.taskId,
-      status: 'in_progress',
-      message: 'Started processing task with empty type...',
-      timestamp: new Date().toISOString(),
-      result: {
-        inProgress: true
-      }
-    }
-  });
-  
-  // Ensure notification is processed before completing
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // Simple text processing logic
-  const result = {
-    processed: true,
-    originalText: queryContent,
-    processedText: `Processed task with empty type: ${queryContent}`,
-    timestamp: new Date().toISOString()
-  };
-  
-  return result;
-});
-
-// Register a default handler for any task type that doesn't have a specific handler
-agent.registerDefaultTaskHandler(async (taskData, taskMessage) => {
-  console.log('Processing default task:', taskData);
-  console.log('Task message structure:', JSON.stringify(taskMessage, null, 2));
-  
-  // Extract the query content from the task data
-  const queryContent = typeof taskData === 'object' && taskData.query ? 
-    taskData.query : 
-    JSON.stringify(taskData);
-  
-  // Send initial notification message
-  await agent.send({
-    id: uuidv4(),
-    type: 'task.status',
-    content: {
-      taskId: taskMessage.content.taskId,
-      status: 'in_progress',
-      message: 'Task received, starting processing...',
-      timestamp: new Date().toISOString(),
-      result: {
-        inProgress: true
-      }
-    }
-  });
-  
-  // Ensure notification is processed
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // Send a second notification message
-  await agent.send({
-    id: uuidv4(),
-    type: 'task.status',
-    content: {
-      taskId: taskMessage.content.taskId,
-      status: 'in_progress',
-      message: `Processing message: "${queryContent}"`,
-      timestamp: new Date().toISOString(),
-      result: `Hello! I received your message: "${queryContent}" and processed it successfully.`
-    }
-  });
-  
-  // Ensure second notification is processed
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // Simple text processing logic for default handler
-  const result = {
-    processed: true,
-    originalText: queryContent,
-    processedText: `Processed with default handler: ${queryContent}`,
     timestamp: new Date().toISOString(),
     replyMessage: `Hello! I received your message: "${queryContent}" and processed it successfully.`
   };
@@ -179,10 +85,16 @@ agent.on('raw-message', (msg) => {
   }
 });
 
+// Listen for registration events
+agent.on('registered', (content) => {
+  console.log(`Agent registered successfully with ID: ${content.agentId}`);
+});
+
 // Listen for task events specifically
-agent.on('task', (task) => {
+agent.on('task', (taskData: any, taskMessage: any) => {
   setTimeout(() => {
-    console.log(`Task received with task handler: ${JSON.stringify(task, null, 2)}`);
+    console.log(`Task received: ${JSON.stringify(taskData, null, 2)}`);
+    console.log(`Task message: ${JSON.stringify(taskMessage, null, 2)}`);
   }, 2000);
 });
 
