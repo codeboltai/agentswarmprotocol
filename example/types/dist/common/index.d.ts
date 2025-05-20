@@ -61,6 +61,7 @@ export interface Agent {
         /** Any other fields */
         [key: string]: any;
     };
+    statusDetails?: any;
 }
 /**
  * Service interface representing a service registered with the orchestrator
@@ -78,6 +79,8 @@ export interface Service {
     connectionId: string;
     /** When the service was registered */
     registeredAt: string;
+    /** WebSocket connection object */
+    connection?: any;
     /** Additional service information */
     manifest?: {
         /** Service description */
@@ -91,6 +94,8 @@ export interface Service {
         /** Any other fields */
         [key: string]: any;
     };
+    /** Additional status details */
+    statusDetails?: any;
 }
 /**
  * Task interface representing a task registered with the orchestrator

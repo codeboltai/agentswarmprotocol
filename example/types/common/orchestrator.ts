@@ -50,6 +50,11 @@ export interface ServiceRegistry {
   registerService(service: Service): void;
   updateServiceStatus(id: string, status: ServiceStatus, details?: any): void;
   removeService(id: string): boolean;
+  
+  // WebSocket connection management
+  getConnection(connectionId: string): WebSocketWithId | undefined;
+  setConnection(connectionId: string, connection: WebSocketWithId): Service | undefined;
+  handleDisconnection(connectionId: string): Service | undefined;
 }
 
 export interface ServiceTaskRegistry {

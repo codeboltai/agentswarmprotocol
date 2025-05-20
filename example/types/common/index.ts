@@ -86,6 +86,8 @@ export interface Service {
   connectionId: string;
   /** When the service was registered */
   registeredAt: string;
+  /** WebSocket connection object */
+  connection?: any;
   /** Additional service information */
   manifest?: {
     /** Service description */
@@ -99,6 +101,8 @@ export interface Service {
     /** Any other fields */
     [key: string]: any;
   };
+  /** Additional status details */
+  statusDetails?: any;
 }
 
 /**

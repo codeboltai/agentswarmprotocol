@@ -1,5 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Service, ServiceStatus, ServiceRegistry as IServiceRegistry } from '@agentswarmprotocol/types/common';
+import { Service as BaseService, ServiceStatus, ServiceRegistry as IServiceRegistry } from '@agentswarmprotocol/types/common';
+
+// Extended Service interface that includes the connection
+interface Service extends BaseService {
+  connection?: any; // WebSocket connection
+  statusDetails?: any;
+}
 
 interface ServiceConfiguration {
   id: string;
@@ -106,6 +112,39 @@ export class ServiceRegistry implements IServiceRegistry {
   }
 
   /**
+   * Get a WebSocket connection for a service by connection ID
+   * @param connectionId - The connection ID
+   * @returns The WebSocket connection object or undefined if not found
+   */
+  getConnection(connectionId: string): any {
+    const serviceId = this.getServiceIdByConnectionId(connectionId);
+    if (!serviceId) return undefined;
+    
+    const service = this.getServiceById(serviceId);
+    return service?.connection;
+  }
+
+  /**
+   * Set the WebSocket connection for a service
+   * @param connectionId - The connection ID
+   * @param connection - The WebSocket connection object
+   * @returns The updated service or undefined if not found
+   */
+  setConnection(connectionId: string, connection: any): Service | undefined {
+    const serviceId = this.getServiceIdByConnectionId(connectionId);
+    if (!serviceId) return undefined;
+    
+    const service = this.getServiceById(serviceId);
+    if (!service) return undefined;
+    
+    // Update the service with the connection
+    service.connection = connection;
+    this.services.set(serviceId, service);
+    
+    return service;
+  }
+
+  /**
    * Register a new service
    * @param {Service} serviceInfo - Service information
    * @returns {Service} Registered service
@@ -206,7 +245,8 @@ export class ServiceRegistry implements IServiceRegistry {
     const updatedService: Service = {
       ...service,
       status: 'offline',
-      connectionId: ''  // Empty string as TypeScript doesn't allow null for connectionId
+      connectionId: '',  // Empty string as TypeScript doesn't allow null for connectionId
+      connection: undefined // Clear the connection
     };
     
     // Update the service
