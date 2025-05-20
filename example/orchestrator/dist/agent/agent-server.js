@@ -106,6 +106,14 @@ class AgentServer {
     }
     async handleMessage(message, ws) {
         console.log(`Received agent message: ${JSON.stringify(message)}`);
+        console.log(`Message content structure: ${JSON.stringify({
+            contentType: message.content ? typeof message.content : 'undefined',
+            hasTaskId: message.content?.taskId ? true : false,
+            hasType: message.content?.type ? true : false,
+            hasData: message.content?.data ? true : false,
+            dataType: message.content?.data ? typeof message.content.data : 'undefined',
+            dataIsEmpty: message.content?.data ? Object.keys(message.content.data).length === 0 : true
+        })}`);
         if (!message.type) {
             return this.sendError(ws, 'Invalid message format: type is required', message.id);
         }
@@ -186,6 +194,23 @@ class AgentServer {
                         }));
                     });
                     break;
+                case 'service.task.execute':
+                    // Emit service task execute event
+                    this.eventBus.emit('service.task.execute', message, ws.id, (serviceResult) => {
+                        if (serviceResult.error) {
+                            this.sendError(ws, serviceResult.error, message.id);
+                            return;
+                        }
+                        // Send the result back - using WebSocket directly
+                        ws.send(JSON.stringify({
+                            id: (0, uuid_1.v4)(),
+                            type: 'service.task.result',
+                            content: serviceResult,
+                            requestId: message.id,
+                            timestamp: Date.now().toString()
+                        }));
+                    });
+                    break;
                 case 'agent.request':
                     // Emit agent request event
                     this.eventBus.emit('agent.request.received', message, ws.id, (result) => {
@@ -218,6 +243,12 @@ class AgentServer {
                     // Emit task status update event
                     console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
                     this.eventBus.emit('task.status.received', message);
+                    this.eventBus.emit('response.message', message);
+                    break;
+                case 'service.task.result':
+                    // Emit service task result event
+                    console.log(`Service task result received: ${message.id}`);
+                    this.eventBus.emit('service.task.result.received', message);
                     this.eventBus.emit('response.message', message);
                     break;
                 case 'task.notification':

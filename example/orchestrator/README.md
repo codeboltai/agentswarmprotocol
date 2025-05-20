@@ -133,8 +133,7 @@ MCP (Model Context Protocol) servers provide additional tool capabilities to age
 
 ```javascript
 // Agent requests to register a new MCP server
-const mcpServer = await agent.sendServiceRequest('mcp-service', {
-  action: 'register-server',
+const mcpServer = await agent.executeServiceTask('mcp-service', 'register-server', {
   name: 'weather-server',
   path: '/path/to/weather-server.js',
   type: 'node'
@@ -148,8 +147,7 @@ const serverId = mcpServer.serverId;
 
 ```javascript
 // Connect to the registered server
-const connection = await agent.sendServiceRequest('mcp-service', {
-  action: 'connect-server',
+const connection = await agent.executeServiceTask('mcp-service', 'connect-server', {
   serverId: serverId // Or use server name with: mcpServerName: 'weather-server'
 });
 
@@ -161,8 +159,7 @@ const tools = connection.tools;
 
 ```javascript
 // Get tools provided by a specific MCP server
-const toolList = await agent.sendServiceRequest('mcp-service', {
-  action: 'list-tools',
+const toolList = await agent.executeServiceTask('mcp-service', 'list-tools', {
   serverId: serverId
 });
 
@@ -174,8 +171,7 @@ console.log(toolList.tools);
 
 ```javascript
 // Execute a tool from the MCP server
-const taskExecution = await agent.sendServiceRequest('mcp-service', {
-  action: 'execute-tool',
+const taskExecution = await agent.executeServiceTask('mcp-service', 'execute-tool', {
   serverId: serverId,
   toolName: 'get-weather',
   toolArgs: {

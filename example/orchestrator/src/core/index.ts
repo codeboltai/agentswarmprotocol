@@ -355,10 +355,12 @@ class Orchestrator {
       }
     });
     
-    // Listen for service request events
-    this.eventBus.on('service.request', async (message: any, connectionId: string, callback: Function) => {
+   
+    
+    // Listen for service.task.execute events
+    this.eventBus.on('service.task.execute', async (message: any, connectionId: string, callback: Function) => {
       try {
-        const result = await this.messageHandler.handleServiceRequest(message, connectionId);
+        const result = await this.messageHandler.handleServiceTaskExecuteRequest(message, connectionId);
         callback(result);
       } catch (error) {
         callback({ error: error instanceof Error ? error.message : String(error) });

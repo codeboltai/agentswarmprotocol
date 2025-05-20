@@ -210,6 +210,25 @@ class AgentServer {
           });
           break;
           
+        case 'service.task.execute':
+          // Emit service task execute event
+          this.eventBus.emit('service.task.execute', message, ws.id, (serviceResult: any) => {
+            if (serviceResult.error) {
+              this.sendError(ws, serviceResult.error, message.id);
+              return;
+            }
+            
+            // Send the result back - using WebSocket directly
+            ws.send(JSON.stringify({
+              id: uuidv4(),
+              type: 'service.task.result',
+              content: serviceResult,
+              requestId: message.id,
+              timestamp: Date.now().toString()
+            }));
+          });
+          break;
+          
         case 'agent.request':
           // Emit agent request event
           this.eventBus.emit('agent.request.received', message, ws.id, (result: any) => {
@@ -246,6 +265,13 @@ class AgentServer {
           // Emit task status update event
           console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
           this.eventBus.emit('task.status.received', message);
+          this.eventBus.emit('response.message', message);
+          break;
+          
+        case 'service.task.result':
+          // Emit service task result event
+          console.log(`Service task result received: ${message.id}`);
+          this.eventBus.emit('service.task.result.received', message);
           this.eventBus.emit('response.message', message);
           break;
           

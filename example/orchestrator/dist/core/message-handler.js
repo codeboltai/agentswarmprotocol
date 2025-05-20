@@ -22,6 +22,13 @@ class MessageHandler {
      */
     async handleTaskCreation(message, clientId) {
         const { agentName, agentId, taskData } = message.content;
+        console.log(`Task creation request received: ${JSON.stringify({
+            agentName,
+            agentId,
+            hasTaskData: !!taskData,
+            taskDataType: taskData ? typeof taskData : 'undefined',
+            taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
+        })}`);
         if (!taskData) {
             throw new Error('Invalid task creation request: taskData is required');
         }
@@ -144,15 +151,19 @@ class MessageHandler {
         };
     }
     /**
-     * Handle service request from an agent
-     * @param message - Service request message
-     * @param connectionId - Requesting agent's connection ID
-     * @returns Service result
+     * Handle service request messages
+     * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
+     * @param {string} connectionId - Agent connection ID
+     * @returns {Object} Service result
      */
     async handleServiceRequest(message, connectionId) {
-        const { service, params } = message.content;
+        // Handle both service.request and service.task.execute message formats
+        const messageContent = message.content || {};
+        const service = messageContent.service || messageContent.serviceId;
+        const params = messageContent.params || {};
+        const toolName = messageContent.toolName || params?.functionName;
         if (!service) {
-            throw new Error('Service name is required');
+            throw new Error('Service name or ID is required');
         }
         // Get the agent making the request
         const agent = this.agents.getAgentByConnectionId(connectionId);
@@ -163,20 +174,23 @@ class MessageHandler {
         if (service === 'mcp-service') {
             return this.handleMCPRequest(params, agent);
         }
-        // Check if the service exists
-        const serviceObj = this.services.getServiceByName(service);
+        // Check if the service exists - try by name or ID
+        let serviceObj = this.services.getServiceByName(service);
+        if (!serviceObj) {
+            serviceObj = this.services.getServiceById(service);
+        }
         if (!serviceObj) {
             throw new Error(`Service not found: ${service}`);
         }
         // Check if the agent is allowed to use this service
-        if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(service)) {
-            throw new Error(`Agent is not authorized to use service: ${service}`);
+        if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(serviceObj.name)) {
+            throw new Error(`Agent is not authorized to use service: ${serviceObj.name}`);
         }
         // Create a service task
         const taskId = (0, uuid_1.v4)();
         // Emit event for service task creation
         this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
-            functionName: params?.functionName || 'default',
+            functionName: toolName || 'default',
             params: params || {}
         });
         // Wait for result (this will be resolved by the orchestrator)
@@ -320,6 +334,9 @@ class MessageHandler {
                 return this.handleAgentRegistration(message, connectionId);
             case 'service.register':
                 return this.handleServiceRegistration(message, connectionId);
+            case 'service.request':
+            case 'service.task.execute':
+                return this.handleServiceRequest(message, connectionId);
             case 'task.result':
                 this.eventBus.emit('task.result', message);
                 return;
@@ -472,8 +489,7 @@ class MessageHandler {
                     };
                 }
             default:
-                console.warn(`Unhandled message type in message-handler: ${type}`);
-                return;
+                throw new Error(`Unsupported message type: ${type}`);
         }
     }
     /**

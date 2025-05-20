@@ -154,12 +154,7 @@ class Orchestrator {
                     content: {
                         taskId: taskId,
                         type: taskData.taskType,
-                        data: {
-                            conversationId: taskData.conversationId,
-                            message: taskData.message,
-                            role: taskData.role,
-                            context: taskData.context
-                        }
+                        data: taskData
                     }
                 };
                 // Send the task to the agent
@@ -178,6 +173,39 @@ class Orchestrator {
             else {
                 console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent not connected`);
                 this.tasks.updateTaskStatus(taskId, 'failed', { error: 'Agent not connected' });
+            }
+        });
+        // Handle client task creation
+        this.eventBus.on('client.task.create', async (message, clientId, callback) => {
+            try {
+                const result = await this.messageHandler.handleTaskCreation(message, clientId);
+                // Store the callback to be called when task is completed
+                const taskId = result.taskId;
+                // Create a one-time event listener for this specific task's completion
+                const taskCompletionHandler = (statusMessage) => {
+                    if (statusMessage.content &&
+                        statusMessage.content.taskId === taskId &&
+                        statusMessage.content.status === 'completed') {
+                        // Call the callback with the result and remove this listener
+                        callback({
+                            ...result,
+                            status: 'completed',
+                            result: statusMessage.content.result
+                        });
+                        this.eventBus.removeListener('task.status', taskCompletionHandler);
+                    }
+                };
+                // Add listener for task.status events
+                this.eventBus.on('task.status', taskCompletionHandler);
+                // Notify the client that the task was created, but don't resolve the callback yet
+                this.clientServer.sendMessageToClient(clientId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'task.created',
+                    content: result
+                });
+            }
+            catch (error) {
+                callback({ error: error instanceof Error ? error.message : String(error) });
             }
         });
         // Listen for task status update events
@@ -294,6 +322,16 @@ class Orchestrator {
         });
         // Listen for service request events
         this.eventBus.on('service.request', async (message, connectionId, callback) => {
+            try {
+                const result = await this.messageHandler.handleServiceRequest(message, connectionId);
+                callback(result);
+            }
+            catch (error) {
+                callback({ error: error instanceof Error ? error.message : String(error) });
+            }
+        });
+        // Listen for service.task.execute events
+        this.eventBus.on('service.task.execute', async (message, connectionId, callback) => {
             try {
                 const result = await this.messageHandler.handleServiceRequest(message, connectionId);
                 callback(result);

@@ -201,81 +201,95 @@ class MessageHandler {
     };
   }
 
-  /**
-   * Handle service request from an agent
-   * @param message - Service request message
-   * @param connectionId - Requesting agent's connection ID
-   * @returns Service result
+  
+
+
+  
+/**
+   * Handle service task execute request messages
+   * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
+   * @param {string} connectionId - Agent connection ID
+   * @returns {Object} Service result
    */
-  async handleServiceRequest(message: AgentMessages.ServiceRequestMessage, connectionId: string): Promise<any> {
-    const { service, params } = message.content;
+async handleServiceTaskExecuteRequest(
+  message: AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage | any, 
+  connectionId: string
+): Promise<any> {
+  // Handle both service.request and service.task.execute message formats
+  const messageContent = message.content || {};
+  const service = messageContent.service || messageContent.serviceId;
+  const params = messageContent.params || {};
+  const toolName = messageContent.toolName || params?.functionName;
 
-    if (!service) {
-      throw new Error('Service name is required');
-    }
-
-    // Get the agent making the request
-    const agent = this.agents.getAgentByConnectionId(connectionId);
-    if (!agent) {
-      throw new Error('Agent not registered');
-    }
-
-    // Check if this is an MCP request
-    if (service === 'mcp-service') {
-      return this.handleMCPRequest(params as any, agent);
-    }
-
-    // Check if the service exists
-    const serviceObj = this.services.getServiceByName(service);
-    if (!serviceObj) {
-      throw new Error(`Service not found: ${service}`);
-    }
-
-    // Check if the agent is allowed to use this service
-    if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(service)) {
-      throw new Error(`Agent is not authorized to use service: ${service}`);
-    }
-
-    // Create a service task
-    const taskId = uuidv4();
-
-    // Emit event for service task creation
-    this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
-      functionName: params?.functionName || 'default',
-      params: params || {}
-    });
-
-    // Wait for result (this will be resolved by the orchestrator)
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.eventBus.removeListener('service.task.completed', resultHandler);
-        this.eventBus.removeListener('service.task.failed', errorHandler);
-        reject(new Error(`Service task timeout: ${taskId}`));
-      }, 30000); // 30 second timeout
-
-      const resultHandler = (completedTaskId: string, result: any) => {
-        if (completedTaskId === taskId) {
-          clearTimeout(timeoutId);
-          this.eventBus.removeListener('service.task.completed', resultHandler);
-          this.eventBus.removeListener('service.task.failed', errorHandler);
-          resolve(result);
-        }
-      };
-
-      const errorHandler = (failedTaskId: string, error: any) => {
-        if (failedTaskId === taskId) {
-          clearTimeout(timeoutId);
-          this.eventBus.removeListener('service.task.completed', resultHandler);
-          this.eventBus.removeListener('service.task.failed', errorHandler);
-          reject(error);
-        }
-      };
-
-      this.eventBus.on('service.task.completed', resultHandler);
-      this.eventBus.on('service.task.failed', errorHandler);
-    });
+  if (!service) {
+    throw new Error('Service name or ID is required');
   }
 
+  // Get the agent making the request
+  const agent = this.agents.getAgentByConnectionId(connectionId);
+  if (!agent) {
+    throw new Error('Agent not registered');
+  }
+
+  // Check if this is an MCP request
+  if (service === 'mcp-service') {
+    return this.handleMCPRequest(params as any, agent);
+  }
+
+  // Check if the service exists - try by name or ID
+  let serviceObj = this.services.getServiceByName(service);
+  if (!serviceObj) {
+    serviceObj = this.services.getServiceById(service);
+  }
+  
+  if (!serviceObj) {
+    throw new Error(`Service not found: ${service}`);
+  }
+
+  // Check if the agent is allowed to use this service
+  if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(serviceObj.name)) {
+    throw new Error(`Agent is not authorized to use service: ${serviceObj.name}`);
+  }
+
+  // Create a service task
+  const taskId = uuidv4();
+
+  // Emit event for service task creation
+  this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
+    functionName: toolName || 'default',
+    params: params || {}
+  });
+
+  // Wait for result (this will be resolved by the orchestrator)
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      this.eventBus.removeListener('service.task.completed', resultHandler);
+      this.eventBus.removeListener('service.task.failed', errorHandler);
+      reject(new Error(`Service task timeout: ${taskId}`));
+    }, 30000); // 30 second timeout
+
+    const resultHandler = (completedTaskId: string, result: any) => {
+      if (completedTaskId === taskId) {
+        clearTimeout(timeoutId);
+        this.eventBus.removeListener('service.task.completed', resultHandler);
+        this.eventBus.removeListener('service.task.failed', errorHandler);
+        resolve(result);
+      }
+    };
+
+    const errorHandler = (failedTaskId: string, error: any) => {
+      if (failedTaskId === taskId) {
+        clearTimeout(timeoutId);
+        this.eventBus.removeListener('service.task.completed', resultHandler);
+        this.eventBus.removeListener('service.task.failed', errorHandler);
+        reject(error);
+      }
+    };
+
+    this.eventBus.on('service.task.completed', resultHandler);
+    this.eventBus.on('service.task.failed', errorHandler);
+  });
+}
   /**
    * Handle MCP service request
    * @param params - MCP request parameters
@@ -407,7 +421,11 @@ class MessageHandler {
 
       case 'service.register':
         return this.handleServiceRegistration(message, connectionId);
-
+        
+      case 'service.request':
+      case 'service.task.execute':
+        return this.handleServiceTaskExecuteRequest(message, connectionId);
+        
       case 'task.result':
         this.eventBus.emit('task.result', message);
         return;
@@ -575,8 +593,7 @@ class MessageHandler {
         }
 
       default:
-        console.warn(`Unhandled message type in message-handler: ${type}`);
-        return;
+        throw new Error(`Unsupported message type: ${type}`);
     }
   }
 
