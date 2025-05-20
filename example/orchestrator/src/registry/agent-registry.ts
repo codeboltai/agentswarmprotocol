@@ -19,17 +19,56 @@ interface AgentConfiguration {
   configuredAt: string;
 }
 
+// Track connections that haven't been associated with agents yet
+interface PendingConnection {
+  connectionId: string;
+  connection: any; // WebSocket connection
+  connectedAt: string;
+}
+
 export class AgentRegistry implements IAgentRegistry {
   private agents: Map<string, Agent>;
   private agentsByName: Map<string, Agent>;
   private agentsByConnectionId: Map<string, Agent>;
   private agentConfigurations: Map<string, AgentConfiguration>;
+  private connections: Map<string, any>; // Map of connectionId to WebSocket
+  private pendingConnections: Map<string, PendingConnection>; // Connections waiting for agent.register
 
   constructor() {
     this.agents = new Map(); // Maps agent IDs to agent objects
     this.agentsByName = new Map(); // Maps agent names to agent objects
     this.agentsByConnectionId = new Map(); // Maps connection IDs to agent objects
     this.agentConfigurations = new Map(); // Maps agent IDs to preconfigured settings
+    this.connections = new Map(); // Maps connection IDs to WebSocket objects
+    this.pendingConnections = new Map(); // Connections waiting for agent.register
+  }
+
+  /**
+   * Add a new connection to pending connections
+   * @param connectionId - The connection ID
+   * @param connection - The WebSocket connection object
+   * @returns The pending connection object
+   */
+  addPendingConnection(connectionId: string, connection: any): PendingConnection {
+    const pendingConnection: PendingConnection = {
+      connectionId,
+      connection,
+      connectedAt: new Date().toISOString()
+    };
+    
+    this.pendingConnections.set(connectionId, pendingConnection);
+    this.connections.set(connectionId, connection); // Also store in connections map
+    
+    return pendingConnection;
+  }
+
+  /**
+   * Get a pending connection by connection ID
+   * @param connectionId - The connection ID
+   * @returns The pending connection object or undefined if not found
+   */
+  getPendingConnection(connectionId: string): PendingConnection | undefined {
+    return this.pendingConnections.get(connectionId);
   }
 
   /**
@@ -54,6 +93,17 @@ export class AgentRegistry implements IAgentRegistry {
       this.agents.set(existingAgentWithSameName.id, existingAgentWithSameName);
     }
     
+    // If the agent has a connectionId, try to get the connection object
+    if (agent.connectionId && !agent.connection) {
+      const connection = this.connections.get(agent.connectionId);
+      if (connection) {
+        agent.connection = connection;
+      }
+      
+      // Remove from pending connections if it was there
+      this.pendingConnections.delete(agent.connectionId);
+    }
+    
     // Store the agent
     this.agents.set(agent.id, agent);
     this.agentsByName.set(agent.name, agent);
@@ -63,6 +113,107 @@ export class AgentRegistry implements IAgentRegistry {
     }
     
     return agent;
+  }
+
+  /**
+   * Set a WebSocket connection for a specific connection ID
+   * @param connectionId - The connection ID
+   * @param connection - The WebSocket connection object
+   * @returns true if set successfully
+   */
+  setConnection(connectionId: string, connection: any): boolean {
+    if (!connectionId) {
+      return false;
+    }
+    
+    // Store the connection
+    this.connections.set(connectionId, connection);
+    
+    // Add to pending connections as well
+    this.addPendingConnection(connectionId, connection);
+    
+    return true;
+  }
+
+  /**
+   * Get a WebSocket connection by connection ID
+   * @param connectionId - The connection ID
+   * @returns The WebSocket connection object or undefined if not found
+   */
+  getConnection(connectionId: string): any {
+    return this.connections.get(connectionId);
+  }
+  
+  /**
+   * Get a WebSocket connection for an agent by agent ID
+   * @param agentId - The agent ID
+   * @returns The WebSocket connection object or undefined if not found
+   */
+  getConnectionByAgentId(agentId: string): any {
+    const agent = this.getAgentById(agentId);
+    if (!agent || !agent.connectionId) {
+      return undefined;
+    }
+    
+    return this.getConnection(agent.connectionId);
+  }
+
+  /**
+   * Associate an agent with a WebSocket connection
+   * @param agentId - The agent ID
+   * @param connectionId - The connection ID
+   * @param connection - The WebSocket connection object
+   * @returns true if successful
+   */
+  associateAgentWithConnection(agentId: string, connectionId: string, connection: any): boolean {
+    const agent = this.getAgentById(agentId);
+    if (!agent) {
+      return false;
+    }
+    
+    // Update the agent's connectionId
+    agent.connectionId = connectionId;
+    agent.connection = connection; // For backward compatibility
+    
+    // Store the updated agent
+    this.agents.set(agentId, agent);
+    this.agentsByConnectionId.set(connectionId, agent);
+    
+    // Store the connection
+    this.connections.set(connectionId, connection);
+    
+    // Remove from pending connections if it was there
+    this.pendingConnections.delete(connectionId);
+    
+    return true;
+  }
+
+  /**
+   * Remove a connection by connection ID
+   * @param connectionId - The connection ID to remove
+   * @returns true if successfully removed
+   */
+  removeConnection(connectionId: string): boolean {
+    const wasRemoved = this.connections.delete(connectionId);
+    
+    // Also update any agent that was using this connection
+    const agent = this.getAgentByConnectionId(connectionId);
+    if (agent) {
+      // Create a new agent object without the connection properties
+      const { connectionId: _, connection: __, ...agentWithoutConnection } = agent;
+      const updatedAgent = {
+        ...agentWithoutConnection,
+        status: 'offline' as AgentStatus
+      };
+      
+      this.agents.set(agent.id, updatedAgent as Agent);
+      this.agentsByConnectionId.delete(connectionId);
+    }
+    
+    // Remove from pending connections if it was there
+    this.pendingConnections.delete(connectionId);
+    
+    return wasRemoved;
   }
 
   /**
@@ -98,8 +249,14 @@ export class AgentRegistry implements IAgentRegistry {
    * @returns The WebSocket connection object or undefined if not found
    */
   getAgentConnection(connectionId: string): any {
+    // For backward compatibility, first try the old way
     const agent = this.getAgentByConnectionId(connectionId);
-    return agent?.connection;
+    if (agent?.connection) {
+      return agent.connection;
+    }
+    
+    // Then try the new way
+    return this.getConnection(connectionId);
   }
 
   /**
@@ -171,6 +328,7 @@ export class AgentRegistry implements IAgentRegistry {
     
     if (agent.connectionId) {
       this.agentsByConnectionId.delete(agent.connectionId);
+      // We don't remove the WebSocket connection here in case it's needed for cleanup
     }
     
     return true;

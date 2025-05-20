@@ -2,11 +2,12 @@ import * as WebSocket from 'ws';
 import * as http from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { 
-  AgentRegistry, 
   PendingResponse, 
   SendOptions,
-  BaseMessage
+  BaseMessage,
+  Agent
 } from '../../../types/common';
+import { AgentRegistry } from '../registry/agent-registry';
 import { EventEmitter } from 'events';
 
 // Extended WebSocket interface with ID
@@ -69,20 +70,25 @@ class AgentServer {
       
       console.log(`New agent connection established: ${connectionId}`);
       
+      // Store the WebSocket connection in the registry
+      this.agents.addPendingConnection(connectionId, ws);
+      
       // Handle incoming messages from agents
       ws.on('message', async (message: WebSocket.Data) => {
         try {
           const parsedMessage = JSON.parse(message.toString());
-          await this.handleMessage(parsedMessage, ws as WebSocketWithId);
+          await this.handleMessage(parsedMessage, connectionId);
         } catch (error) {
           console.error('Error handling message:', error);
-          this.sendError(ws as WebSocketWithId, 'Error processing message', error instanceof Error ? error.message : String(error));
+          this.sendError(connectionId, 'Error processing message', error instanceof Error ? error.message : String(error));
         }
       });
       
       // Handle disconnections
       ws.on('close', () => {
         console.log(`Agent connection closed: ${connectionId}`);
+        // Remove the connection from the registry
+        this.agents.removeConnection(connectionId);
         // Emit event for disconnection, let the message handler deal with it
         this.eventBus.emit('agent.disconnected', connectionId);
       });
@@ -90,7 +96,7 @@ class AgentServer {
       // Send welcome message
       try {
         const welcomeMessage = {
-          id: uuidv4(),
+          id: connectionId,
           type: 'orchestrator.welcome',
           content: {
             message: 'Connected to ASP Orchestrator',
@@ -111,7 +117,64 @@ class AgentServer {
     return this;
   }
 
-  async handleMessage(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
+  /**
+   * Handle agent registration
+   * @param message - Registration message
+   * @param connectionId - Agent connection ID
+   * @returns Registration result
+   */
+  handleAgentRegistration(message: BaseMessage, connectionId: string): any {
+    const { name, capabilities, manifest } = message.content;
+
+    if (!name) {
+      throw new Error('Agent name is required');
+    }
+
+    // Check if there's a pre-configured agent with this name
+    const agentConfig = this.agents.getAgentConfigurationByName(name);
+
+    // Register the agent
+    const agent: Agent = {
+      id: agentConfig ? agentConfig.id : uuidv4(),
+      name,
+      // Use pre-configured capabilities if available, otherwise use provided capabilities or default to empty array
+      capabilities: agentConfig ? [...new Set([...agentConfig.capabilities, ...(capabilities || [])])] : capabilities || [],
+      // Merge provided manifest with pre-configured metadata
+      manifest: {
+        ...(manifest || {}),
+        ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
+      },
+      connectionId: connectionId,
+      status: 'online',
+      registeredAt: new Date().toISOString()
+    };
+
+    // Get the WebSocket connection
+    const connection = this.agents.getConnection(connectionId);
+    if (connection) {
+      (agent as any).connection = connection;
+    }
+
+    this.agents.registerAgent(agent);
+
+    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
+    if (agentConfig) {
+      console.log(`Applied pre-configured settings for agent: ${name}`);
+    }
+
+    // Notify the messageHandler about the registration for any business logic
+    if (this.messageHandler) {
+      this.eventBus.emit('agent.registered', agent.id, connectionId);
+    }
+
+    return {
+      agentId: agent.id,
+      name: agent.name,
+      message: 'Agent successfully registered'
+    };
+  }
+
+  async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
     console.log(`Received agent message: ${JSON.stringify(message)}`);
     console.log(`Message content structure: ${JSON.stringify({
       contentType: message.content ? typeof message.content : 'undefined',
@@ -123,29 +186,29 @@ class AgentServer {
     })}`);
     
     if (!message.type) {
-      return this.sendError(ws, 'Invalid message format: type is required', message.id);
+      return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
     }
     
     try {
       switch (message.type) {
         case 'agent.register':
           try {
-            // Pass the WebSocket object to the registration handler
-            const registrationResult = this.messageHandler.handleAgentRegistration(message, ws.id, ws);
+            // Handle agent registration directly in the agent server
+            const registrationResult = this.handleAgentRegistration(message, connectionId);
             if (registrationResult.error) {
-              this.sendError(ws, registrationResult.error, message.id);
+              this.sendError(connectionId, registrationResult.error, message.id);
               return;
             }
             
-            ws.send(JSON.stringify({
+            this.send(connectionId, {
               id: uuidv4(),
               type: 'agent.registered',
               content: registrationResult,
               requestId: message.id,
               timestamp: Date.now().toString()
-            }));
+            });
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
@@ -153,12 +216,12 @@ class AgentServer {
           // Emit agent list request event
           this.eventBus.emit('agent.list.request', message.content?.filters || {}, (result: any) => {
             if (result.error) {
-              this.sendError(ws, result.error, message.id);
+              this.sendError(connectionId, result.error, message.id);
               return;
             }
             
             // Send the result back to the agent
-            ws.send(JSON.stringify({
+            this.send(connectionId, {
               id: uuidv4(),
               type: 'agent.list.response',
               content: {
@@ -166,7 +229,7 @@ class AgentServer {
               },
               requestId: message.id,
               timestamp: Date.now().toString()
-            }));
+            });
           });
           break;
           
@@ -174,12 +237,12 @@ class AgentServer {
           // Emit service list event
           this.eventBus.emit('client.service.list', message.content?.filters || {}, (services: any) => {
             if (services.error) {
-              this.sendError(ws, services.error, message.id);
+              this.sendError(connectionId, services.error, message.id);
               return;
             }
             
             // Send the result back to the agent
-            ws.send(JSON.stringify({
+            this.send(connectionId, {
               id: uuidv4(),
               type: 'service.list.result',
               content: {
@@ -187,31 +250,29 @@ class AgentServer {
               },
               requestId: message.id,
               timestamp: Date.now().toString()
-            }));
+            });
           });
           break;
           
-     
         case 'service.task.execute':
           // Emit service task execute event
-          this.eventBus.emit('service.task.execute', message, ws.id, (serviceResult: any) => {
+          this.eventBus.emit('service.task.execute', message, connectionId, (serviceResult: any) => {
             if (serviceResult.error) {
-              this.sendError(ws, serviceResult.error, message.id);
+              this.sendError(connectionId, serviceResult.error, message.id);
               return;
             }
             
-            // Send the result back - using WebSocket directly
-            ws.send(JSON.stringify({
+            // Send the result back
+            this.send(connectionId, {
               id: uuidv4(),
               type: 'service.task.result',
               content: serviceResult,
               requestId: message.id,
               timestamp: Date.now().toString()
-            }));
+            });
           });
           break;
           
-       
         case 'task.result':
           // Emit task result event
           this.eventBus.emit('task.result.received', message);
@@ -241,10 +302,10 @@ class AgentServer {
         case 'task.notification':
           // Handle task notification from agent
           // Get the agent information from the connection
-          const agent = this.agents.getAgentByConnectionId(ws.id);
+          const agent = this.agents.getAgentByConnectionId(connectionId);
           
           if (!agent) {
-            this.sendError(ws, 'Agent not registered or unknown', message.id);
+            this.sendError(connectionId, 'Agent not registered or unknown', message.id);
             return;
           }
           
@@ -261,8 +322,8 @@ class AgentServer {
           // Emit the notification event for the orchestrator to handle
           this.eventBus.emit('task.notification.received', enhancedNotification);
           
-          // Confirm receipt (optional) - using WebSocket directly
-          ws.send(JSON.stringify({
+          // Confirm receipt (optional)
+          this.send(connectionId, {
             id: uuidv4(),
             type: 'notification.received',
             content: {
@@ -271,15 +332,15 @@ class AgentServer {
             },
             requestId: message.id,
             timestamp: Date.now().toString()
-          }));
+          });
           break;
           
         case 'agent.status':
           // Handle agent status update
-          const statusAgent = this.agents.getAgentByConnectionId(ws.id);
+          const statusAgent = this.agents.getAgentByConnectionId(connectionId);
           
           if (!statusAgent) {
-            this.sendError(ws, 'Agent not registered or unknown', message.id);
+            this.sendError(connectionId, 'Agent not registered or unknown', message.id);
             return;
           }
           
@@ -291,7 +352,7 @@ class AgentServer {
           );
           
           // Confirm receipt
-          ws.send(JSON.stringify({
+          this.send(connectionId, {
             id: uuidv4(),
             type: 'agent.status.updated',
             content: {
@@ -300,67 +361,67 @@ class AgentServer {
             },
             requestId: message.id,
             timestamp: Date.now().toString()
-          }));
+          });
           break;
           
         case 'mcp.servers.list':
           // Direct SDK-style request for MCP servers list
           // Forward to the message handler for processing
           try {
-            const response = this.messageHandler.handleMessage(message, ws.id);
+            const response = this.messageHandler.handleMessage(message, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
         case 'mcp.tools.list':
           // Direct SDK-style request for MCP tools list
           try {
-            const response = this.messageHandler.handleMessage(message, ws.id);
+            const response = this.messageHandler.handleMessage(message, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
         case 'mcp.tool.execute':
           // Direct SDK-style request for MCP tool execution
           try {
-            const response = this.messageHandler.handleMessage(message, ws.id);
+            const response = this.messageHandler.handleMessage(message, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
         case 'ping':
           // Respond with pong message
-          ws.send(JSON.stringify({
+          this.send(connectionId, {
             id: uuidv4(),
             type: 'pong',
             content: {
@@ -368,7 +429,7 @@ class AgentServer {
             },
             requestId: message.id,
             timestamp: Date.now().toString()
-          }));
+          });
           break;
           
         case 'mcp.servers.list.request':
@@ -377,18 +438,18 @@ class AgentServer {
             const response = this.messageHandler.handleMessage({
               ...message,
               type: 'mcp.servers.list'
-            }, ws.id);
+            }, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
@@ -398,18 +459,18 @@ class AgentServer {
             const response = this.messageHandler.handleMessage({
               ...message,
               type: 'mcp.tools.list'
-            }, ws.id);
+            }, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
@@ -419,33 +480,33 @@ class AgentServer {
             const response = this.messageHandler.handleMessage({
               ...message,
               type: 'mcp.tool.execute'
-            }, ws.id);
+            }, connectionId);
             
             if (response) {
-              ws.send(JSON.stringify({
+              this.send(connectionId, {
                 ...response,
                 id: uuidv4(),
                 requestId: message.id,
                 timestamp: Date.now().toString()
-              }));
+              });
             }
           } catch (error) {
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
           }
           break;
           
         default:
           console.warn(`Unhandled message type agent-server: ${message.type}`);
-          this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
+          this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
       }
     } catch (error) {
       console.error('Error handling message:', error);
-      this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+      this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
     }
   }
 
   // Helper method to send messages
-  send(wsOrAgentId: WebSocketWithId | string, message: BaseMessage): string {
+  send(connectionIdOrAgentId: string, message: BaseMessage): string {
     if (!message.id) {
       message.id = uuidv4();
     }
@@ -453,31 +514,16 @@ class AgentServer {
     message.timestamp = Date.now().toString();
     
     try {
-      // If a WebSocket object was directly provided
-      if (typeof wsOrAgentId !== 'string') {
-        wsOrAgentId.send(JSON.stringify(message));
-        return message.id;
-      }
+      // First, try to find the connection directly
+      let connection = this.agents.getConnection(connectionIdOrAgentId);
       
-      // Otherwise, it's an agent ID
-      const agentId = wsOrAgentId;
-      if (!agentId) {
-        throw new Error('Agent ID is required');
-      }
-      
-      const agent = this.agents.getAgentById(agentId);
-      if (!agent) {
-        throw new Error(`Agent ${agentId} not found`);
-      }
-      
-      if (!agent.connectionId) {
-        throw new Error(`Agent ${agentId} not connected (no connectionId)`);
-      }
-      
-      // Access the connection property of the agent
-      const connection = (agent as any).connection;
+      // If not found, maybe it's an agent ID
       if (!connection) {
-        throw new Error(`Connection not found for agent ${agentId} (connectionId: ${agent.connectionId})`);
+        connection = this.agents.getConnectionByAgentId(connectionIdOrAgentId);
+      }
+      
+      if (!connection) {
+        throw new Error(`Connection not found for ID: ${connectionIdOrAgentId}`);
       }
       
       connection.send(JSON.stringify(message));
@@ -489,7 +535,7 @@ class AgentServer {
   }
 
   // Helper method to send an error response
-  sendError(ws: WebSocketWithId, errorMessage: string, requestId: string | null = null): void {
+  sendError(connectionId: string, errorMessage: string, requestId: string | null = null): void {
     const message: BaseMessage = {
       id: uuidv4(),
       type: 'error',
@@ -503,8 +549,7 @@ class AgentServer {
     }
     
     try {
-      // Send directly using WebSocket since this is used in error handling contexts
-      ws.send(JSON.stringify(message));
+      this.send(connectionId, message);
     } catch (error) {
       console.error('Error sending error message:', error);
     }

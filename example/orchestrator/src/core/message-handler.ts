@@ -44,6 +44,22 @@ class MessageHandler {
     this.serviceTasks = config.serviceTasks;
     this.eventBus = config.eventBus;
     this.mcp = config.mcp;
+    
+    // Listen for agent registration events
+    this.eventBus.on('agent.registered', this.handleAgentRegistered.bind(this));
+  }
+
+  /**
+   * Handle agent registered event
+   * @param agentId The ID of the registered agent
+   * @param connectionId The connection ID of the agent
+   */
+  private handleAgentRegistered(agentId: string, connectionId: string): void {
+    // Perform any additional business logic needed when an agent is registered
+    console.log(`MessageHandler: Agent ${agentId} registered with connection ${connectionId}`);
+    
+    // For example, initialize any tasks or settings for the agent
+    // Or notify other components about the new agent
   }
 
   /**
@@ -150,63 +166,11 @@ class MessageHandler {
   }
 
   /**
-   * Handle agent registration
-   * @param {BaseMessage} message - Registration message
+   * Handle service task execute request messages
+   * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
    * @param {string} connectionId - Agent connection ID
-   * @param {any} ws - WebSocket connection object
-   * @returns {Object} Registration result
+   * @returns {Object} Service result
    */
-  handleAgentRegistration(message: BaseMessage, connectionId: string, ws?: any) {
-    const { name, capabilities, manifest } = message.content;
-
-    if (!name) {
-      throw new Error('Agent name is required');
-    }
-
-    // Check if there's a pre-configured agent with this name
-    const agentConfig = this.agents.getAgentConfigurationByName(name);
-
-    // Register the agent
-    const agent: Agent = {
-      id: agentConfig ? agentConfig.id : uuidv4(),
-      name,
-      // Use pre-configured capabilities if available, otherwise use provided capabilities or default to empty array
-      capabilities: agentConfig ? [...new Set([...agentConfig.capabilities, ...(capabilities || [])])] : capabilities || [],
-      // Merge provided manifest with pre-configured metadata
-      manifest: {
-        ...(manifest || {}),
-        ...(agentConfig ? { preconfigured: true, metadata: agentConfig.metadata } : {})
-      },
-      connectionId: connectionId,
-      status: 'online',
-      registeredAt: new Date().toISOString()
-    };
-
-    // Store the WebSocket connection if provided
-    if (ws) {
-      (agent as any).connection = ws;
-    }
-
-    this.agents.registerAgent(agent);
-
-    console.log(`Agent registered: ${name} with capabilities: ${agent.capabilities.join(', ')}`);
-    if (agentConfig) {
-      console.log(`Applied pre-configured settings for agent: ${name}`);
-    }
-
-    return {
-      agentId: agent.id,
-      name: agent.name,
-      message: 'Agent successfully registered'
-    };
-  }
-
-  /**
-     * Handle service task execute request messages
-     * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
-     * @param {string} connectionId - Agent connection ID
-     * @returns {Object} Service result
-     */
   async handleServiceTaskExecuteRequest(
     message: AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage | any,
     connectionId: string
@@ -420,7 +384,9 @@ class MessageHandler {
 
     switch (type) {
       case 'agent.register':
-        return this.handleAgentRegistration(message, connectionId);
+        // Agent registration is now handled by the AgentServer
+        this.eventBus.emit('agent.register.delegated', message, connectionId);
+        return;
 
       case 'service.register':
         return this.handleServiceRegistration(message, connectionId);
