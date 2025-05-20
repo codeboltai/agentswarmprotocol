@@ -29,7 +29,6 @@ class AgentManager {
             id: (0, uuid_1.v4)(),
             type: 'agent.status',
             content: {
-                agentId: this.agentId,
                 status
             }
         });
@@ -44,7 +43,7 @@ class AgentManager {
     //   type: taskType,
     //   ...taskData
     // };
-    async requestAgentTask(targetAgentName, taskData, timeout = 30000) {
+    async executeChildAgentTask(targetAgentName, taskData, timeout = 30000) {
         const response = await this.webSocketManager.sendAndWaitForResponse({
             id: (0, uuid_1.v4)(),
             type: 'agent.request',

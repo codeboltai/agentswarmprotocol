@@ -9,24 +9,16 @@ class TaskHandler extends events_1.EventEmitter {
         this.webSocketManager = webSocketManager;
         this.agentId = agentId;
         this.logger = logger;
-        this.taskHandlers = new Map();
-        this.defaultTaskHandler = null;
+        // Remove taskHandlers map since we'll only have one handler
+        // private taskHandlers: Map<string, TaskHandlerType> = new Map();
+        this.taskHandler = null;
     }
     /**
-     * Register a task handler for a specific task type
-     * @param taskType Type of task to handle
+     * Set the task handler for all incoming tasks
      * @param handler Handler function
      */
-    registerTaskHandler(taskType, handler) {
-        this.taskHandlers.set(taskType, handler);
-        return this;
-    }
-    /**
-     * Register a default task handler for when no specific handler is found
-     * @param handler Handler function
-     */
-    registerDefaultTaskHandler(handler) {
-        this.defaultTaskHandler = handler;
+    onTask(handler) {
+        this.taskHandler = handler;
         return this;
     }
     /**
@@ -35,14 +27,13 @@ class TaskHandler extends events_1.EventEmitter {
      */
     async handleTask(message) {
         const taskId = message.content?.taskId;
-        const taskType = message.content?.type;
         const taskData = message.content?.data;
         if (!taskId) {
             this.logger.error('Task execution message missing taskId');
             return;
         }
         // Add detailed logging about the message and task data
-        this.logger.info(`Processing task ${taskId} (type: ${taskType || 'undefined'})`);
+        this.logger.info(`Processing task ${taskId}`);
         this.logger.info(`Task message structure: ${JSON.stringify({
             hasContent: !!message.content,
             contentKeys: message.content ? Object.keys(message.content) : [],
@@ -52,22 +43,15 @@ class TaskHandler extends events_1.EventEmitter {
         })}`);
         // Emit task event
         this.emit('task', taskData, message);
-        if (taskType) {
-            this.emit(`task.${taskType}`, taskData, message);
-        }
         try {
-            // Find the appropriate handler
-            let handler = this.defaultTaskHandler;
-            if (taskType && this.taskHandlers.has(taskType)) {
-                handler = this.taskHandlers.get(taskType);
-            }
-            if (!handler) {
-                throw new Error(`No handler registered for task type: ${taskType}`);
+            // Check if we have a handler
+            if (!this.taskHandler) {
+                throw new Error('No task handler registered');
             }
             // Update task status
             this.sendTaskStatus(taskId, 'started');
             // Execute the handler
-            const result = await handler(taskData, message);
+            const result = await this.taskHandler(taskData, message);
             // Send the result
             this.sendTaskResult(taskId, result);
             // Update task status
@@ -121,7 +105,7 @@ class TaskHandler extends events_1.EventEmitter {
      * @param taskId ID of the task
      * @param content Message content
      */
-    sendMessage(taskId, content) {
+    sendTaskMessage(taskId, content) {
         this.webSocketManager.send({
             id: (0, uuid_1.v4)(),
             type: 'task.message',
@@ -130,6 +114,31 @@ class TaskHandler extends events_1.EventEmitter {
                 taskId,
                 message: content
             }
+        });
+    }
+    /**
+     * Send a request message during task execution and wait for a response
+     * @param taskId ID of the task being executed
+     * @param content Request content
+     * @param timeout Timeout in milliseconds
+     * @returns Promise that resolves with the response
+     */
+    requestMessageDuringTask(taskId, content, timeout = 30000) {
+        const requestId = (0, uuid_1.v4)();
+        return this.webSocketManager.sendAndWaitForResponse({
+            id: requestId,
+            type: 'task.requestmessage',
+            content: {
+                agentId: this.agentId,
+                taskId,
+                request: content
+            }
+        }, timeout)
+            .then(response => {
+            if (response.content && response.content.result) {
+                return response.content.result;
+            }
+            return response.content;
         });
     }
 }

@@ -15,17 +15,25 @@ export class MCPManager {
    * @param timeout Request timeout
    */
   async getMCPServers(filters: Record<string, any> = {}, timeout = 30000): Promise<any[]> {
-    const response = await this.webSocketManager.sendAndWaitForResponse({
-      id: uuidv4(),
-      type: 'mcp.servers.request',
-      content: { filters }
-    } as BaseMessage, timeout);
-    
-    if (response.content.error) {
-      throw new Error(response.content.error);
+    try {
+      this.logger.debug(`Getting MCP servers list with filters:`, filters);
+      
+      const response = await this.webSocketManager.sendAndWaitForResponse({
+        id: uuidv4(),
+        type: 'mcp.servers.list',
+        content: { filters }
+      } as BaseMessage, timeout);
+      
+      if (response.content && response.content.error) {
+        throw new Error(response.content.error);
+      }
+      
+      return response.content.servers || [];
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to get MCP servers list: ${errorMessage}`);
+      throw error instanceof Error ? error : new Error(errorMessage);
     }
-    
-    return response.content.servers || [];
   }
 
   /**
@@ -34,17 +42,29 @@ export class MCPManager {
    * @param timeout Request timeout
    */
   async getMCPTools(serverId: string, timeout = 30000): Promise<any[]> {
-    const response = await this.webSocketManager.sendAndWaitForResponse({
-      id: uuidv4(),
-      type: 'mcp.tools.request',
-      content: { serverId }
-    } as BaseMessage, timeout);
-    
-    if (response.content.error) {
-      throw new Error(response.content.error);
+    try {
+      this.logger.debug(`Getting tools list for MCP server: ${serverId}`);
+      
+      if (!serverId) {
+        throw new Error('Server ID is required to list MCP tools');
+      }
+      
+      const response = await this.webSocketManager.sendAndWaitForResponse({
+        id: uuidv4(),
+        type: 'mcp.tools.list',
+        content: { serverId }
+      } as BaseMessage, timeout);
+      
+      if (response.content && response.content.error) {
+        throw new Error(response.content.error);
+      }
+      
+      return response.content.tools || [];
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to get MCP tools for server ${serverId}: ${errorMessage}`);
+      throw error instanceof Error ? error : new Error(errorMessage);
     }
-    
-    return response.content.tools || [];
   }
 
   /**
@@ -60,21 +80,42 @@ export class MCPManager {
     parameters: Record<string, any> = {},
     timeout = 60000
   ): Promise<any> {
-    const response = await this.webSocketManager.sendAndWaitForResponse({
-      id: uuidv4(),
-      type: 'mcp.tool.execute',
-      content: {
-        serverId,
-        tool: toolName,
-        parameters
+    try {
+      this.logger.debug(`Executing MCP tool "${toolName}" on server "${serverId}" with parameters:`, parameters);
+      
+      if (!serverId) {
+        throw new Error('Server ID is required to execute an MCP tool');
       }
-    } as BaseMessage, timeout);
-    
-    if (response.content.error) {
-      throw new Error(response.content.error);
+      
+      if (!toolName) {
+        throw new Error('Tool name is required to execute an MCP tool');
+      }
+      
+      const response = await this.webSocketManager.sendAndWaitForResponse({
+        id: uuidv4(),
+        type: 'mcp.tool.execute',
+        content: {
+          serverId,
+          toolName,
+          parameters
+        }
+      } as BaseMessage, timeout);
+      
+      if (response.content && response.content.error) {
+        throw new Error(response.content.error);
+      }
+      
+      // Handle response format which might come in content.result
+      if (response.content && response.content.result !== undefined) {
+        return response.content.result;
+      }
+      
+      // In case the result is directly in the content
+      return response.content;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to execute MCP tool "${toolName}" on server "${serverId}": ${errorMessage}`);
+      throw error instanceof Error ? error : new Error(errorMessage);
     }
-    
-    return response.content.result;
   }
-
 } 

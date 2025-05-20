@@ -297,24 +297,29 @@ async handleServiceTaskExecuteRequest(
    * @returns MCP service result
    */
   async handleMCPRequest(params: any, agent: Agent): Promise<any> {
-    const { action, mcpServerName, toolName, toolArgs, serverId } = params;
-
+    const { action, mcpServerName, toolName, toolArgs, serverId, parameters } = params;
+    
     switch (action) {
       case 'list-servers':
         return this.handleMCPServersListRequest(agent);
-
+        
       case 'list-tools':
         if (!serverId) {
           throw new Error('Server ID is required to list tools');
         }
         return this.handleMCPToolsListRequest(serverId, agent);
-
+        
       case 'execute-tool':
         if (!serverId || !toolName) {
           throw new Error('Server ID and tool name are required to execute a tool');
         }
-        return this.handleMCPToolExecuteRequest(serverId, toolName, toolArgs || {}, agent);
-
+        return this.handleMCPToolExecuteRequest(
+          serverId, 
+          toolName, 
+          toolArgs || parameters || {}, 
+          agent
+        );
+        
       default:
         throw new Error(`Invalid MCP action: ${action}`);
     }
@@ -327,23 +332,25 @@ async handleServiceTaskExecuteRequest(
    */
   async handleMCPServersListRequest(agent: Agent): Promise<any> {
     const servers = this.mcp.getServerList();
-
     return {
       servers
     };
   }
 
   /**
-   * Handle request for list of MCP tools on a server
+   * Handle request for list of tools for an MCP server
    * @param serverId - The ID of the server
    * @param agent - The requesting agent
    * @returns List of MCP tools
    */
   async handleMCPToolsListRequest(serverId: string, agent: Agent): Promise<any> {
-    const tools = this.mcp.getToolList(serverId);
-
+    const tools = await this.mcp.getToolList(serverId);
+    const servers = this.mcp.getServerList();
+    const serverInfo = servers.find(server => server.id === serverId);
+    
     return {
       serverId,
+      serverName: serverInfo?.name || 'unknown',
       tools
     };
   }
@@ -359,7 +366,7 @@ async handleServiceTaskExecuteRequest(
   async handleMCPToolExecuteRequest(serverId: string, toolName: string, args: any, agent: Agent): Promise<any> {
     try {
       const result = await this.mcp.executeServerTool(serverId, toolName, args);
-
+      
       return {
         serverId,
         toolName,
@@ -371,7 +378,7 @@ async handleServiceTaskExecuteRequest(
         serverId,
         toolName,
         status: 'error',
-        error: (error as Error).message
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -510,7 +517,7 @@ async handleServiceTaskExecuteRequest(
           };
         }
         
-      case 'mcp.servers.list.request':
+      case 'mcp.servers.list':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
           if (!agent) {
@@ -520,10 +527,10 @@ async handleServiceTaskExecuteRequest(
             };
           }
           
-          const result = this.handleMCPServersListRequest(agent);
+          const servers = this.handleMCPServersListRequest(agent);
           return {
             type: 'mcp.servers.list',
-            content: result
+            content: servers
           };
         } catch (error) {
           return {
@@ -532,7 +539,7 @@ async handleServiceTaskExecuteRequest(
           };
         }
         
-      case 'mcp.tools.list.request':
+      case 'mcp.tools.list':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
           if (!agent) {
@@ -542,7 +549,7 @@ async handleServiceTaskExecuteRequest(
             };
           }
           
-          const serverId = message.content?.serverId;
+          const { serverId } = message.content || {};
           if (!serverId) {
             return {
               type: 'error',
@@ -550,10 +557,10 @@ async handleServiceTaskExecuteRequest(
             };
           }
           
-          const result = this.handleMCPToolsListRequest(serverId, agent);
+          const tools = this.handleMCPToolsListRequest(serverId, agent);
           return {
             type: 'mcp.tools.list',
-            content: result
+            content: tools
           };
         } catch (error) {
           return {
@@ -562,7 +569,7 @@ async handleServiceTaskExecuteRequest(
           };
         }
         
-      case 'mcp.tool.execute.request':
+      case 'mcp.tool.execute':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
           if (!agent) {

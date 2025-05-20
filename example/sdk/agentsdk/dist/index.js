@@ -7,7 +7,6 @@ exports.SwarmAgentSDK = void 0;
 const events_1 = require("events");
 const uuid_1 = require("uuid");
 const WebSocketManager_1 = require("./core/WebSocketManager");
-const InternalMessageHandler_1 = require("./handlers/InternalMessageHandler");
 const TaskHandler_1 = require("./handlers/TaskHandler");
 const AgentManager_1 = require("./services/AgentManager");
 const ServiceManager_1 = require("./services/ServiceManager");
@@ -25,17 +24,12 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.logger = config.logger || console;
         // Initialize modules
         this.webSocketManager = new WebSocketManager_1.WebSocketManager(config.orchestratorUrl || 'ws://localhost:3000', config.autoReconnect !== false, config.reconnectInterval || 5000, this.logger);
-        this.messageHandler = new InternalMessageHandler_1.InternalMessageHandler(this.webSocketManager, this.logger);
         this.taskHandler = new TaskHandler_1.TaskHandler(this.webSocketManager, this.agentId, this.logger);
         this.agentManager = new AgentManager_1.AgentManager(this.webSocketManager, this.agentId, this.logger);
         this.serviceManager = new ServiceManager_1.ServiceManager(this.webSocketManager, this.logger);
         this.mcpManager = new MCPManager_1.MCPManager(this.webSocketManager, this.logger);
         // Set up event forwarding
         this.setupEventForwarding();
-        // Handle special case for task.execute messages
-        this.messageHandler.on('task.execute', (content, message) => {
-            this.taskHandler.handleTask(message);
-        });
     }
     /**
      * Set up event forwarding from the modules to this SDK instance
@@ -44,14 +38,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         // Forward WebSocketManager events
         this.webSocketManager.on('connected', () => {
             // Register agent with orchestrator
-            this.send({
-                type: 'agent.register',
-                content: {
-                    name: this.name,
-                    capabilities: this.capabilities,
-                    manifest: this.manifest
-                }
-            })
+            this.sendRegistration()
                 .then(response => {
                 // Store the assigned agent ID if provided
                 if (response && response.content && response.content.agentId) {
@@ -66,15 +53,90 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         });
         this.webSocketManager.on('disconnected', () => this.emit('disconnected'));
         this.webSocketManager.on('error', (error) => this.emit('error', error));
-        // Forward MessageHandler events
-        this.messageHandler.on('message', (message) => this.emit('raw-message', message));
-        this.messageHandler.on('welcome', (content) => this.emit('welcome', content));
-        this.messageHandler.on('agent-request-accepted', (content) => this.emit('agent-request-accepted', content));
-        this.messageHandler.on('agent-response', (content) => this.emit('agent-response', content));
-        this.messageHandler.on('registered', (content) => this.emit('registered', content));
-        this.messageHandler.on('service-response', (content) => this.emit('service-response', content));
+        // Message routing logic (replaces InternalMessageHandler)
+        this.webSocketManager.on('message', (message) => {
+            this.processMessage(message);
+        });
         // Forward TaskHandler events
         this.taskHandler.on('task', (taskData, message) => this.emit('task', taskData, message));
+    }
+    /**
+     * Send registration message to the orchestrator
+     * @private
+     */
+    sendRegistration() {
+        return this.webSocketManager.send({
+            type: 'agent.register',
+            content: {
+                name: this.name,
+                capabilities: this.capabilities,
+                manifest: this.manifest
+            }
+        });
+    }
+    /**
+     * Process an incoming message and route it appropriately
+     * @param {BaseMessage} message The message to process
+     * @private
+     */
+    processMessage(message) {
+        this.emit('raw-message', message);
+        // Check if this is a response to a pending request
+        if (message.requestId && this.webSocketManager.getPendingResponses().has(message.requestId)) {
+            const isError = message.type === 'error' || (message.content && message.content.error);
+            this.webSocketManager.handleResponse(message.requestId, message, isError);
+            return;
+        }
+        // Emit for the specific message type
+        this.emit(message.type, message.content, message);
+        // For standard message types
+        switch (message.type) {
+            case 'task.execute':
+                this.taskHandler.handleTask(message);
+                break;
+            case 'orchestrator.welcome':
+                this.emit('welcome', message.content);
+                break;
+            case 'agent.request.accepted':
+                this.emit('agent-request-accepted', message.content);
+                break;
+            case 'agent.response':
+                this.emit('agent-response', message.content);
+                break;
+            case 'agent.registered':
+                this.emit('registered', message.content);
+                break;
+            case 'service.response':
+                this.emit('service-response', message.content);
+                break;
+            case 'ping':
+                this.sendPong(message.id);
+                break;
+            case 'error':
+                this.emit('error', new Error(message.content ? message.content.error : 'Unknown error'));
+                break;
+            // MCP message types
+            case 'mcp.servers.list':
+                this.emit('mcp-servers-list', message.content);
+                break;
+            case 'mcp.tools.list':
+                this.emit('mcp-tools-list', message.content);
+                break;
+            case 'mcp.tool.execution.result':
+                this.emit('mcp-tool-execution-result', message.content);
+                break;
+        }
+    }
+    /**
+     * Send a pong response for the given messageId
+     * @private
+     */
+    sendPong(messageId) {
+        this.webSocketManager.send({
+            type: 'pong',
+            id: messageId,
+            content: {}
+        });
     }
     /**
      * Connect to the orchestrator
@@ -90,46 +152,32 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         this.webSocketManager.disconnect();
         return this;
     }
+    //Ok
     /**
-     * Expose the handleMessage method (mainly for testing)
-     * @param {BaseMessage} message The message to handle
+     * Set agent status
+     * @param status New status
      */
-    handleMessage(message) {
-        this.messageHandler.handleMessage(message);
+    setStatus(status) {
+        return this.agentManager.setStatus(status);
     }
+    // System Level Messages between Agent And Orchestrator
+    // Task Level Communication between Agent And Orchestrator
     /**
-     * Register a message handler for a specific message type
-     * @param messageType Type of message to handle
+     * Register a handler for all tasks
      * @param handler Handler function
      */
-    onMessage(messageType, handler) {
-        this.messageHandler.onMessage(messageType, handler);
+    onTask(handler) {
+        this.taskHandler.onTask(handler);
         return this;
     }
+    //Ok
     /**
      * Send a message during task execution
      * @param taskId ID of the task being executed
      * @param content Message content
      */
-    sendMessage(taskId, content) {
-        this.taskHandler.sendMessage(taskId, content);
-    }
-    /**
-     * Register a task handler for a specific task type
-     * @param taskType Type of task to handle
-     * @param handler Handler function
-     */
-    registerTaskHandler(taskType, handler) {
-        this.taskHandler.registerTaskHandler(taskType, handler);
-        return this;
-    }
-    /**
-     * Register a default task handler for when no specific handler is found
-     * @param handler Handler function
-     */
-    registerDefaultTaskHandler(handler) {
-        this.taskHandler.registerDefaultTaskHandler(handler);
-        return this;
+    sendTaskMessage(taskId, content) {
+        this.taskHandler.sendTaskMessage(taskId, content);
     }
     //OK
     /**
@@ -140,34 +188,19 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     sendTaskResult(taskId, result) {
         this.taskHandler.sendTaskResult(taskId, result);
     }
-    //OK - low level send
-    /**
-     * Send a message to the orchestrator
-     * @param message Message to send
-     */
-    send(message) {
-        return this.webSocketManager.send(message);
-    }
     //OK
     /**
-     * Send a message and wait for a response
-     * @param message Message to send
+     * Send a request message during task execution and wait for a response
+     * @param taskId ID of the task being executed
+     * @param content Request content
      * @param timeout Timeout in milliseconds
+     * @returns Promise that resolves with the response content
      */
-    sendAndWaitForResponse(message, timeout = 30000) {
-        return this.webSocketManager.sendAndWaitForResponse(message, timeout);
+    requestMessageDuringTask(taskId, content, timeout = 30000) {
+        return this.taskHandler.requestMessageDuringTask(taskId, content, timeout);
     }
-    // Agent Manager methods
-    /**
-     * Request another agent to perform a task
-     * @param targetAgentName Name of the target agent
-     * @param taskData Task data
-     * @param timeout Request timeout
-     */
-    requestAgentTask(targetAgentName, taskData, timeout = 30000) {
-        return this.agentManager.requestAgentTask(targetAgentName, taskData, timeout);
-    }
-    //Ok
+    // Child Agent Management through Orchestrator
+    //OK
     /**
      * Get list of agents
      * @param filters Filter criteria
@@ -175,43 +208,18 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     getAgentList(filters = {}) {
         return this.agentManager.getAgentList(filters);
     }
-    //Should be for SELF Only
+    //OK
     /**
-     * Set agent status
-     * @param status New status
+     * Request another agent to perform a task
+     * @param targetAgentName Name of the target agent
+     * @param taskData Task data
+     * @param timeout Request timeout
      */
-    setStatus(status) {
-        return this.agentManager.setStatus(status);
-    }
-    // NOT SURE WHAT IS THIS
-    /**
-     * Register a handler for agent requests
-     * @param taskType Type of task to handle
-     * @param handler Handler function
-     */
-    onAgentRequest(taskType, handler) {
-        this.registerTaskHandler(taskType, handler);
-        return this;
+    executeChildAgentTask(targetAgentName, taskData, timeout = 30000) {
+        return this.agentManager.executeChildAgentTask(targetAgentName, taskData, timeout);
     }
     // Service Manager methods
-    /**
-     * Request a service
-     * @param serviceName Name of the service
-     * @param params Service parameters
-     * @param timeout Request timeout
-     */
-    requestService(serviceName, params = {}, timeout = 30000) {
-        return this.serviceManager.requestService(serviceName, params, timeout);
-    }
-    /**
-     * Convenience method for executing a service
-     * @param serviceName Name of the service
-     * @param params Parameters to pass
-     * @param timeout Request timeout
-     */
-    executeService(serviceName, params = {}, timeout = 30000) {
-        return this.serviceManager.requestService(serviceName, params, timeout);
-    }
+    //OK  
     /**
      * Execute a service task
      * @param serviceId Service ID or name
@@ -219,7 +227,7 @@ class SwarmAgentSDK extends events_1.EventEmitter {
      * @param params Parameters
      * @param options Additional options
      */
-    executeServiceTask(serviceId, functionName, params = {}, options = {
+    executeServiceTask(serviceId, toolName, params = {}, options = {
         timeout: 30000,
         clientId: undefined
     }) {
@@ -228,9 +236,9 @@ class SwarmAgentSDK extends events_1.EventEmitter {
             this.logger.error('executeServiceTask called with empty serviceId');
             return Promise.reject(new Error('Service ID is required for executing a service task'));
         }
-        this.logger.debug(`Executing service task "${functionName}" on service "${serviceId}"`);
+        this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}"`);
         try {
-            return this.serviceManager.executeServiceTask(serviceId, functionName, params, options)
+            return this.serviceManager.executeServiceTask(serviceId, toolName, params, options)
                 .catch(error => {
                 // Enhance error messages for better troubleshooting
                 if (error.message.includes('Connection not found')) {
@@ -239,8 +247,8 @@ class SwarmAgentSDK extends events_1.EventEmitter {
                 }
                 // Handle other common errors
                 if (error.message.includes('timed out')) {
-                    this.logger.error(`Service task timed out: "${functionName}" on service "${serviceId}"`);
-                    throw new Error(`Service task "${functionName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
+                    this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}"`);
+                    throw new Error(`Service task "${toolName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
                 }
                 // Pass through other errors
                 throw error;
@@ -259,6 +267,15 @@ class SwarmAgentSDK extends events_1.EventEmitter {
      */
     getServiceList(filters = {}) {
         return this.serviceManager.getServiceList(filters);
+    }
+    //Ok
+    /**
+     * Get a list of tools for a specific service
+     * @param serviceId Service ID or name
+     * @param options Optional parameters (e.g., timeout)
+     */
+    getServiceToolList(serviceId, options = {}) {
+        return this.serviceManager.getServiceToolList(serviceId, options);
     }
     // MCP Manager methods
     //OK

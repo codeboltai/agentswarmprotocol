@@ -5,20 +5,13 @@ export declare class TaskHandler extends EventEmitter {
     private webSocketManager;
     private agentId;
     private logger;
-    private taskHandlers;
-    private defaultTaskHandler;
+    private taskHandler;
     constructor(webSocketManager: WebSocketManager, agentId: string, logger?: Console);
     /**
-     * Register a task handler for a specific task type
-     * @param taskType Type of task to handle
+     * Set the task handler for all incoming tasks
      * @param handler Handler function
      */
-    registerTaskHandler(taskType: string, handler: TaskHandlerType): this;
-    /**
-     * Register a default task handler for when no specific handler is found
-     * @param handler Handler function
-     */
-    registerDefaultTaskHandler(handler: TaskHandlerType): this;
+    onTask(handler: TaskHandlerType): this;
     /**
      * Handle an incoming task
      * @param message Task execution message
@@ -42,5 +35,13 @@ export declare class TaskHandler extends EventEmitter {
      * @param taskId ID of the task
      * @param content Message content
      */
-    sendMessage(taskId: string, content: any): void;
+    sendTaskMessage(taskId: string, content: any): void;
+    /**
+     * Send a request message during task execution and wait for a response
+     * @param taskId ID of the task being executed
+     * @param content Request content
+     * @param timeout Timeout in milliseconds
+     * @returns Promise that resolves with the response
+     */
+    requestMessageDuringTask(taskId: string, content: any, timeout?: number): Promise<any>;
 }

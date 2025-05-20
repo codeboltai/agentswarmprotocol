@@ -5,23 +5,24 @@ export declare class ServiceManager {
     private logger;
     constructor(webSocketManager: WebSocketManager, logger?: Console);
     /**
-     * Request or execute a service
-     * @param serviceName Name of the service
-     * @param params Service parameters
-     * @param timeout Request timeout
-     */
-    requestService(serviceName: string, params?: Record<string, any>, timeout?: number): Promise<any>;
-    /**
      * Execute a service task
      * @param serviceId Service ID or name
-     * @param functionName Function name
+     * @param toolName Tool name
      * @param params Parameters
      * @param options Additional options
      */
-    executeServiceTask(serviceId: string, functionName: string, params?: Record<string, any>, options?: ServiceTaskOptions): Promise<any>;
+    executeServiceTask(serviceId: string, toolName: string, params?: Record<string, any>, options?: ServiceTaskOptions): Promise<any>;
     /**
      * Get a list of available services
      * @param filters Filter criteria
      */
     getServiceList(filters?: Record<string, any>): Promise<any[]>;
+    /**
+     * Get a list of tools for a specific service
+     * @param serviceId Service ID or name
+     * @param options Optional parameters (e.g., timeout)
+     */
+    getServiceToolList(serviceId: string, options?: {
+        timeout?: number;
+    }): Promise<any[]>;
 }

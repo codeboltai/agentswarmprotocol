@@ -31,7 +31,8 @@ interface MCPServer {
 interface MCPExecuteToolMessage {
   serverId: string;
   toolName: string;
-  toolArgs: Record<string, any>;
+  toolArgs?: Record<string, any>;
+  parameters?: Record<string, any>;
 }
 
 interface MCPAgentRequest {
@@ -106,11 +107,21 @@ class MCPAdapter {
         const result = await this.executeMCPTool(
           message.serverId,
           message.toolName,
-          message.toolArgs
+          message.toolArgs || message.parameters || {}
         );
-        callback(result);
+        callback({
+          serverId: message.serverId,
+          toolName: message.toolName,
+          result,
+          status: 'success'
+        });
       } catch (error) {
-        callback({ error: (error as Error).message });
+        callback({
+          serverId: message.serverId,
+          toolName: message.toolName,
+          status: 'error',
+          error: (error as Error).message
+        });
       }
     });
 
@@ -118,7 +129,17 @@ class MCPAdapter {
     this.eventBus.on('mcp.server.list', (message: { filters?: MCPServerFilters }, callback: Function) => {
       try {
         const result = this.listMCPServers(message.filters);
-        callback(result);
+        callback({ servers: result });
+      } catch (error) {
+        callback({ error: (error as Error).message });
+      }
+    });
+    
+    // Also listen for SDK-style 'mcp.servers.list' for compatibility
+    this.eventBus.on('mcp.servers.list', (message: { filters?: MCPServerFilters }, callback: Function) => {
+      try {
+        const result = this.listMCPServers(message.filters);
+        callback({ servers: result });
       } catch (error) {
         callback({ error: (error as Error).message });
       }
@@ -128,7 +149,23 @@ class MCPAdapter {
     this.eventBus.on('mcp.tool.list', async (message: { serverId: string }, callback: Function) => {
       try {
         const result = await this.listMCPTools(message.serverId);
-        callback(result);
+        callback({
+          serverId: message.serverId,
+          tools: result
+        });
+      } catch (error) {
+        callback({ error: (error as Error).message });
+      }
+    });
+    
+    // Also listen for SDK-style 'mcp.tools.list' for compatibility
+    this.eventBus.on('mcp.tools.list', async (message: { serverId: string }, callback: Function) => {
+      try {
+        const result = await this.listMCPTools(message.serverId);
+        callback({
+          serverId: message.serverId,
+          tools: result
+        });
       } catch (error) {
         callback({ error: (error as Error).message });
       }
