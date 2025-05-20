@@ -121,8 +121,8 @@ class SwarmServiceSDK extends events_1.EventEmitter {
      * @param {string} taskName Name of the task to handle
      * @param {Function} handler Function to call
      */
-    onTask(taskName, handler) {
-        this.taskHandler.onTask(taskName, handler);
+    onTask(toolName, handler) {
+        this.taskHandler.onTask(toolName, handler);
         return this;
     }
     //Ok

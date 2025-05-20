@@ -54,20 +54,23 @@ class SwarmClientSDK extends events_1.EventEmitter {
                 this.emit('welcome', message.content);
                 break;
             case 'agent.list':
-                this.emit('agent-list', message.content.agents);
-                break;
-            case 'mcp.server.list':
-                this.emit('mcp-server-list', message.content.servers);
+                this.emit('agent.list', message.content.agents);
                 break;
             case 'task.result':
                 // Emit the event for others to listen
-                this.emit('task-result', message.content);
+                this.emit('task.result', message.content);
                 break;
             case 'task.status':
-                this.emit('task-status', message.content);
+                this.emit('task.status', message.content);
                 break;
             case 'task.created':
-                this.emit('task-created', message.content);
+                this.emit('task.created', message.content);
+                break;
+            case 'task.notification':
+                this.emit('task.notification', message.content);
+                break;
+            case 'task.requestmessage':
+                this.emit('task.requestmessage', message.content);
                 break;
             case 'task.childtask.created':
                 this.emit('task.childtask.created', message.content);
@@ -75,23 +78,23 @@ class SwarmClientSDK extends events_1.EventEmitter {
             case 'task.childtask.status':
                 this.emit('task.childtask.status', message.content);
                 break;
-            case 'task.completed':
-                this.emit('task.completed', message.content);
-                break;
-            case 'task.notification':
-                this.emit('task-notification', message.content);
-                break;
-            case 'task.requestmessage':
-                this.emit('task.requestmessage', message.content);
+            case 'service.started':
+                this.emit('service.started', message.content);
                 break;
             case 'service.notification':
-                this.emit('service-notification', message.content);
+                this.emit('service.notification', message.content);
+                break;
+            case 'service.completed':
+                this.emit('service.completed', message.content);
+                break;
+            case 'mcp.server.list':
+                this.emit('mcp.server.list', message.content.servers);
                 break;
             case 'mcp.task.execution':
                 this.emit('mcp.task.execution', message.content);
                 break;
             case 'error':
-                this.emit('orchestrator-error', message.content || { error: 'Unknown error' });
+                this.emit('error', message.content || { error: 'Unknown error' });
                 break;
             default:
                 console.log(`Unhandled message type: ${message.type}`);

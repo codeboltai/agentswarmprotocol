@@ -32,7 +32,7 @@ declare class SwarmServiceSDK extends EventEmitter {
      * @param {string} taskName Name of the task to handle
      * @param {Function} handler Function to call
      */
-    onTask(taskName: string, handler: TaskHandlerType): SwarmServiceSDK;
+    onTask(toolName: string, handler: TaskHandlerType): SwarmServiceSDK;
     /**
      * Set service status
      * @param status New status

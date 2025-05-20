@@ -62,6 +62,13 @@ agent.onTask(async (taskData: any, taskMessage: TaskExecuteMessage) => {
     replyMessage: `Hello! I received your message: "${queryContent}" and processed it successfully.`
   };
   
+  // Send a final status update explicitly marking this as a completed task with a result
+  agent.sendTaskMessage(taskMessage.content.taskId, {
+    status: 'completed',
+    result: result,
+    timestamp: new Date().toISOString()
+  });
+  
   return result;
 });
 
