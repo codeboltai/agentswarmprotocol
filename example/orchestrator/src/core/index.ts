@@ -1,9 +1,9 @@
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { EventEmitter } from 'events';
-import { AgentRegistry } from '../agent/agent-registry';
+import { AgentRegistry } from '../registry/agent-registry';
 import { AgentTaskRegistry } from './utils/tasks/agent-task-registry';
-import { ServiceRegistry } from '../service/service-registry';
+import { ServiceRegistry } from '../registry/service-registry';
 import { ServiceTaskRegistry } from './utils/tasks/service-task-registry';
 import AgentServer from '../agent/agent-server';
 import ClientServer from '../client/client-server';
@@ -22,30 +22,6 @@ import {
 
 // Load environment variables
 dotenv.config({ path: '../.env' });
-
-// Parse command line arguments
-function parseArgs(): Record<string, string | boolean | number> {
-  const args = process.argv.slice(2);
-  const result: Record<string, string | boolean | number> = {};
-  
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2);
-      const nextArg = args[i + 1];
-      
-      if (nextArg && !nextArg.startsWith('--')) {
-        result[key] = nextArg;
-        i++; // Skip the value
-      } else {
-        result[key] = true;
-      }
-    }
-  }
-  
-  return result;
-}
 
 /**
  * Orchestrator - Main coordinator for the Agent Swarm Protocol
@@ -70,44 +46,19 @@ class Orchestrator {
   private messageHandler: MessageHandler;
 
   constructor(config: OrchestratorConfig = {}) {
-    // Check for command-line arguments
-    const cliArgs = parseArgs();
-    
-    // Apply command-line arguments to config
-    if (cliArgs.config && typeof cliArgs.config === 'string') {
-      console.log(`Using configuration file from command line: ${cliArgs.config}`);
-      config.configPath = cliArgs.config;
-    }
-    
-    if (cliArgs.agentPort && typeof cliArgs.agentPort === 'string') {
-      config.port = parseInt(cliArgs.agentPort, 10);
-    }
-    
-    if (cliArgs.clientPort && typeof cliArgs.clientPort === 'string') {
-      config.clientPort = parseInt(cliArgs.clientPort, 10);
-    }
-    
-    if (cliArgs.servicePort && typeof cliArgs.servicePort === 'string') {
-      config.servicePort = parseInt(cliArgs.servicePort, 10);
-    }
-    
-    if (cliArgs.logLevel && typeof cliArgs.logLevel === 'string') {
-      config.logLevel = cliArgs.logLevel;
-    }
-    
-    // Load configuration
+    // Create config loader and get resolved config
     this.configLoader = new ConfigLoader({
       configPath: config.configPath
     });
     
-    // Load and merge configurations
-    const loadedConfig = this.configLoader.mergeWithOptions(config);
-    const orchestratorSettings = this.configLoader.getOrchestratorSettings();
+    // Get the fully resolved configuration
+    const resolvedConfig = this.configLoader.getResolvedConfig(config);
     
-    this.port = config.port || orchestratorSettings.agentPort || Number(process.env.PORT) || 3000;
-    this.clientPort = config.clientPort || orchestratorSettings.clientPort || Number(process.env.CLIENT_PORT) || 3001;
-    this.servicePort = config.servicePort || orchestratorSettings.servicePort || Number(process.env.SERVICE_PORT) || 3002;
-    this.logLevel = config.logLevel || orchestratorSettings.logLevel || process.env.LOG_LEVEL || 'info';
+    // Set instance properties from resolved config
+    this.port = resolvedConfig.port;
+    this.clientPort = resolvedConfig.clientPort;
+    this.servicePort = resolvedConfig.servicePort;
+    this.logLevel = resolvedConfig.logLevel;
     
     this.agents = new AgentRegistry();
     this.tasks = new AgentTaskRegistry();
@@ -354,8 +305,6 @@ class Orchestrator {
           });
       }
     });
-    
-   
     
     // Listen for service.task.execute events
     this.eventBus.on('service.task.execute', async (message: any, connectionId: string, callback: Function) => {

@@ -8,11 +8,11 @@ import {
   AgentStatus,
   ServiceStatus,
   TaskStatus,
-  AgentRegistry, 
-  AgentTaskRegistry, 
+  AgentRegistry,
+  AgentTaskRegistry,
   ServiceTaskRegistry,
-  ServiceRegistry as IServiceRegistry, 
-  MCPInterface, 
+  ServiceRegistry as IServiceRegistry,
+  MCPInterface,
   BaseMessage,
   MessageHandlerConfig
 } from '../../../types/common';
@@ -22,7 +22,7 @@ import {
   ServiceMessages
 } from '@agentswarmprotocol/types/dist/messages';
 import { EventEmitter } from 'events';
-import { ServiceRegistry } from '../service/service-registry';
+import { ServiceRegistry } from '../registry/service-registry';
 
 
 /**
@@ -54,7 +54,7 @@ class MessageHandler {
    */
   async handleTaskCreation(message: BaseMessage, clientId: string) {
     const { agentName, agentId, taskData } = message.content;
- 
+
     console.log(`Task creation request received: ${JSON.stringify({
       agentName,
       agentId,
@@ -201,95 +201,91 @@ class MessageHandler {
     };
   }
 
-  
+  /**
+     * Handle service task execute request messages
+     * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
+     * @param {string} connectionId - Agent connection ID
+     * @returns {Object} Service result
+     */
+  async handleServiceTaskExecuteRequest(
+    message: AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage | any,
+    connectionId: string
+  ): Promise<any> {
+    // Handle both service.request and service.task.execute message formats
+    const messageContent = message.content || {};
+    const service = messageContent.service || messageContent.serviceId;
+    const params = messageContent.params || {};
+    const toolName = messageContent.toolName || params?.functionName;
 
+    if (!service) {
+      throw new Error('Service name or ID is required');
+    }
 
-  
-/**
-   * Handle service task execute request messages
-   * @param {AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage} message - The service request message
-   * @param {string} connectionId - Agent connection ID
-   * @returns {Object} Service result
-   */
-async handleServiceTaskExecuteRequest(
-  message: AgentMessages.ServiceRequestMessage | ServiceMessages.ServiceTaskExecuteMessage | any, 
-  connectionId: string
-): Promise<any> {
-  // Handle both service.request and service.task.execute message formats
-  const messageContent = message.content || {};
-  const service = messageContent.service || messageContent.serviceId;
-  const params = messageContent.params || {};
-  const toolName = messageContent.toolName || params?.functionName;
+    // Get the agent making the request
+    const agent = this.agents.getAgentByConnectionId(connectionId);
+    if (!agent) {
+      throw new Error('Agent not registered');
+    }
 
-  if (!service) {
-    throw new Error('Service name or ID is required');
-  }
+    // Check if this is an MCP request
+    if (service === 'mcp-service') {
+      return this.handleMCPRequest(params as any, agent);
+    }
 
-  // Get the agent making the request
-  const agent = this.agents.getAgentByConnectionId(connectionId);
-  if (!agent) {
-    throw new Error('Agent not registered');
-  }
+    // Check if the service exists - try by name or ID
+    let serviceObj = this.services.getServiceByName(service);
+    if (!serviceObj) {
+      serviceObj = this.services.getServiceById(service);
+    }
 
-  // Check if this is an MCP request
-  if (service === 'mcp-service') {
-    return this.handleMCPRequest(params as any, agent);
-  }
+    if (!serviceObj) {
+      throw new Error(`Service not found: ${service}`);
+    }
 
-  // Check if the service exists - try by name or ID
-  let serviceObj = this.services.getServiceByName(service);
-  if (!serviceObj) {
-    serviceObj = this.services.getServiceById(service);
-  }
-  
-  if (!serviceObj) {
-    throw new Error(`Service not found: ${service}`);
-  }
+    // Check if the agent is allowed to use this service
+    if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(serviceObj.name)) {
+      throw new Error(`Agent is not authorized to use service: ${serviceObj.name}`);
+    }
 
-  // Check if the agent is allowed to use this service
-  if (agent.manifest?.requiredServices && !agent.manifest.requiredServices.includes(serviceObj.name)) {
-    throw new Error(`Agent is not authorized to use service: ${serviceObj.name}`);
-  }
+    // Create a service task
+    const taskId = uuidv4();
 
-  // Create a service task
-  const taskId = uuidv4();
+    // Emit event for service task creation
+    this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
+      functionName: toolName || 'default',
+      params: params || {}
+    });
 
-  // Emit event for service task creation
-  this.eventBus.emit('service.task.created', taskId, serviceObj.id, agent.id, null, {
-    functionName: toolName || 'default',
-    params: params || {}
-  });
-
-  // Wait for result (this will be resolved by the orchestrator)
-  return new Promise((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      this.eventBus.removeListener('service.task.completed', resultHandler);
-      this.eventBus.removeListener('service.task.failed', errorHandler);
-      reject(new Error(`Service task timeout: ${taskId}`));
-    }, 30000); // 30 second timeout
-
-    const resultHandler = (completedTaskId: string, result: any) => {
-      if (completedTaskId === taskId) {
-        clearTimeout(timeoutId);
+    // Wait for result (this will be resolved by the orchestrator)
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
         this.eventBus.removeListener('service.task.completed', resultHandler);
         this.eventBus.removeListener('service.task.failed', errorHandler);
-        resolve(result);
-      }
-    };
+        reject(new Error(`Service task timeout: ${taskId}`));
+      }, 30000); // 30 second timeout
 
-    const errorHandler = (failedTaskId: string, error: any) => {
-      if (failedTaskId === taskId) {
-        clearTimeout(timeoutId);
-        this.eventBus.removeListener('service.task.completed', resultHandler);
-        this.eventBus.removeListener('service.task.failed', errorHandler);
-        reject(error);
-      }
-    };
+      const resultHandler = (completedTaskId: string, result: any) => {
+        if (completedTaskId === taskId) {
+          clearTimeout(timeoutId);
+          this.eventBus.removeListener('service.task.completed', resultHandler);
+          this.eventBus.removeListener('service.task.failed', errorHandler);
+          resolve(result);
+        }
+      };
 
-    this.eventBus.on('service.task.completed', resultHandler);
-    this.eventBus.on('service.task.failed', errorHandler);
-  });
-}
+      const errorHandler = (failedTaskId: string, error: any) => {
+        if (failedTaskId === taskId) {
+          clearTimeout(timeoutId);
+          this.eventBus.removeListener('service.task.completed', resultHandler);
+          this.eventBus.removeListener('service.task.failed', errorHandler);
+          reject(error);
+        }
+      };
+
+      this.eventBus.on('service.task.completed', resultHandler);
+      this.eventBus.on('service.task.failed', errorHandler);
+    });
+  }
   /**
    * Handle MCP service request
    * @param params - MCP request parameters
@@ -298,28 +294,28 @@ async handleServiceTaskExecuteRequest(
    */
   async handleMCPRequest(params: any, agent: Agent): Promise<any> {
     const { action, mcpServerName, toolName, toolArgs, serverId, parameters } = params;
-    
+
     switch (action) {
       case 'list-servers':
         return this.handleMCPServersListRequest(agent);
-        
+
       case 'list-tools':
         if (!serverId) {
           throw new Error('Server ID is required to list tools');
         }
         return this.handleMCPToolsListRequest(serverId, agent);
-        
+
       case 'execute-tool':
         if (!serverId || !toolName) {
           throw new Error('Server ID and tool name are required to execute a tool');
         }
         return this.handleMCPToolExecuteRequest(
-          serverId, 
-          toolName, 
-          toolArgs || parameters || {}, 
+          serverId,
+          toolName,
+          toolArgs || parameters || {},
           agent
         );
-        
+
       default:
         throw new Error(`Invalid MCP action: ${action}`);
     }
@@ -347,7 +343,7 @@ async handleServiceTaskExecuteRequest(
     const tools = await this.mcp.getToolList(serverId);
     const servers = this.mcp.getServerList();
     const serverInfo = servers.find(server => server.id === serverId);
-    
+
     return {
       serverId,
       serverName: serverInfo?.name || 'unknown',
@@ -366,7 +362,7 @@ async handleServiceTaskExecuteRequest(
   async handleMCPToolExecuteRequest(serverId: string, toolName: string, args: any, agent: Agent): Promise<any> {
     try {
       const result = await this.mcp.executeServerTool(serverId, toolName, args);
-      
+
       return {
         serverId,
         toolName,
@@ -404,10 +400,10 @@ async handleServiceTaskExecuteRequest(
     const agent = this.agents.getAgentByConnectionId(connectionId);
     if (agent) {
       console.log(`Agent disconnected: ${agent.name}`);
-      
+
       // Remove the connection object
       (agent as any).connection = undefined;
-      
+
       // Update agent status to offline
       this.agents.updateAgentStatus(agent.id, 'offline', { disconnectedAt: new Date().toISOString() });
     }
@@ -428,11 +424,10 @@ async handleServiceTaskExecuteRequest(
 
       case 'service.register':
         return this.handleServiceRegistration(message, connectionId);
-        
-      case 'service.request':
+
       case 'service.task.execute':
         return this.handleServiceTaskExecuteRequest(message, connectionId);
-        
+
       case 'task.result':
         this.eventBus.emit('task.result', message);
         return;
@@ -459,7 +454,7 @@ async handleServiceTaskExecuteRequest(
       case 'service.notification':
         this.eventBus.emit('service.notification', message);
         return;
-        
+
       case 'agent.status.update':
         // Get agent by connection ID
         const statusUpdateAgent = this.agents.getAgentByConnectionId(connectionId);
@@ -469,7 +464,7 @@ async handleServiceTaskExecuteRequest(
             content: { error: 'Agent not registered' }
           };
         }
-        
+
         // Update agent status
         const { status, message: statusMessage } = message.content;
         if (!status) {
@@ -478,12 +473,12 @@ async handleServiceTaskExecuteRequest(
             content: { error: 'Status is required for status update' }
           };
         }
-        
+
         this.agents.updateAgentStatus(statusUpdateAgent.id, status, {
           message: statusMessage,
           updatedAt: new Date().toISOString()
         });
-        
+
         return {
           type: 'agent.status.updated',
           content: {
@@ -492,7 +487,7 @@ async handleServiceTaskExecuteRequest(
             message: `Agent status updated to ${status}`
           }
         };
-        
+
       case 'agent.list.request':
         // Get agent by connection ID for attribution
         const requestingAgent = this.agents.getAgentByConnectionId(connectionId);
@@ -502,7 +497,7 @@ async handleServiceTaskExecuteRequest(
             content: { error: 'Agent not registered' }
           };
         }
-        
+
         try {
           const filters = message.content?.filters || {};
           const agents = this.getAgentList(filters);
@@ -516,7 +511,7 @@ async handleServiceTaskExecuteRequest(
             content: { error: error instanceof Error ? error.message : String(error) }
           };
         }
-        
+
       case 'mcp.servers.list':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
@@ -526,7 +521,7 @@ async handleServiceTaskExecuteRequest(
               content: { error: 'Agent not registered' }
             };
           }
-          
+
           const servers = this.handleMCPServersListRequest(agent);
           return {
             type: 'mcp.servers.list',
@@ -538,7 +533,7 @@ async handleServiceTaskExecuteRequest(
             content: { error: error instanceof Error ? error.message : String(error) }
           };
         }
-        
+
       case 'mcp.tools.list':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
@@ -548,7 +543,7 @@ async handleServiceTaskExecuteRequest(
               content: { error: 'Agent not registered' }
             };
           }
-          
+
           const { serverId } = message.content || {};
           if (!serverId) {
             return {
@@ -556,7 +551,7 @@ async handleServiceTaskExecuteRequest(
               content: { error: 'Server ID is required' }
             };
           }
-          
+
           const tools = this.handleMCPToolsListRequest(serverId, agent);
           return {
             type: 'mcp.tools.list',
@@ -568,7 +563,7 @@ async handleServiceTaskExecuteRequest(
             content: { error: error instanceof Error ? error.message : String(error) }
           };
         }
-        
+
       case 'mcp.tool.execute':
         try {
           const agent = this.agents.getAgentByConnectionId(connectionId);
@@ -578,7 +573,7 @@ async handleServiceTaskExecuteRequest(
               content: { error: 'Agent not registered' }
             };
           }
-          
+
           const { serverId, toolName, parameters } = message.content || {};
           if (!serverId || !toolName) {
             return {
@@ -586,7 +581,7 @@ async handleServiceTaskExecuteRequest(
               content: { error: 'Server ID and tool name are required' }
             };
           }
-          
+
           const result = this.handleMCPToolExecuteRequest(serverId, toolName, parameters || {}, agent);
           return {
             type: 'mcp.tool.execution.result',

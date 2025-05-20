@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Service, ServiceStatus, ServiceRegistry as IServiceRegistry } from '../../../types/common';
+import { Service, ServiceStatus, ServiceRegistry as IServiceRegistry } from '@agentswarmprotocol/types/common';
 
 interface ServiceConfiguration {
   id: string;
