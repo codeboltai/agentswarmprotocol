@@ -54,8 +54,8 @@ class TaskHandler extends events_1.EventEmitter {
             const result = await this.taskHandler(taskData, message);
             // Send the result
             this.sendTaskResult(taskId, result);
-            // Update task status
-            this.sendTaskStatus(taskId, 'completed');
+            // Update task status with the result to ensure completion is recognized
+            this.sendTaskStatus(taskId, 'completed', { result });
         }
         catch (err) {
             const error = err;

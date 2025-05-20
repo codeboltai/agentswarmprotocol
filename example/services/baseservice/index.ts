@@ -143,8 +143,8 @@ service.onTask('jsonTransform', async (params, message) => {
 });
 
 // Helper functions
-function flattenObject(obj, prefix = '') {
-  return Object.keys(obj).reduce((acc, key) => {
+function flattenObject(obj: Record<string, any>, prefix = ''): Record<string, any> {
+  return Object.keys(obj).reduce((acc: Record<string, any>, key) => {
     const pre = prefix.length ? prefix + '.' : '';
     if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
       Object.assign(acc, flattenObject(obj[key], pre + key));
@@ -155,14 +155,14 @@ function flattenObject(obj, prefix = '') {
   }, {});
 }
 
-function convertKeysToCamelCase(obj) {
+function convertKeysToCamelCase(obj: any): any {
   if (typeof obj !== 'object' || obj === null) return obj;
   
   if (Array.isArray(obj)) {
-    return obj.map(item => convertKeysToCamelCase(item));
+    return obj.map((item: any) => convertKeysToCamelCase(item));
   }
   
-  return Object.keys(obj).reduce((acc, key) => {
+  return Object.keys(obj).reduce((acc: Record<string, any>, key) => {
     const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     acc[camelKey] = typeof obj[key] === 'object' && obj[key] !== null 
       ? convertKeysToCamelCase(obj[key])
@@ -171,14 +171,14 @@ function convertKeysToCamelCase(obj) {
   }, {});
 }
 
-function convertKeysToSnakeCase(obj) {
+function convertKeysToSnakeCase(obj: any): any {
   if (typeof obj !== 'object' || obj === null) return obj;
   
   if (Array.isArray(obj)) {
-    return obj.map(item => convertKeysToSnakeCase(item));
+    return obj.map((item: any) => convertKeysToSnakeCase(item));
   }
   
-  return Object.keys(obj).reduce((acc, key) => {
+  return Object.keys(obj).reduce((acc: Record<string, any>, key) => {
     const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
     acc[snakeKey] = typeof obj[key] === 'object' && obj[key] !== null 
       ? convertKeysToSnakeCase(obj[key])

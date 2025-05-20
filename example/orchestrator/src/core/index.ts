@@ -207,13 +207,22 @@ class Orchestrator {
           if (statusMessage.content && 
               statusMessage.content.taskId === taskId && 
               statusMessage.content.status === 'completed') {
-            // Call the callback with the result and remove this listener
-            callback({
-              ...result,
-              status: 'completed',
-              result: statusMessage.content.result
-            });
-            this.eventBus.removeListener('task.status', taskCompletionHandler);
+                
+            // Check if this has a result to verify it's the final completion
+            const hasTaskResult = statusMessage.content.result && 
+                             (typeof statusMessage.content.result === 'object' || 
+                              typeof statusMessage.content.result === 'string');
+            
+            // Only treat it as complete if it has a result
+            if (hasTaskResult) {
+              // Call the callback with the result and remove this listener
+              callback({
+                ...result,
+                status: 'completed',
+                result: statusMessage.content.result
+              });
+              this.eventBus.removeListener('task.status', taskCompletionHandler);
+            }
           }
         };
         
@@ -244,38 +253,76 @@ class Orchestrator {
           // Emit general task status event
           this.eventBus.emit('task.status', message);
           
-          // Forward the status update to the client if needed
+          // Get the task information
           const task = this.tasks.getTask(taskId);
+          
           if (task && task.clientId && typeof task.clientId === 'string') {
-            console.log(`Forwarding task status update to client: ${task.clientId}`);
-            console.log(message.content);
-            
-            // Format the message in a standard way expected by clients
-            this.clientServer.sendMessageToClient(task.clientId, {
-              id: uuidv4(),
-              type: 'task.status',
-              content: {
-                taskId,
-                status,
-                agentId,
-                result: status === 'completed' ? message.content.result : null,
-                error: status === 'failed' ? message.content.error : null,
-                timestamp: Date.now().toString()
-              }
-            });
-            
-            // If task is completed, also send a separate task.result message
-            // which may be what the UI is looking for
-            if (status === 'completed') {
-              console.log(`Also sending task.result for completed task ${taskId} to client ${task.clientId}`);
+            // For in_progress status, only forward the status update without marking as completed
+            if (status === 'in_progress') {
+              console.log(`Forwarding in-progress status update to client: ${task.clientId}`);
+              
               this.clientServer.sendMessageToClient(task.clientId, {
                 id: uuidv4(),
-                type: 'task.result',
+                type: 'task.status',
                 content: {
                   taskId,
-                  status: 'completed',
-                  result: message.content.result || message.content,
-                  completedAt: new Date().toISOString()
+                  status,
+                  agentId,
+                  timestamp: Date.now().toString()
+                }
+              });
+            } 
+            // For completed status, verify this is a real completion (not just an in-progress update with result)
+            else if (status === 'completed') {
+              console.log(`Forwarding completion status update to client: ${task.clientId}`);
+              
+              // Check if this message contains a task.result property to verify it's the final completion
+              // This helps filter out intermediate result updates that should not be treated as completion
+              const hasTaskResult = message.content.result && 
+                                   (typeof message.content.result === 'object' || 
+                                    typeof message.content.result === 'string');
+              
+              // Send the status update
+              this.clientServer.sendMessageToClient(task.clientId, {
+                id: uuidv4(),
+                type: 'task.status',
+                content: {
+                  taskId,
+                  status,
+                  agentId,
+                  result: hasTaskResult ? message.content.result : null,
+                  timestamp: Date.now().toString()
+                }
+              });
+              
+              // Only send task.result message if we have a result and this appears to be the final completion
+              if (hasTaskResult) {
+                console.log(`Sending task.result for completed task ${taskId} to client ${task.clientId}`);
+                this.clientServer.sendMessageToClient(task.clientId, {
+                  id: uuidv4(),
+                  type: 'task.result',
+                  content: {
+                    taskId,
+                    status: 'completed',
+                    result: message.content.result,
+                    completedAt: new Date().toISOString()
+                  }
+                });
+              }
+            }
+            // For failed status, forward as is
+            else if (status === 'failed') {
+              console.log(`Forwarding failed status update to client: ${task.clientId}`);
+              
+              this.clientServer.sendMessageToClient(task.clientId, {
+                id: uuidv4(),
+                type: 'task.status',
+                content: {
+                  taskId,
+                  status,
+                  agentId,
+                  error: message.content.error,
+                  timestamp: Date.now().toString()
                 }
               });
             }
@@ -600,31 +647,39 @@ class Orchestrator {
         // Update task status in registry
         this.tasks.updateTaskStatus(taskId, status, message.content);
         
-        // Handle task completion
+        // Only handle actual completions with results, not intermediate status messages
         if (status === 'completed') {
-          // Get the task to retrieve the clientId
-          try {
-            const task = this.tasks.getTask(taskId);
-            if (task && task.clientId && typeof task.clientId === 'string') {
-              // Send standardized task.result message for completed tasks
-              console.log(`Task ${taskId} completed - sending result to client ${task.clientId}`);
-              this.clientServer.sendMessageToClient(task.clientId, {
-                id: uuidv4(),
-                type: 'task.result',
-                content: {
-                  taskId,
-                  status: 'completed',
-                  result: message.content.result || message.content,
-                  completedAt: new Date().toISOString()
-                }
-              });
-            } else if (task && task.clientId) {
-              console.warn(`Task ${taskId} completed but has invalid clientId: ${typeof task.clientId}`);
-            } else {
-              console.warn(`Task ${taskId} completed but has no clientId`);
+          // Check if this message contains a task.result property to verify it's the final completion
+          const hasTaskResult = message.content.result && 
+                               (typeof message.content.result === 'object' || 
+                                typeof message.content.result === 'string');
+          
+          // Only process the completion if it has a result
+          if (hasTaskResult) {
+            // Get the task to retrieve the clientId
+            try {
+              const task = this.tasks.getTask(taskId);
+              if (task && task.clientId && typeof task.clientId === 'string') {
+                // Send standardized task.result message for completed tasks
+                console.log(`Task ${taskId} completed - sending result to client ${task.clientId}`);
+                this.clientServer.sendMessageToClient(task.clientId, {
+                  id: uuidv4(),
+                  type: 'task.result',
+                  content: {
+                    taskId,
+                    status: 'completed',
+                    result: message.content.result,
+                    completedAt: new Date().toISOString()
+                  }
+                });
+              } else if (task && task.clientId) {
+                console.warn(`Task ${taskId} completed but has invalid clientId: ${typeof task.clientId}`);
+              } else {
+                console.warn(`Task ${taskId} completed but has no clientId`);
+              }
+            } catch (error) {
+              console.error(`Error handling completed task ${taskId}:`, error);
             }
-          } catch (error) {
-            console.error(`Error handling completed task ${taskId}:`, error);
           }
         }
       } catch (error) {

@@ -35,6 +35,8 @@ class ServiceServer {
   private pendingResponses: Record<string, PendingResponseEntry[]>;
   private server: http.Server;
   private wss: WebSocket.Server;
+  // Add direct connections map for improved connection tracking
+  private connections: Map<string, WebSocketWithId>;
 
   constructor(
     { services }: ServiceServerDependencies, 
@@ -48,6 +50,8 @@ class ServiceServer {
     // Initialize server and wss to null as they'll be set in start()
     this.server = null as unknown as http.Server;
     this.wss = null as unknown as WebSocket.Server;
+    // Initialize connections map
+    this.connections = new Map();
   }
 
   async start(): Promise<ServiceServer> {
@@ -67,13 +71,16 @@ class ServiceServer {
       const wsWithId = ws as WebSocketWithId;
       wsWithId.id = connectionId;
       
+      // Store connection directly in our map
+      this.connections.set(connectionId, wsWithId);
+      
       console.log(`New service connection established: ${connectionId}`);
       
       // Handle incoming messages from services
       ws.on('message', async (message: WebSocket.Data) => {
         try {
           const parsedMessage = JSON.parse(message.toString());
-          // Store the WebSocket connection immediately so it's available for responses
+          // Store the WebSocket connection in the registry
           this.services.setConnection(connectionId, wsWithId);
           await this.handleMessage(parsedMessage, connectionId);
         } catch (error) {
@@ -89,6 +96,8 @@ class ServiceServer {
       // Handle disconnections
       ws.on('close', () => {
         console.log(`Service connection closed: ${connectionId}`);
+        // Remove from our direct connections map
+        this.connections.delete(connectionId);
         // Let the registry handle the disconnection
         this.services.handleDisconnection(connectionId);
         // Emit event for disconnection, let the message handler deal with it
@@ -235,11 +244,19 @@ class ServiceServer {
     message.timestamp = Date.now().toString();
     
     try {
-      const ws = this.services.getConnection(connectionId);
+      // First try to get the connection directly from our connections map
+      let ws = this.connections.get(connectionId);
+      
+      // If not found, try to get it from the service registry
+      if (!ws) {
+        ws = this.services.getConnection(connectionId);
+      }
+      
       if (ws) {
         ws.send(JSON.stringify(message));
         return message.id;
       } else {
+        console.warn(`Connection not found for ID: ${connectionId}`);
         throw new Error('Connection not found');
       }
     } catch (error) {
@@ -263,11 +280,18 @@ class ServiceServer {
     }
     
     try {
-      const ws = this.services.getConnection(connectionId);
+      // First try to get the connection directly from our connections map
+      let ws = this.connections.get(connectionId);
+      
+      // If not found, try to get it from the service registry
+      if (!ws) {
+        ws = this.services.getConnection(connectionId);
+      }
+      
       if (ws) {
         ws.send(JSON.stringify(message));
       } else {
-        throw new Error('Connection not found');
+        console.warn(`Failed to send error, connection not found for ID: ${connectionId}`);
       }
     } catch (error) {
       console.error('Error sending error message to service:', error);

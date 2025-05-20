@@ -84,6 +84,17 @@ export class SwarmClientSDK extends EventEmitter {
         
       case 'task.status':
         this.emit('task.status', message.content);
+        
+        // If the status is completed, also emit a task.result event
+        // This is necessary because sometimes a task may be marked as completed
+        // in a status message without a separate result message being sent
+        if (message.content.status === 'completed') {
+          console.log('Task completed status received, emitting task.result event');
+          this.emit('task.result', {
+            ...message.content,
+            result: message.content.result || {}  // Ensure there's always a result object
+          });
+        }
         break;
         
       case 'task.created':
