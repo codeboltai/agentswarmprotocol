@@ -282,6 +282,13 @@ class WebSocketClient extends events_1.EventEmitter {
      * @param message - The received message
      */
     async handleMessage(message) {
+        var _a, _b, _c;
+        // Add debug logging for task-related messages
+        if (message.type === 'task.created' || message.type === 'task.result' || message.type === 'task.status') {
+            console.log(`WebSocketClient received ${message.type} message:`, message.type === 'task.created' ?
+                `taskId: ${(_a = message.content) === null || _a === void 0 ? void 0 : _a.taskId}` :
+                `taskId: ${(_b = message.content) === null || _b === void 0 ? void 0 : _b.taskId}, status: ${(_c = message.content) === null || _c === void 0 ? void 0 : _c.status}`);
+        }
         // Check for pending responses
         if (message.id && this.pendingResponses.has(message.id)) {
             const { resolve, reject, timeout } = this.pendingResponses.get(message.id);
@@ -296,8 +303,33 @@ class WebSocketClient extends events_1.EventEmitter {
             }
             return;
         }
-        // Just emit the raw message for central handling in the SDK
+        // Special handling for task.created messages to help pending requests
+        if (message.type === 'task.created' && message.content && message.content.taskId) {
+            // Store the relationship between the original request ID and the taskId
+            console.log(`Storing taskId ${message.content.taskId} for message ID: ${message.id}`);
+            this.emit('task.created.mapping', {
+                messageId: message.id,
+                taskId: message.content.taskId
+            });
+        }
+        // Emit the full message for central handling
         this.emit('message', message);
+        // Also emit specific event types to maintain backward compatibility
+        if (message.type === 'task.result' && message.content) {
+            this.emit('task.result', message.content);
+        }
+        else if (message.type === 'task.status' && message.content) {
+            this.emit('task.status', message.content);
+            // If the status is completed, also emit a task.result event
+            // This ensures tasks complete even when only a status message is received
+            if (message.content.status === 'completed') {
+                console.log('Task completed status received in WebSocketClient, emitting task.result event');
+                this.emit('task.result', {
+                    ...message.content,
+                    result: message.content.result || {}
+                });
+            }
+        }
         // Only handle clientId for welcome messages here
         if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {
             this.clientId = message.content.clientId;
@@ -325,9 +357,16 @@ class WebSocketClient extends events_1.EventEmitter {
         const messageId = message.id;
         const eventName = options.event;
         const noTimeout = options.noTimeout || false;
+        // Special case for task.create - we'll return after getting the task.created response
+        // since the actual task completion will be handled by event listeners
+        const isTaskCreate = message.type === 'task.create';
+        console.log(`Sending request with ID ${messageId}${isTaskCreate ? ' (task.create)' : ''}`);
         return new Promise((resolve, reject) => {
             let timeoutId = null;
             let eventHandler = null;
+            let taskCreatedHandler = null;
+            let taskResultHandler = null;
+            let taskId = null;
             // Setup event listener if needed
             if (eventName) {
                 eventHandler = (eventData) => {
@@ -340,6 +379,31 @@ class WebSocketClient extends events_1.EventEmitter {
                 // Add the event listener
                 this.on(eventName, eventHandler);
             }
+            // For task creation, let's specifically listen for task.created responses
+            if (isTaskCreate) {
+                // Listen for the task.created message from the orchestrator
+                taskCreatedHandler = (createdMsg) => {
+                    if (createdMsg &&
+                        createdMsg.type === 'task.created' &&
+                        createdMsg.id === messageId) {
+                        console.log('Task created message received:', JSON.stringify(createdMsg.content));
+                        // Store the taskId for reference
+                        if (createdMsg.content && createdMsg.content.taskId) {
+                            taskId = createdMsg.content.taskId;
+                            console.log(`Task created with ID: ${taskId}`);
+                            // If noTimeout is true, immediately resolve with the task.created message
+                            // The caller will be responsible for setting up event listeners for completion
+                            if (noTimeout) {
+                                console.log(`noTimeout set, resolving task.create immediately with task ID: ${taskId}`);
+                                cleanup();
+                                resolve(createdMsg);
+                            }
+                        }
+                    }
+                };
+                // Add the task.created message listener
+                this.on('message', taskCreatedHandler);
+            }
             // Create cleanup function
             const cleanup = () => {
                 if (timeoutId) {
@@ -348,34 +412,39 @@ class WebSocketClient extends events_1.EventEmitter {
                 if (eventHandler && eventName) {
                     this.removeListener(eventName, eventHandler);
                 }
+                if (isTaskCreate && taskCreatedHandler) {
+                    this.removeListener('message', taskCreatedHandler);
+                }
                 this.pendingResponses.delete(messageId);
             };
             // Set timeout if not disabled
             if (!noTimeout) {
                 timeoutId = setTimeout(() => {
-                    if (eventHandler && eventName) {
-                        this.removeListener(eventName, eventHandler);
-                    }
+                    console.log(`Timeout reached for message ${messageId}`);
+                    cleanup();
                     if (this.pendingResponses.has(messageId)) {
                         this.pendingResponses.delete(messageId);
                         reject(new Error(`Timeout waiting for response to message ${messageId}`));
                     }
                 }, timeout);
             }
-            // Only store in pendingResponses if we're not exclusively using event-based handling
-            if (!eventName || !noTimeout) {
-                this.pendingResponses.set(messageId, {
-                    resolve: (data) => {
-                        cleanup();
-                        resolve(data);
-                    },
-                    reject: (error) => {
-                        cleanup();
-                        reject(error);
-                    },
-                    timeout: timeoutId || setTimeout(() => { }, 0) // Dummy timeout if none
-                });
+            else {
+                console.log(`No timeout set for message ${messageId}`);
+                // Set a dummy timeout for cleanup purposes
+                timeoutId = setTimeout(() => { }, 2147483647); // Max 32-bit integer in milliseconds
             }
+            // Store pending response
+            this.pendingResponses.set(messageId, {
+                resolve: (data) => {
+                    cleanup();
+                    resolve(data);
+                },
+                reject: (error) => {
+                    cleanup();
+                    reject(error);
+                },
+                timeout: timeoutId
+            });
             // Send the message
             this.send(message).catch(error => {
                 cleanup();

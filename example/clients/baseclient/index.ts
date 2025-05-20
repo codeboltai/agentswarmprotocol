@@ -8,29 +8,49 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Configuration for the orchestrator connection
 const sdk = new SwarmClientSDK({
-  orchestratorUrl: 'ws://100.95.18.39:3001', // Change this URL if your orchestrator runs elsewhere
+  orchestratorUrl: 'ws://localhost:3001', // Change this URL if your orchestrator runs elsewhere
   autoReconnect: false // Prevent repeated reconnects during debugging
 });
 
+// Set up global result tracking
+let taskCompleted = false;
+let taskResult: any = null;
+
 sdk.on('connected', () => {
-  console.log(chalk.blue.bgRed.bold('Hello Orchestrator'));
+  console.log(chalk.blue.bgGreen.bold('Connected to Orchestrator'));
 });
 
-// // Listen for all raw messages
-// sdk.on('raw-message', (msg) => {
-//   console.log('[raw-message]', msg);
-// });
+// Listen for errors
+sdk.on('error', (err) => {
+  console.error(chalk.red('[error]'), err);
+});
 
-// // Listen for specific events
-// sdk.on('welcome', (content) => {
-//   console.log('[welcome]', content);
-// });
-// sdk.on('agent.list', (agents) => {
-//   console.log('[agent-list]', agents);
-// });
-// sdk.on('error', (err) => {
-//   console.error('[error]', err);
-// });
+// Set up event listeners for tasks
+sdk.on('task.result', (result) => {
+  console.log(chalk.green('Task result received:'), result);
+  // Mark task as completed when we get a result
+  taskCompleted = true;
+  taskResult = result;
+});
+
+sdk.on('task.status', (status) => {
+  console.log(chalk.yellow('Task status update:'), status);
+  // If we get a completed status with a result, mark as completed
+  if (status.status === 'completed' && status.result) {
+    console.log(chalk.green('Task completed via status update'));
+    taskCompleted = true;
+    taskResult = status;
+  }
+});
+
+sdk.on('task.notification', (notification) => {
+  console.log(chalk.blue('Task notification:'), notification);
+});
+
+// Enable raw message debugging for troubleshooting
+sdk.on('raw-message', (msg) => {
+  console.log(chalk.gray(`[raw:${msg.type}]`), msg.id);
+});
 
 async function main() {
   try {
@@ -40,30 +60,48 @@ async function main() {
 
     // Fetch the list of available agents
     const agents = await sdk.getAgentsList();
-    console.log('Available agents:', agents);
+    console.log('Available agents:', agents.length);
 
     if (agents.length === 0) {
       console.log('No agents available to send a task.');
       return;
     }
 
-    // Send a sample task to the first agent
+    // Choose the first agent
+    const agent = agents[0];
+    console.log(`Selected agent: ${agent.name} (${agent.id})`);
+    
+    // Send a sample task to the agent
     const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };
-    const task = await sdk.sendTask(agents[0].id, agents[0].name , taskData);
-    console.log('Task created:', task);
     
-    // Add a listener for task notifications
-    sdk.on('task-notification', (notification) => {
-      console.log('Task notification received:', notification);
-    });
+    console.log(`Sending task to agent ${agent.name} (${agent.id})...`);
     
-    // Wait for some time to receive notifications
-    console.log('Listening for task notifications for 30 seconds...');
-    await new Promise(resolve => setTimeout(resolve, 30000));
+    try {
+      // Try with a longer timeout
+      const task = await sdk.sendTask(agent.id, agent.name, taskData, {
+        timeout: 60000 // 60 second timeout
+      });
+      
+      console.log(chalk.green.bold('Task completed via SDK:'), task);
+    } catch (taskError) {
+      console.error(chalk.red('Error executing task:'), taskError);
+      
+      // If we received a result via events but still got a timeout,
+      // we can use the result we received
+      if (taskCompleted && taskResult) {
+        console.log(chalk.yellow('Got task result via events:'), taskResult);
+      }
+    }
+    
+    // Wait for a moment before disconnecting
+    console.log('Waiting a moment before disconnecting...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
   } catch (error) {
     console.error('Error in client:', error);
   } finally {
-    // sdk.disconnect();
+    // Disconnect from the orchestrator
+    console.log('Disconnecting from orchestrator...');
+    sdk.disconnect();
   }
 }
 
