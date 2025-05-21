@@ -121,6 +121,86 @@ class Orchestrator {
     // 2. Parameter counts match between emitter and listener
     // 3. All emitters include proper error handling
     
+    // Message Handler event listeners - moved from message-handler.ts
+    // Listen for agent registration events
+    this.eventBus.on('agent.registered', (agentId: string, connectionId: string) => {
+      this.messageHandler.handleAgentRegistered(agentId, connectionId);
+    });
+    
+    // Listen for client registration events
+    this.eventBus.on('client.registered', (client: any) => {
+      this.messageHandler.handleClientRegistered(client);
+    });
+    
+    // Listen for client list requests
+    this.eventBus.on('client.list.request', (filters: any, requestId?: string) => {
+      this.messageHandler.handleClientListRequest(filters, requestId);
+    });
+    
+    // Listen for agent list requests
+    this.eventBus.on('agent.list.request', (filters: any, requestId?: string) => {
+      this.messageHandler.handleAgentListRequest(filters, requestId);
+    });
+    
+    // Listen for service list requests
+    this.eventBus.on('client.service.list', (filters: any, requestId?: string) => {
+      this.messageHandler.handleServiceListRequest(filters, requestId);
+    });
+    
+    // Listen for service task execution requests
+    this.eventBus.on('service.task.execute', (message: any, connectionId: string, requestId?: string) => {
+      this.messageHandler.handleServiceTaskExecuteEvent(message, connectionId, requestId);
+    });
+    
+    // Listen for client agent list requests
+    this.eventBus.on('client.agent.list', (message: any, clientId: string, clientServer: any) => {
+      const filters = message?.content?.filters || {};
+      this.messageHandler.handleClientAgentListRequest(filters, message?.id);
+    });
+    
+    // Listen for client task creation requests
+    this.eventBus.on('client.task.create', (message: any, clientId: string, requestId?: string) => {
+      this.messageHandler.handleClientTaskCreateRequest(message, clientId, requestId);
+    });
+    
+    // Listen for client task status requests
+    this.eventBus.on('client.task.status', (message: any, clientId: string, clientServer: any) => {
+      const taskId = message?.content?.taskId;
+      if (taskId) {
+        this.messageHandler.handleClientTaskStatusRequest(taskId, message?.id);
+      }
+    });
+    
+    // Listen for client MCP server list requests
+    this.eventBus.on('client.mcp.server.list', (filters: any, requestId?: string) => {
+      this.messageHandler.handleClientMCPServerListRequest(filters, requestId);
+    });
+    
+    // Listen for client MCP server tools requests
+    this.eventBus.on('client.mcp.server.tools', (serverId: string, requestId?: string) => {
+      this.messageHandler.handleClientMCPServerToolsRequest(serverId, requestId);
+    });
+    
+    // Listen for client MCP tool execution requests
+    this.eventBus.on('client.mcp.tool.execute', (params: any, requestId?: string) => {
+      this.messageHandler.handleClientMCPToolExecuteRequest(params, requestId);
+    });
+    
+    // Listen for service registration events
+    this.eventBus.on('service.register', (message: any, connectionId: string, requestId?: string) => {
+      this.messageHandler.handleServiceRegisterEvent(message, connectionId, requestId);
+    });
+    
+    // Listen for service status update events
+    this.eventBus.on('service.status.update', (message: any, connectionId: string, requestId?: string) => {
+      this.messageHandler.handleServiceStatusUpdateEvent(message, connectionId, requestId);
+    });
+    
+    // Listen for client disconnection events
+    this.eventBus.on('client.disconnected', (connectionId: string) => {
+      this.messageHandler.handleClientDisconnected(connectionId);
+    });
+    
     // MCP-related event listeners
     // Listen for MCP server registration
     this.eventBus.on('mcp.server.register', async (message: MCPServerConfig, requestId?: string) => {
@@ -389,29 +469,6 @@ class Orchestrator {
       }
     });
     
-    // Agent list request
-    this.eventBus.on('agent.list.request', (message: any, connectionId: string, agentServer: AgentServer) => {
-      try {
-        const filters = message.content?.filters || {};
-        
-        // Get agent list from registry
-        const agents = this.messageHandler.getAgentList(filters);
-        
-        // Send response
-        agentServer.send(connectionId, {
-          id: uuidv4(),
-          type: 'agent.list.response',
-          content: {
-            agents: agents
-          },
-          requestId: message.id,
-          timestamp: Date.now().toString()
-        });
-      } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-      }
-    });
-    
     // Service list request
     this.eventBus.on('service.list', (message: any, connectionId: string, agentServer: AgentServer) => {
       try {
@@ -436,27 +493,8 @@ class Orchestrator {
     });
     
     // Service task execution
-    this.eventBus.on('service.task.execute', async (message: any, connectionId: string, serviceServer: any) => {
-      try {
-        const result = await this.messageHandler.handleServiceTaskExecuteRequest(message, connectionId);
-        
-        // Instead of using a callback, send response directly through the serviceServer
-        serviceServer.send(connectionId, {
-          id: uuidv4(),
-          type: 'service.task.result',
-          content: result,
-          requestId: message.id,
-          timestamp: Date.now().toString()
-        });
-      } catch (error) {
-        // Send error through serviceServer
-        serviceServer.sendError(
-          connectionId,
-          'Error executing service task',
-          message.id,
-          error instanceof Error ? error.message : String(error)
-        );
-      }
+    this.eventBus.on('service.task.execute', (message: any, connectionId: string, serviceServer: any) => {
+      this.messageHandler.handleServiceTaskExecuteEvent(message, connectionId, message?.id);
     });
     
     // Task result
@@ -967,41 +1005,12 @@ class Orchestrator {
       }
     });
 
-    // Handle client agent list requests
-    this.eventBus.on('client.agent.list', (message: any, clientId: string, clientServer: any) => {
-      // Redirect to the handler that doesn't use callbacks
-      this.eventBus.emit('client.agent.list.request', message, clientId, clientServer);
-    });
-
     // Handle client service list requests
     this.eventBus.on('client.service.list', (message: any, clientId: string, clientServer: any) => {
-      // Redirect to the handler that doesn't use callbacks
-      this.eventBus.emit('client.service.list.request', message, clientId, clientServer);
+      const filters = message?.content?.filters || {};
+      this.messageHandler.handleServiceListRequest(filters, message?.id);
     });
 
-    // Handle agent list requests from agents
-    this.eventBus.on('agent.list.request', (message: any, connectionId: string, agentServer: any) => {
-      try {
-        const filters = message.content?.filters || {};
-        
-        // Get agent list from registry
-        const agents = this.messageHandler.getAgentList(filters);
-        
-        // Send response
-        agentServer.send(connectionId, {
-          id: uuidv4(),
-          type: 'agent.list.response',
-          content: {
-            agents: agents
-          },
-          requestId: message.id,
-          timestamp: Date.now().toString()
-        });
-      } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-      }
-    });
-    
     // Handle MCP servers list requests
     this.eventBus.on('agent.status.update', (message: any, connectionId: string, agentServer: any) => {
       try {
@@ -1363,89 +1372,6 @@ class Orchestrator {
         });
       } catch (error) {
         clientServer.sendError(clientId, 'Error getting agent list', message.id,
-          error instanceof Error ? error.message : String(error));
-      }
-    });
-    
-    // Client MCP server list request handler
-    this.eventBus.on('client.mcp.server.list.request', (message: any, clientId: string, clientServer: any) => {
-      try {
-        const filters = message.content?.filters || {};
-        
-        // Get MCP server list
-        const servers = this.mcpAdapter.listMCPServers(filters);
-        
-        // Send response
-        clientServer.send(clientId, {
-          id: message.id || uuidv4(),
-          type: 'mcp.server.list',
-          content: {
-            servers: servers
-          }
-        });
-      } catch (error) {
-        clientServer.sendError(clientId, 'Error getting MCP server list', message.id,
-          error instanceof Error ? error.message : String(error));
-      }
-    });
-    
-    // Client MCP server tools request handler
-    this.eventBus.on('client.mcp.server.tools.request', (message: any, clientId: string, clientServer: any) => {
-      try {
-        const serverId = message.content?.serverId;
-        
-        if (!serverId) {
-          return clientServer.sendError(clientId, 'Invalid request', message.id, 'Server ID is required');
-        }
-        
-        // Get tools for the server
-        const tools = this.mcpAdapter.getToolList(serverId);
-        
-        // Send response
-        clientServer.send(clientId, {
-          id: message.id || uuidv4(),
-          type: 'mcp.server.tools',
-          content: {
-            serverId,
-            tools
-          }
-        });
-      } catch (error) {
-        clientServer.sendError(clientId, 'Error getting MCP server tools', message.id,
-          error instanceof Error ? error.message : String(error));
-      }
-    });
-    
-    // Client MCP tool execution request handler
-    this.eventBus.on('client.mcp.tool.execute.request', (message: any, clientId: string, clientServer: any) => {
-      try {
-        const serverId = message.content?.serverId;
-        const toolName = message.content?.toolName;
-        const parameters = message.content?.parameters || {};
-        
-        if (!serverId || !toolName) {
-          return clientServer.sendError(clientId, 'Invalid request', message.id, 'Server ID and tool name are required');
-        }
-        
-        // Execute MCP tool
-        this.mcpAdapter.executeServerTool(serverId, toolName, parameters)
-          .then((result: any) => {
-            clientServer.send(clientId, {
-              id: message.id || uuidv4(),
-              type: 'mcp.tool.execution.result',
-              content: {
-                serverId,
-                toolName,
-                status: 'success',
-                result
-              }
-            });
-          })
-          .catch((error: Error) => {
-            clientServer.sendError(clientId, 'Error executing MCP tool', message.id, error.message);
-          });
-      } catch (error) {
-        clientServer.sendError(clientId, 'Error executing MCP tool', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });

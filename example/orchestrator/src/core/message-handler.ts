@@ -52,50 +52,7 @@ class MessageHandler {
     this.eventBus = config.eventBus;
     this.mcp = config.mcp;
     
-    // Listen for agent registration events
-    this.eventBus.on('agent.registered', this.handleAgentRegistered.bind(this));
-    
-    // Listen for client registration events
-    this.eventBus.on('client.registered', this.handleClientRegistered.bind(this));
-    
-    // Listen for client list requests
-    this.eventBus.on('client.list.request', this.handleClientListRequest.bind(this));
-    
-    // Listen for agent list requests
-    this.eventBus.on('agent.list.request', this.handleAgentListRequest.bind(this));
-    
-    // Listen for service list requests
-    this.eventBus.on('client.service.list', this.handleServiceListRequest.bind(this));
-    
-    // Listen for service task execution requests
-    this.eventBus.on('service.task.execute', this.handleServiceTaskExecuteEvent.bind(this));
-    
-    // Listen for client agent list requests
-    this.eventBus.on('client.agent.list', this.handleClientAgentListRequest.bind(this));
-    
-    // Listen for client task creation requests
-    this.eventBus.on('client.task.create', this.handleClientTaskCreateRequest.bind(this));
-    
-    // Listen for client task status requests
-    this.eventBus.on('client.task.status', this.handleClientTaskStatusRequest.bind(this));
-    
-    // Listen for client MCP server list requests
-    this.eventBus.on('client.mcp.server.list', this.handleClientMCPServerListRequest.bind(this));
-    
-    // Listen for client MCP server tools requests
-    this.eventBus.on('client.mcp.server.tools', this.handleClientMCPServerToolsRequest.bind(this));
-    
-    // Listen for client MCP tool execution requests
-    this.eventBus.on('client.mcp.tool.execute', this.handleClientMCPToolExecuteRequest.bind(this));
-    
-    // Listen for service registration events
-    this.eventBus.on('service.register', this.handleServiceRegisterEvent.bind(this));
-    
-    // Listen for service status update events
-    this.eventBus.on('service.status.update', this.handleServiceStatusUpdateEvent.bind(this));
-    
-    // Listen for client disconnection events
-    this.eventBus.on('client.disconnected', this.handleClientDisconnected.bind(this));
+    // No longer setting up event listeners here - will be set up in index.ts
   }
 
   /**
@@ -103,7 +60,7 @@ class MessageHandler {
    * @param agentId The ID of the registered agent
    * @param connectionId The connection ID of the agent
    */
-  private handleAgentRegistered(agentId: string, connectionId: string): void {
+  handleAgentRegistered(agentId: string, connectionId: string): void {
     // Perform any additional business logic needed when an agent is registered
     console.log(`MessageHandler: Agent ${agentId} registered with connection ${connectionId}`);
     
@@ -115,7 +72,7 @@ class MessageHandler {
    * Handle client registered event
    * @param client The client that was registered
    */
-  private handleClientRegistered(client: Client): void {
+  handleClientRegistered(client: Client): void {
     // Perform any additional business logic needed when a client is registered
     console.log(`MessageHandler: Client ${client.id} registered${client.name ? ` as ${client.name}` : ''}`);
     
@@ -128,7 +85,7 @@ class MessageHandler {
    * @param filters Optional filters for the client list
    * @param requestId Optional request ID for tracking the response
    */
-  private handleClientListRequest(filters: any, requestId?: string): void {
+  handleClientListRequest(filters: any, requestId?: string): void {
     try {
       const clientList = this.getClientList(filters);
       // Emit result event with the request ID
@@ -146,7 +103,7 @@ class MessageHandler {
    * @param filters Optional filters for the agent list
    * @param requestId Optional request ID for tracking the response
    */
-  private handleAgentListRequest(filters: any, requestId?: string): void {
+  handleAgentListRequest(filters: any, requestId?: string): void {
     try {
       const agentList = this.getAgentList(filters);
       // Emit result event with the request ID
@@ -388,7 +345,7 @@ class MessageHandler {
    * @param connectionId The connection ID
    * @param requestId The request ID for tracking the response
    */
-  private async handleServiceTaskExecuteEvent(message: any, connectionId: string, requestId?: string): Promise<void> {
+  async handleServiceTaskExecuteEvent(message: any, connectionId: string, requestId?: string): Promise<void> {
     try {
       // Execute the service task and get the result
       const result = await this.handleServiceTaskExecuteRequest(message, connectionId);
@@ -804,7 +761,7 @@ class MessageHandler {
    * @param filters Optional filters for the service list
    * @param requestId Optional request ID for tracking the response
    */
-  private handleServiceListRequest(filters: any, requestId?: string): void {
+  handleServiceListRequest(filters: any, requestId?: string): void {
     try {
       // Get all services matching the filters
       const serviceList = this.services.getAllServices(filters).map(service => ({
@@ -829,7 +786,7 @@ class MessageHandler {
    * @param filters Optional filters for the agent list
    * @param requestId Optional request ID for tracking the response
    */
-  private handleClientAgentListRequest(filters: any, requestId?: string): void {
+  handleClientAgentListRequest(filters: any, requestId?: string): void {
     try {
       const agentList = this.getAgentList(filters);
       // Emit result event with the request ID
@@ -848,7 +805,7 @@ class MessageHandler {
    * @param clientId The client ID
    * @param requestId Optional request ID for tracking the response
    */
-  private async handleClientTaskCreateRequest(message: BaseMessage, clientId: string, requestId?: string): Promise<void> {
+  async handleClientTaskCreateRequest(message: BaseMessage, clientId: string, requestId?: string): Promise<void> {
     try {
       const result = await this.handleTaskCreation(message, clientId);
       // Emit result event with the request ID
@@ -866,7 +823,7 @@ class MessageHandler {
    * @param taskId The task ID to get status for
    * @param requestId Optional request ID for tracking the response
    */
-  private handleClientTaskStatusRequest(taskId: string, requestId?: string): void {
+  handleClientTaskStatusRequest(taskId: string, requestId?: string): void {
     try {
       const taskStatus = this.getTaskStatus(taskId);
       // Emit result event with the request ID
@@ -884,7 +841,7 @@ class MessageHandler {
    * @param filters Optional filters for the MCP server list
    * @param requestId Optional request ID for tracking the response
    */
-  private handleClientMCPServerListRequest(filters: any, requestId?: string): void {
+  handleClientMCPServerListRequest(filters: any, requestId?: string): void {
     try {
       const servers = this.mcp.getServerList(filters);
       // Emit result event with the request ID
@@ -902,7 +859,7 @@ class MessageHandler {
    * @param serverId The MCP server ID
    * @param requestId Optional request ID for tracking the response
    */
-  private async handleClientMCPServerToolsRequest(serverId: string, requestId?: string): Promise<void> {
+  async handleClientMCPServerToolsRequest(serverId: string, requestId?: string): Promise<void> {
     try {
       const tools = await this.mcp.getToolList(serverId);
       // Emit result event with the request ID
@@ -920,7 +877,7 @@ class MessageHandler {
    * @param params The tool execution parameters
    * @param requestId Optional request ID for tracking the response
    */
-  private async handleClientMCPToolExecuteRequest(params: any, requestId?: string): Promise<void> {
+  async handleClientMCPToolExecuteRequest(params: any, requestId?: string): Promise<void> {
     try {
       const result = await this.mcp.executeServerTool(
         params.serverId, 
@@ -949,7 +906,7 @@ class MessageHandler {
    * @param connectionId The service connection ID
    * @param requestId Optional request ID for tracking the response
    */
-  private handleServiceRegisterEvent(message: any, connectionId: string, requestId?: string): void {
+  handleServiceRegisterEvent(message: any, connectionId: string, requestId?: string): void {
     try {
       const result = this.handleServiceRegistration(message, connectionId);
       // Emit result event with the request ID
@@ -968,7 +925,7 @@ class MessageHandler {
    * @param connectionId The service connection ID
    * @param requestId Optional request ID for tracking the response
    */
-  private handleServiceStatusUpdateEvent(message: any, connectionId: string, requestId?: string): void {
+  handleServiceStatusUpdateEvent(message: any, connectionId: string, requestId?: string): void {
     try {
       // Get the service by connection ID
       const service = this.services.getServiceByConnectionId(connectionId);
