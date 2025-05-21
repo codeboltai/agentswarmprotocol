@@ -133,364 +133,78 @@ class AgentServer {
       return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
     }
     
-    try {
-      switch (message.type) {
-        case 'agent.register':
-          try {
-            // Handle agent registration directly in the agent server
-            const registrationResult = this.handleAgentRegistration(message, connectionId);
-            if (registrationResult.error) {
-              this.sendError(connectionId, registrationResult.error, message.id);
-              return;
-            }
-            
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'agent.registered',
-              content: registrationResult,
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            });
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'agent.list.request':
-          // Handle agent list request through dedicated method
-          this.handleAgentListRequest(message, connectionId);
-          break;
-          
-        case 'service.list':
-          // Handle service list request through dedicated method
-          this.handleServiceListRequest(message, connectionId);
-          break;
-          
-        case 'service.task.execute':
-          // Handle service task execution through dedicated method
-          this.handleServiceTaskExecute(message, connectionId);
-          break;
-          
-        case 'task.result':
-          // Emit task result event
-          this.eventBus.emit('task.result.received', message);
-          break;
-          
-        case 'task.error':
-          // Emit task error event
-          this.eventBus.emit('task.error.received', message);
-          break;
-          
-        case 'task.status':
-          // Emit task status update event
-          console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
-          this.eventBus.emit('task.status.received', message);
-          break;
-          
-        case 'service.task.result':
-          // Emit service task result event
-          console.log(`Service task result received: ${message.id}`);
-          this.eventBus.emit('service.task.result.received', message);
-          break;
-          
-        case 'task.notification':
-          // Handle task notification from agent
-          // Get the agent information from the connection
-          const agent = this.agents.getAgentByConnectionId(connectionId);
-          
-          if (!agent) {
-            this.sendError(connectionId, 'Agent not registered or unknown', message.id);
-            return;
-          }
-          
-          // Enhance the notification with agent information
-          const enhancedNotification = {
-            ...message,
-            content: {
-              ...message.content,
-              agentId: agent.id,
-              agentName: agent.name
-            }
-          };
-          
-          // Emit the notification event for the orchestrator to handle
-          this.eventBus.emit('task.notification.received', enhancedNotification);
-          
-          // Confirm receipt (optional)
-          this.send(connectionId, {
-            id: uuidv4(),
-            type: 'notification.received',
-            content: {
-              message: 'Notification received',
-              notificationId: message.id
-            },
-            requestId: message.id,
-            timestamp: Date.now().toString()
-          });
-          break;
-          
-        case 'agent.status':
-          // Handle agent status update
-          const statusAgent = this.agents.getAgentByConnectionId(connectionId);
-          
-          if (!statusAgent) {
-            this.sendError(connectionId, 'Agent not registered or unknown', message.id);
-            return;
-          }
-          
-          // Update agent status in the registry
-          this.agents.updateAgentStatus(
-            statusAgent.id, 
-            message.content.status, 
-            message.content
-          );
-          
-          // Confirm receipt
-          this.send(connectionId, {
-            id: uuidv4(),
-            type: 'agent.status.updated',
-            content: {
-              message: 'Agent status updated',
-              status: message.content.status
-            },
-            requestId: message.id,
-            timestamp: Date.now().toString()
-          });
-          break;
-          
-        case 'mcp.servers.list':
-          // Direct SDK-style request for MCP servers list
-          // Forward to the message handler for processing
-          try {
-            const response = this.messageHandler.handleMessage(message, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'mcp.tools.list':
-          // Direct SDK-style request for MCP tools list
-          try {
-            const response = this.messageHandler.handleMessage(message, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'mcp.tool.execute':
-          // Direct SDK-style request for MCP tool execution
-          try {
-            const response = this.messageHandler.handleMessage(message, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'ping':
-          // Respond with pong message
-          this.send(connectionId, {
-            id: uuidv4(),
-            type: 'pong',
-            content: {
-              timestamp: Date.now()
-            },
-            requestId: message.id,
-            timestamp: Date.now().toString()
-          });
-          break;
-          
-        case 'mcp.servers.list.request':
-          // For backward compatibility, handle the old mcp.servers.list.request format
-          try {
-            const response = this.messageHandler.handleMessage({
-              ...message,
-              type: 'mcp.servers.list'
-            }, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'mcp.tools.list.request':
-          // For backward compatibility, handle the old mcp.tools.list.request format
-          try {
-            const response = this.messageHandler.handleMessage({
-              ...message,
-              type: 'mcp.tools.list'
-            }, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        case 'mcp.tool.execute.request':
-          // For backward compatibility, handle the old mcp.tool.execute.request format
-          try {
-            const response = this.messageHandler.handleMessage({
-              ...message,
-              type: 'mcp.tool.execute'
-            }, connectionId);
-            
-            if (response) {
-              this.send(connectionId, {
-                ...response,
-                id: uuidv4(),
-                requestId: message.id,
-                timestamp: Date.now().toString()
-              });
-            }
-          } catch (error) {
-            this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
-          }
-          break;
-          
-        default:
-          console.warn(`Unhandled message type agent-server: ${message.type}`);
+    // Handle different message types with switch-case for better readability
+    switch (message.type) {
+      case 'agent.register':
+        this.eventBus.emit('agent.register', message, connectionId, this);
+        break;
+        
+      case 'agent.list.request':
+        this.eventBus.emit('agent.list.request', message, connectionId, this);
+        break;
+        
+      case 'service.list':
+        this.eventBus.emit('service.list', message, connectionId, this);
+        break;
+        
+      case 'service.task.execute':
+        this.eventBus.emit('service.task.execute', message, connectionId, this);
+        break;
+        
+      case 'task.result':
+        this.eventBus.emit('task.result', message, connectionId, this);
+        break;
+        
+      case 'task.error':
+        this.eventBus.emit('task.error', message, connectionId, this);
+        break;
+        
+      case 'task.status':
+        this.eventBus.emit('task.status', message, connectionId, this);
+        break;
+        
+      case 'service.task.result':
+        this.eventBus.emit('service.task.result', message, connectionId, this);
+        break;
+        
+      case 'task.notification':
+        this.eventBus.emit('task.notification', message, connectionId, this);
+        break;
+        
+      case 'agent.status':
+        this.eventBus.emit('agent.status', message, connectionId, this);
+        break;
+        
+      case 'mcp.servers.list':
+      case 'mcp.servers.list.request': // backward compatibility
+        this.eventBus.emit('mcp.servers.list', message, connectionId, this);
+        break;
+        
+      case 'mcp.tools.list':
+      case 'mcp.tools.list.request': // backward compatibility
+        this.eventBus.emit('mcp.tools.list', message, connectionId, this);
+        break;
+        
+      case 'mcp.tool.execute':
+      case 'mcp.tool.execute.request': // backward compatibility
+        this.eventBus.emit('mcp.tool.execute', message, connectionId, this);
+        break;
+        
+      case 'ping':
+        this.eventBus.emit('ping', message, connectionId, this);
+        break;
+        
+      default:
+        // For any unhandled message types, still emit the event but warn about it
+        this.eventBus.emit(message.type, message, connectionId, this);
+        
+        // If no listeners for this specific message type, log a warning
+        if (this.eventBus.listenerCount(message.type) === 0) {
+          console.warn(`No handlers registered for message type: ${message.type}`);
           this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
-      }
-    } catch (error) {
-      console.error('Error handling message:', error);
-      this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        }
+        break;
     }
-  }
-
-  /**
-   * Handle agent list request
-   * @param message The request message
-   * @param connectionId The connection ID
-   */
-  private handleAgentListRequest(message: BaseMessage, connectionId: string): void {
-    // Generate a unique request ID
-    const requestId = uuidv4();
-    
-    // Set up one-time listener for the result
-    this.eventBus.once(`agent.list.result.${requestId}`, (result: any) => {
-      // Send the result back to the agent
-      this.send(connectionId, {
-        id: uuidv4(),
-        type: 'agent.list.response',
-        content: {
-          agents: result
-        },
-        requestId: message.id,
-        timestamp: Date.now().toString()
-      });
-    });
-    
-    // Set up one-time listener for errors
-    this.eventBus.once(`agent.list.error.${requestId}`, (errorResult: any) => {
-      this.sendError(connectionId, errorResult.error, message.id);
-    });
-    
-    // Emit the request event with the request ID
-    this.eventBus.emit('agent.list.request', message.content?.filters || {}, requestId);
-  }
-
-  /**
-   * Handle service list request
-   * @param message The request message
-   * @param connectionId The connection ID
-   */
-  private handleServiceListRequest(message: BaseMessage, connectionId: string): void {
-    // Generate a unique request ID
-    const requestId = uuidv4();
-    
-    // Set up one-time listener for the result
-    this.eventBus.once(`client.service.list.result.${requestId}`, (services: any) => {
-      // Send the result back to the agent
-      this.send(connectionId, {
-        id: uuidv4(),
-        type: 'service.list.result',
-        content: {
-          services
-        },
-        requestId: message.id,
-        timestamp: Date.now().toString()
-      });
-    });
-    
-    // Set up one-time listener for errors
-    this.eventBus.once(`client.service.list.error.${requestId}`, (errorResult: any) => {
-      this.sendError(connectionId, errorResult.error, message.id);
-    });
-    
-    // Emit the request event with the request ID
-    this.eventBus.emit('client.service.list', message.content?.filters || {}, requestId);
-  }
-
-  /**
-   * Handle service task execute request
-   * @param message The request message
-   * @param connectionId The connection ID
-   */
-  private handleServiceTaskExecute(message: BaseMessage, connectionId: string): void {
-    // Emit service task execute event and set up result listener
-    const requestId = uuidv4();
-    
-    // Set up one-time listener for the result
-    this.eventBus.once(`service.task.execute.result.${requestId}`, (serviceResult: any) => {
-      if (serviceResult.error) {
-        this.sendError(connectionId, serviceResult.error, message.id);
-        return;
-      }
-      
-      // Send the result back
-      this.send(connectionId, {
-        id: uuidv4(),
-        type: 'service.task.result',
-        content: serviceResult,
-        requestId: message.id,
-        timestamp: Date.now().toString()
-      });
-    });
-    
-    // Emit the request event with the request ID
-    this.eventBus.emit('service.task.execute', message, connectionId, requestId);
   }
 
   // Helper method to send messages
