@@ -174,27 +174,23 @@ class AgentServer {
         case 'task.result':
           // Emit task result event
           this.eventBus.emit('task.result.received', message);
-          this.eventBus.emit('response.message', message);
           break;
           
         case 'task.error':
           // Emit task error event
           this.eventBus.emit('task.error.received', message);
-          this.eventBus.emit('response.message', message);
           break;
           
         case 'task.status':
           // Emit task status update event
           console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
           this.eventBus.emit('task.status.received', message);
-          this.eventBus.emit('response.message', message);
           break;
           
         case 'service.task.result':
           // Emit service task result event
           console.log(`Service task result received: ${message.id}`);
           this.eventBus.emit('service.task.result.received', message);
-          this.eventBus.emit('response.message', message);
           break;
           
         case 'task.notification':
@@ -654,7 +650,6 @@ class AgentServer {
       // Set up timeout
       const timer = setTimeout(() => {
         delete this.pendingResponses[messageId];
-        this.eventBus.removeListener('response.message', responseHandler);
         reject(new Error(`Response timeout after ${timeout}ms for message ${messageId}`));
       }, timeout);
       
@@ -665,8 +660,6 @@ class AgentServer {
         timer
       };
       
-      // Listen for responses
-      this.eventBus.on('response.message', responseHandler);
       
       // Send the message
       this.send(agentId, message);
