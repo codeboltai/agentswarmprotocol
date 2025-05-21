@@ -1,123 +1,107 @@
 import { SwarmAgentSDK } from '@agent-swarm/agent-sdk';
-import { v4 as uuidv4 } from 'uuid';
 import { TaskExecuteMessage } from '@agent-swarm/agent-sdk/dist/core/types';
 
-// Generate a fixed agent ID that won't change between reconnects
-const AGENT_ID = uuidv4();
-console.log(`Using Agent ID: ${AGENT_ID}`);
-
-// Create a new simple agent
+// Create a new agent
 const agent = new SwarmAgentSDK({
-  agentId: AGENT_ID,
-  name: 'SimpleAgent',
-  description: 'A basic agent that processes text input',
-  capabilities: ['text-processing'],
-  orchestratorUrl: 'ws://localhost:3000/',
-  manifest: {
-    id: AGENT_ID // Explicitly include ID in manifest
-  }
+  name: 'TwoMessageAgent',
+  description: 'An agent that responds to two messages before finishing the task',
+  capabilities: ['execute'],
+  orchestratorUrl: 'ws://localhost:3000',
+  autoReconnect: true
 });
 
-// Register a single task handler for all tasks
-agent.onTask(async (taskData: any, taskMessage: TaskExecuteMessage) => {
-  console.log('Processing task:', taskData);
+// Keep track of message count
+const messageCounters = new Map<string, number>();
+
+// Register a task handler for message responses
+agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
+  console.log('Received message task:', taskData);
+  const taskId = message.content?.taskId || '';
   
-  // Extract the query content from the task data
-  const queryContent = typeof taskData === 'object' && taskData.query ? 
-    taskData.query : 
-    JSON.stringify(taskData);
+  // Handle 'execute' tasks
+  if (message.content?.taskType !== 'execute') {
+    return { error: 'Unsupported task type' };
+  }
   
-  // Send a notification message to indicate task has started
-  agent.sendTaskMessage(taskMessage.content.taskId, {
-    status: 'in_progress',
-    message: 'Starting task processing...',
-    timestamp: new Date().toISOString(),
-    result: {
-      inProgress: true
-    }
+  // Initialize counter for this task if it doesn't exist
+  if (!messageCounters.has(taskId)) {
+    messageCounters.set(taskId, 0);
+  }
+  
+  // Get current count and increment
+  const currentCount = messageCounters.get(taskId) || 0;
+  messageCounters.set(taskId, currentCount + 1);
+  
+  // Send first notification
+  agent.sendTaskMessage(taskId, {
+    type: 'progress',
+    message: `Processing message ${currentCount + 1}/2...`,
+    data: { progress: 50 * currentCount }
   });
   
-  // Simulate some processing time to allow notifications to complete
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // Simulate processing time
+  await new Promise(resolve => setTimeout(resolve, 1000));
   
-  // Send an additional notification before completing
-  agent.sendTaskMessage(taskMessage.content.taskId, {
-    status: 'in_progress',
-    message: 'Processing in progress...',
-    timestamp: new Date().toISOString(),
-    result: {
-      inProgress: true
-    }
+  // Generate response based on current message count
+  let response: string;
+  let shouldFinish: boolean = false;
+  
+  if (currentCount === 0) {
+    response = `This is my first response to: "${taskData.query}"`;
+  } else {
+    response = `This is my second and final response to: "${taskData.query}"`;
+    shouldFinish = true;
+  }
+  
+  // Send final notification
+  agent.sendTaskMessage(taskId, {
+    type: 'progress',
+    message: `Completed message ${currentCount + 1}/2`,
+    data: { progress: 50 + 50 * currentCount }
   });
   
-  // Wait again to ensure notifications are processed
-  await new Promise(resolve => setTimeout(resolve, 100));
+  // If this is the second message, clean up the counter
+  if (shouldFinish) {
+    messageCounters.delete(taskId);
+  }
   
-  // Simple text processing logic
-  const result = {
-    processed: true,
-    originalText: queryContent,
-    processedText: `Processed: ${queryContent}`,
-    timestamp: new Date().toISOString(),
-    replyMessage: `Hello! I received your message: "${queryContent}" and processed it successfully.`
+  // Return the result
+  return {
+    response: response,
+    messageNumber: currentCount + 1,
+    isComplete: shouldFinish
   };
-  
-  console.log("Task processing complete. Sending result:", JSON.stringify(result));
-  
-  // Send a final status update explicitly marking this as a completed task with a result
-  // This ensures the client receives a proper completion notification
-  agent.sendTaskMessage(taskMessage.content.taskId, {
-    status: 'completed',
-    message: 'Task completed successfully',
-    timestamp: new Date().toISOString(),
-    result: result // Include the full result object here
-  });
-  
-  // Return the result object which will be sent as a task.result message
-  return result;
+});
+
+// Listen for events
+agent.on('connected', () => {
+  console.log('Connected to orchestrator');
+});
+
+agent.on('registered', () => {
+  console.log('Agent registered with orchestrator');
+});
+
+agent.on('error', (error) => {
+  console.error('Agent error:', error.message);
+});
+
+agent.on('disconnected', () => {
+  console.log('Disconnected from orchestrator');
 });
 
 // Connect to the orchestrator
 agent.connect()
   .then(() => {
-    console.log('Connected to orchestrator');
+    console.log('Agent started and connected to orchestrator');
   })
   .catch(error => {
-    console.error('Error connecting to orchestrator:', error.message);
+    console.error('Connection error:', error.message);
   });
 
-// Listen for all messages to debug what's happening
-agent.on('raw-message', (msg) => {
-  console.log(`Received raw message: ${JSON.stringify(msg, null, 2)}`);
-  if (msg.type === 'task.execute') {
-    console.log('Task Execute Message Details:');
-    console.log(`- Task ID: ${msg.content?.taskId}`);
-    console.log(`- Task Type: ${msg.content?.taskType || 'undefined'}`);
-    console.log(`- Content: ${JSON.stringify(msg.content, null, 2)}`);
-  }
+// Handle process termination
+process.on('SIGINT', async () => {
+  console.log('Shutting down...');
+  await agent.disconnect();
+  process.exit(0);
 });
-
-// Listen for registration events
-agent.on('registered', (content) => {
-  console.log(`Agent registered successfully with ID: ${content.agentId}`);
-});
-
-// Listen for task events specifically
-agent.on('task', (taskData: any, taskMessage: any) => {
-  setTimeout(() => {
-    console.log(`Task received: ${JSON.stringify(taskData, null, 2)}`);
-    console.log(`Task message: ${JSON.stringify(taskMessage, null, 2)}`);
-  }, 2000);
-});
-
-// Listen for errors
-agent.on('error', (error) => {
-  console.error('Agent error:', error.message);
-});
-
-// Listen for disconnection
-agent.on('disconnected', () => {
-  console.log('Disconnected from orchestrator');
-});
-
-console.log('Simple agent initialized and waiting for tasks...');

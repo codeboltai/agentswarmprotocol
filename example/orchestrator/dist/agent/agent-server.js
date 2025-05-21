@@ -42,7 +42,7 @@ const uuid_1 = require("uuid");
  */
 class AgentServer {
     constructor({ agents }, eventBus, config = {}, messageHandler) {
-        this.agents = agents; // Only needed for connection tracking
+        this.agents = agents; // Registry for agent management
         this.eventBus = eventBus;
         this.port = config.port || parseInt(process.env.PORT || '3000', 10);
         this.pendingResponses = {}; // Track pending responses
@@ -65,27 +65,31 @@ class AgentServer {
             const connectionId = (0, uuid_1.v4)();
             ws.id = connectionId;
             console.log(`New agent connection established: ${connectionId}`);
+            // Add as a pending connection in registry
+            this.agents.addPendingConnection(connectionId, ws);
             // Handle incoming messages from agents
             ws.on('message', async (message) => {
                 try {
                     const parsedMessage = JSON.parse(message.toString());
-                    await this.handleMessage(parsedMessage, ws);
+                    await this.handleMessage(parsedMessage, connectionId);
                 }
                 catch (error) {
                     console.error('Error handling message:', error);
-                    this.sendError(ws, 'Error processing message', error instanceof Error ? error.message : String(error));
+                    this.sendError(connectionId, 'Error processing message', error instanceof Error ? error.message : String(error));
                 }
             });
             // Handle disconnections
             ws.on('close', () => {
                 console.log(`Agent connection closed: ${connectionId}`);
+                // Remove the connection from the registry
+                this.agents.removeConnection(connectionId);
                 // Emit event for disconnection, let the message handler deal with it
                 this.eventBus.emit('agent.disconnected', connectionId);
             });
             // Send welcome message
             try {
                 const welcomeMessage = {
-                    id: (0, uuid_1.v4)(),
+                    id: connectionId,
                     type: 'orchestrator.welcome',
                     content: {
                         message: 'Connected to ASP Orchestrator',
@@ -104,7 +108,7 @@ class AgentServer {
         });
         return this;
     }
-    async handleMessage(message, ws) {
+    async handleMessage(message, connectionId) {
         console.log(`Received agent message: ${JSON.stringify(message)}`);
         console.log(`Message content structure: ${JSON.stringify({
             contentType: message.content ? typeof message.content : 'undefined',
@@ -115,325 +119,81 @@ class AgentServer {
             dataIsEmpty: message.content?.data ? Object.keys(message.content.data).length === 0 : true
         })}`);
         if (!message.type) {
-            return this.sendError(ws, 'Invalid message format: type is required', message.id);
+            return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
         }
-        try {
-            switch (message.type) {
-                case 'agent.register':
-                    try {
-                        // Pass the WebSocket object to the registration handler
-                        const registrationResult = this.messageHandler.handleAgentRegistration(message, ws.id, ws);
-                        if (registrationResult.error) {
-                            this.sendError(ws, registrationResult.error, message.id);
-                            return;
-                        }
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'agent.registered',
-                            content: registrationResult,
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    }
-                    catch (error) {
-                        this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
-                    }
-                    break;
-                case 'agent.list.request':
-                    // Emit agent list request event
-                    this.eventBus.emit('agent.list.request', message.content?.filters || {}, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // Send the result back to the agent
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'agent.list.response',
-                            content: {
-                                agents: result
-                            },
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'service.list':
-                    // Emit service list event
-                    this.eventBus.emit('client.service.list', message.content?.filters || {}, (services) => {
-                        if (services.error) {
-                            this.sendError(ws, services.error, message.id);
-                            return;
-                        }
-                        // Send the result back to the agent
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'service.list.result',
-                            content: {
-                                services
-                            },
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'service.request':
-                    // Emit service request event
-                    this.eventBus.emit('service.request', message, ws.id, (serviceResult) => {
-                        if (serviceResult.error) {
-                            this.sendError(ws, serviceResult.error, message.id);
-                            return;
-                        }
-                        // Send the result back - using WebSocket directly
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'service.response',
-                            content: serviceResult,
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'service.task.execute':
-                    // Emit service task execute event
-                    this.eventBus.emit('service.task.execute', message, ws.id, (serviceResult) => {
-                        if (serviceResult.error) {
-                            this.sendError(ws, serviceResult.error, message.id);
-                            return;
-                        }
-                        // Send the result back - using WebSocket directly
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'service.task.result',
-                            content: serviceResult,
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'agent.request':
-                    // Emit agent request event
-                    this.eventBus.emit('agent.request.received', message, ws.id, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // The actual communication will be handled by event listeners in the orchestrator
-                        // This just returns a task ID for tracking - using WebSocket directly
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'agent.request.accepted',
-                            content: result,
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'task.result':
-                    // Emit task result event
-                    this.eventBus.emit('task.result.received', message);
-                    this.eventBus.emit('response.message', message);
-                    break;
-                case 'task.error':
-                    // Emit task error event
-                    this.eventBus.emit('task.error.received', message);
-                    this.eventBus.emit('response.message', message);
-                    break;
-                case 'task.status':
-                    // Emit task status update event
-                    console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
-                    this.eventBus.emit('task.status.received', message);
-                    this.eventBus.emit('response.message', message);
-                    break;
-                case 'service.task.result':
-                    // Emit service task result event
-                    console.log(`Service task result received: ${message.id}`);
-                    this.eventBus.emit('service.task.result.received', message);
-                    this.eventBus.emit('response.message', message);
-                    break;
-                case 'task.notification':
-                    // Handle task notification from agent
-                    // Get the agent information from the connection
-                    const agent = this.agents.getAgentByConnectionId(ws.id);
-                    if (!agent) {
-                        this.sendError(ws, 'Agent not registered or unknown', message.id);
-                        return;
-                    }
-                    // Enhance the notification with agent information
-                    const enhancedNotification = {
-                        ...message,
-                        content: {
-                            ...message.content,
-                            agentId: agent.id,
-                            agentName: agent.name
-                        }
-                    };
-                    // Emit the notification event for the orchestrator to handle
-                    this.eventBus.emit('task.notification.received', enhancedNotification);
-                    // Confirm receipt (optional) - using WebSocket directly
-                    ws.send(JSON.stringify({
-                        id: (0, uuid_1.v4)(),
-                        type: 'notification.received',
-                        content: {
-                            message: 'Notification received',
-                            notificationId: message.id
-                        },
-                        requestId: message.id,
-                        timestamp: Date.now().toString()
-                    }));
-                    break;
-                case 'agent.status':
-                    // Handle agent status update
-                    const statusAgent = this.agents.getAgentByConnectionId(ws.id);
-                    if (!statusAgent) {
-                        this.sendError(ws, 'Agent not registered or unknown', message.id);
-                        return;
-                    }
-                    // Update agent status in the registry
-                    this.agents.updateAgentStatus(statusAgent.id, message.content.status, message.content);
-                    // Confirm receipt
-                    ws.send(JSON.stringify({
-                        id: (0, uuid_1.v4)(),
-                        type: 'agent.status.updated',
-                        content: {
-                            message: 'Agent status updated',
-                            status: message.content.status
-                        },
-                        requestId: message.id,
-                        timestamp: Date.now().toString()
-                    }));
-                    break;
-                case 'mcp.servers.list.request':
-                    // Emit MCP servers list request event
-                    this.eventBus.emit('mcp.servers.list.request', message.content?.filters || {}, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // Send the result back to the agent
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'mcp.servers.list',
-                            content: {
-                                servers: result
-                            },
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'mcp.tools.list.request':
-                    // Emit MCP tools list request event
-                    if (!message.content?.serverId) {
-                        this.sendError(ws, 'Missing serverId in request', message.id);
-                        return;
-                    }
-                    this.eventBus.emit('mcp.tools.list.request', message.content.serverId, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // Send the result back to the agent
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'mcp.tools.list',
-                            content: {
-                                serverId: message.content.serverId,
-                                tools: result
-                            },
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'mcp.tool.execute.request':
-                    // Emit MCP tool execution request event
-                    if (!message.content?.serverId || !message.content?.toolName) {
-                        this.sendError(ws, 'Missing serverId or toolName in request', message.id);
-                        return;
-                    }
-                    // Get the agent information for proper attribution
-                    const mcpAgent = this.agents.getAgentByConnectionId(ws.id);
-                    if (!mcpAgent) {
-                        this.sendError(ws, 'Agent not registered or unknown', message.id);
-                        return;
-                    }
-                    this.eventBus.emit('mcp.tool.execute.request', {
-                        serverId: message.content.serverId,
-                        toolName: message.content.toolName,
-                        parameters: message.content.parameters || {},
-                        agentId: mcpAgent.id,
-                        timeout: message.content.timeout
-                    }, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // Send the result back to the agent
-                        ws.send(JSON.stringify({
-                            id: (0, uuid_1.v4)(),
-                            type: 'mcp.tool.execution.result',
-                            content: {
-                                serverId: message.content.serverId,
-                                toolName: message.content.toolName,
-                                result: result,
-                                status: 'success'
-                            },
-                            requestId: message.id,
-                            timestamp: Date.now().toString()
-                        }));
-                    });
-                    break;
-                case 'ping':
-                    // Respond with pong message
-                    ws.send(JSON.stringify({
-                        id: (0, uuid_1.v4)(),
-                        type: 'pong',
-                        content: {
-                            timestamp: Date.now()
-                        },
-                        requestId: message.id,
-                        timestamp: Date.now().toString()
-                    }));
-                    break;
-                default:
-                    console.warn(`Unhandled message type agent-server: ${message.type}`);
-                    this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
-            }
-        }
-        catch (error) {
-            console.error('Error handling message:', error);
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+        // Handle different message types with switch-case for better readability
+        switch (message.type) {
+            case 'agent.register':
+                this.eventBus.emit('agent.register', message, connectionId, this);
+                break;
+            case 'agent.list.request':
+                this.eventBus.emit('agent.list.request', message, connectionId, this);
+                break;
+            case 'service.list':
+                this.eventBus.emit('service.list', message, connectionId, this);
+                break;
+            case 'service.task.execute':
+                this.eventBus.emit('service.task.execute', message, connectionId, this);
+                break;
+            case 'task.result':
+                this.eventBus.emit('task.result', message, connectionId, this);
+                break;
+            case 'task.error':
+                this.eventBus.emit('task.error', message, connectionId, this);
+                break;
+            case 'task.status':
+                this.eventBus.emit('task.status', message, connectionId, this);
+                break;
+            case 'service.task.result':
+                this.eventBus.emit('service.task.result', message, connectionId, this);
+                break;
+            case 'task.notification':
+                this.eventBus.emit('task.notification', message, connectionId, this);
+                break;
+            case 'agent.status':
+                this.eventBus.emit('agent.status', message, connectionId, this);
+                break;
+            case 'mcp.servers.list':
+            case 'mcp.servers.list.request': // backward compatibility
+                this.eventBus.emit('mcp.servers.list', message, connectionId, this);
+                break;
+            case 'mcp.tools.list':
+            case 'mcp.tools.list.request': // backward compatibility
+                this.eventBus.emit('mcp.tools.list', message, connectionId, this);
+                break;
+            case 'mcp.tool.execute':
+            case 'mcp.tool.execute.request': // backward compatibility
+                this.eventBus.emit('mcp.tool.execute', message, connectionId, this);
+                break;
+            case 'ping':
+                this.eventBus.emit('ping', message, connectionId, this);
+                break;
+            default:
+                // For any unhandled message types, still emit the event but warn about it
+                this.eventBus.emit(message.type, message, connectionId, this);
+                // If no listeners for this specific message type, log a warning
+                if (this.eventBus.listenerCount(message.type) === 0) {
+                    console.warn(`No handlers registered for message type: ${message.type}`);
+                    this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
+                }
+                break;
         }
     }
     // Helper method to send messages
-    send(wsOrAgentId, message) {
+    send(connectionIdOrAgentId, message) {
         if (!message.id) {
             message.id = (0, uuid_1.v4)();
         }
         message.timestamp = Date.now().toString();
         try {
-            // If a WebSocket object was directly provided
-            if (typeof wsOrAgentId !== 'string') {
-                wsOrAgentId.send(JSON.stringify(message));
-                return message.id;
-            }
-            // Otherwise, it's an agent ID
-            const agentId = wsOrAgentId;
-            if (!agentId) {
-                throw new Error('Agent ID is required');
-            }
-            const agent = this.agents.getAgentById(agentId);
-            if (!agent) {
-                throw new Error(`Agent ${agentId} not found`);
-            }
-            if (!agent.connectionId) {
-                throw new Error(`Agent ${agentId} not connected (no connectionId)`);
-            }
-            // Access the connection property of the agent
-            const connection = agent.connection;
+            // First, try to find the connection directly
+            let connection = this.agents.getConnection(connectionIdOrAgentId);
+            // If not found, maybe it's an agent ID
             if (!connection) {
-                throw new Error(`Connection not found for agent ${agentId} (connectionId: ${agent.connectionId})`);
+                connection = this.agents.getConnectionByAgentId(connectionIdOrAgentId);
+            }
+            if (!connection) {
+                throw new Error(`Connection not found for ID: ${connectionIdOrAgentId}`);
             }
             connection.send(JSON.stringify(message));
             return message.id;
@@ -444,7 +204,7 @@ class AgentServer {
         }
     }
     // Helper method to send an error response
-    sendError(ws, errorMessage, requestId = null) {
+    sendError(connectionId, errorMessage, requestId = null) {
         const message = {
             id: (0, uuid_1.v4)(),
             type: 'error',
@@ -456,11 +216,58 @@ class AgentServer {
             message.requestId = requestId;
         }
         try {
-            // Send directly using WebSocket since this is used in error handling contexts
-            ws.send(JSON.stringify(message));
+            this.send(connectionId, message);
         }
         catch (error) {
             console.error('Error sending error message:', error);
+        }
+    }
+    /**
+     * Handle agent registration
+     * @param message - Registration message
+     * @param connectionId - Agent connection ID
+     * @returns Registration result
+     */
+    handleAgentRegistration(message, connectionId) {
+        if (!message.content) {
+            return { error: 'Invalid agent registration: content is required' };
+        }
+        // Extract agent data from the message
+        const { id, agentId, name, description, status = 'online', capabilities = [], manifest = null } = message.content;
+        // Use id or agentId if provided, or generate a new one
+        const actualId = id || agentId || manifest?.id || (0, uuid_1.v4)();
+        // Validate required fields
+        if (!name) {
+            return { error: 'Invalid agent registration: name is required' };
+        }
+        try {
+            // Create the agent object
+            const agent = {
+                id: actualId,
+                name,
+                capabilities: capabilities || [],
+                status: status || 'online',
+                connectionId,
+                registeredAt: new Date().toISOString(),
+                manifest: manifest || (description ? { description } : undefined)
+            };
+            // Register the agent in the registry with the connection id
+            this.agents.registerAgent(agent, connectionId);
+            // Log the registration event
+            console.log(`Agent ${name} (${actualId}) registered successfully with connection ${connectionId}`);
+            // Emit event for agent registration
+            this.eventBus.emit('agent.registered', actualId, connectionId);
+            return {
+                id: actualId,
+                agentId: actualId, // Include both formats for compatibility
+                name,
+                status,
+                message: 'Agent successfully registered'
+            };
+        }
+        catch (error) {
+            console.error(`Error registering agent: ${error instanceof Error ? error.message : String(error)}`);
+            return { error: error instanceof Error ? error.message : String(error) };
         }
     }
     // Helper method to send a message and wait for a response
@@ -498,7 +305,6 @@ class AgentServer {
             // Set up timeout
             const timer = setTimeout(() => {
                 delete this.pendingResponses[messageId];
-                this.eventBus.removeListener('response.message', responseHandler);
                 reject(new Error(`Response timeout after ${timeout}ms for message ${messageId}`));
             }, timeout);
             // Store pending response
@@ -507,8 +313,6 @@ class AgentServer {
                 reject,
                 timer
             };
-            // Listen for responses
-            this.eventBus.on('response.message', responseHandler);
             // Send the message
             this.send(agentId, message);
         });

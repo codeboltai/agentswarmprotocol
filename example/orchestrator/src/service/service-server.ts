@@ -88,6 +88,7 @@ class ServiceServer {
           this.sendError(
             connectionId, 
             'Error processing message', 
+            null,
             error instanceof Error ? error.message : String(error)
           );
         }
@@ -130,137 +131,51 @@ class ServiceServer {
       return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
     }
     
-    try {
-      switch (message.type) {
-        case 'service.register':
-          // Handle service registration through dedicated method
-          await this.handleServiceRegister(message, connectionId);
-          break;
-          
-        case 'service.status.update':
-          // Handle service status update through dedicated method
-          await this.handleServiceStatusUpdate(message, connectionId);
-          break;
-          
-        case 'service.task.result':
-          // Emit task result event
-          this.eventBus.emit('service.task.result.received', message);
-          break;
-          
-        case 'service.task.notification':
-          // Handle task notification from service
-          const serviceId = this.services.getServiceByConnectionId(connectionId)?.id;
-          
-          if (!serviceId) {
-            this.sendError(connectionId, 'Service not registered or unknown', message.id);
-            return;
-          }
-          
-          const service = this.services.getServiceById(serviceId);
-          
-          if (!service) {
-            this.sendError(connectionId, 'Service not found', message.id);
-            return;
-          }
-          
-          // Enhance the notification with service information
-          const enhancedNotification = {
-            ...message,
-            content: {
-              ...message.content,
-              serviceId: service.id,
-              serviceName: service.name
-            }
-          };
-          
-          // Emit event for the notification
-          this.eventBus.emit('service.notification.received', enhancedNotification);
-          
-          // Send confirmation
-          this.send(connectionId, {
-            id: uuidv4(),
-            type: 'notification.received',
-            content: {
-              message: 'Notification received',
-              notificationId: message.id
-            },
-            requestId: message.id
-          });
-          break;
-          
-        case 'service.error':
-          // Emit service error event
-          this.eventBus.emit('service.error.received', message);
-          break;
-          
-        case 'pong':
-          // Handle ping response
-          break;
-          
-        default:
-          console.warn(`Unhandled message type in service-server: ${message.type}`);
+    // Handle different message types with switch-case for better readability
+    switch (message.type) {
+      case 'service.register':
+        this.eventBus.emit('service.register', message, connectionId, this);
+        break;
+        
+      case 'service.status.update':
+        this.eventBus.emit('service.status.update', message, connectionId, this);
+        break;
+        
+      case 'service.task.result':
+        this.eventBus.emit('service.task.result.received', message, connectionId, this);
+        break;
+        
+      case 'service.task.notification':
+        this.eventBus.emit('service.task.notification', message, connectionId, this);
+        break;
+        
+      case 'service.error':
+        this.eventBus.emit('service.error.received', message, connectionId, this);
+        break;
+        
+      case 'ping':
+        this.send(connectionId, {
+          id: uuidv4(),
+          type: 'pong',
+          content: {
+            timestamp: Date.now()
+          },
+          requestId: message.id,
+          timestamp: Date.now().toString()
+        });
+        break;
+        
+      default:
+        // For any unhandled message types, still emit the event but warn about it
+        this.eventBus.emit(message.type, message, connectionId, this);
+        
+        // If no listeners for this specific message type, log a warning
+        if (this.eventBus.listenerCount(message.type) === 0) {
+          console.warn(`No handlers registered for message type: ${message.type}`);
           this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
-      }
-    } catch (error) {
-      console.error('Error handling message in service-server:', error);
-      this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        }
+        break;
     }
-  }
-
-  /**
-   * Handle service registration
-   * @param message The service registration message
-   * @param connectionId The service connection ID
-   */
-  private async handleServiceRegister(message: BaseMessage, connectionId: string): Promise<void> {
-    // Generate a unique request ID
-    const requestId = uuidv4();
-    
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`service.register.result.${requestId}`, (registrationResult: any) => {
-      // Send confirmation
-      this.send(connectionId, {
-        id: uuidv4(),
-        type: 'service.registered',
-        content: registrationResult,
-        requestId: message.id
-      });
-    });
-    
-    this.eventBus.once(`service.register.error.${requestId}`, (errorResult: any) => {
-      this.sendError(connectionId, errorResult.error, message.id);
-    });
-    
-    // Emit registration event with the request ID
-    this.eventBus.emit('service.register', message, connectionId, requestId);
-  }
-
-  /**
-   * Handle service status update
-   * @param message The service status update message
-   * @param connectionId The service connection ID
-   */
-  private async handleServiceStatusUpdate(message: BaseMessage, connectionId: string): Promise<void> {
-    // Generate a unique request ID
-    const requestId = uuidv4();
-    
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`service.status.update.result.${requestId}`, (result: any) => {
-      // Send confirmation
-      this.send(connectionId, {
-        id: uuidv4(),
-        type: 'service.status.updated',
-        content: result,
-        requestId: message.id
-      });
-    });
-    
-    this.eventBus.once(`service.status.update.error.${requestId}`, (errorResult: any) => {
-      this.sendError(connectionId, errorResult.error, message.id);
-    });
-    
-    // Emit service status update event with the request ID
-    this.eventBus.emit('service.status.update', message, connectionId, requestId);
   }
 
   // Helper method to send messages
@@ -277,7 +192,7 @@ class ServiceServer {
       
       // If not found, try to get it from the service registry
       if (!ws) {
-        ws = this.services.getConnection(connectionId);
+        ws = this.services.getConnection(connectionId) as WebSocketWithId;
       }
       
       if (ws) {
@@ -294,12 +209,13 @@ class ServiceServer {
   }
 
   // Helper method to send an error response
-  sendError(connectionId: string, errorMessage: string, requestId: string | null = null): void {
+  sendError(connectionId: string, errorMessage: string, requestId: string | null = null, details?: string): void {
     const message: BaseMessage = {
       id: uuidv4(),
       type: 'error',
       content: {
-        error: errorMessage
+        error: errorMessage,
+        details: details || errorMessage
       }
     };
     
@@ -313,7 +229,7 @@ class ServiceServer {
       
       // If not found, try to get it from the service registry
       if (!ws) {
-        ws = this.services.getConnection(connectionId);
+        ws = this.services.getConnection(connectionId) as WebSocketWithId;
       }
       
       if (ws) {

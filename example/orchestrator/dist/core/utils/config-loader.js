@@ -15,8 +15,14 @@ class ConfigLoader {
      * @param options - Configuration options
      */
     constructor(options = {}) {
-        // Try to resolve the path relative to the project root directory
-        if (options.configPath) {
+        // Parse command line arguments if not provided
+        this.cliArgs = options.cliArgs || this.parseCommandLineArgs();
+        // Try to resolve the path from CLI args, options, or default locations
+        if (this.cliArgs.config && typeof this.cliArgs.config === 'string') {
+            this.configPath = this.cliArgs.config;
+            console.log(`Using configuration file from command line: ${this.configPath}`);
+        }
+        else if (options.configPath) {
             this.configPath = options.configPath;
         }
         else {
@@ -39,6 +45,77 @@ class ConfigLoader {
         }
         console.log(`Will look for configuration file at: ${this.configPath}`);
         this.config = null;
+    }
+    /**
+     * Parse command line arguments
+     * @returns Parsed command line arguments
+     */
+    parseCommandLineArgs() {
+        const args = process.argv.slice(2);
+        const result = {};
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            if (arg.startsWith('--')) {
+                const key = arg.slice(2);
+                const nextArg = args[i + 1];
+                if (nextArg && !nextArg.startsWith('--')) {
+                    result[key] = nextArg;
+                    i++; // Skip the value
+                }
+                else {
+                    result[key] = true;
+                }
+            }
+        }
+        return result;
+    }
+    /**
+     * Get the resolved configuration with CLI args, config file, environment variables and defaults
+     * @param options Additional configuration options
+     * @returns Fully resolved configuration
+     */
+    getResolvedConfig(options = {}) {
+        // Ensure config is loaded
+        if (!this.config) {
+            this.loadConfig();
+        }
+        const orchestratorSettings = this.config?.orchestrator || this.getDefaultConfig().orchestrator;
+        // Process CLI arguments
+        const portFromCli = this.cliArgs.agentPort && typeof this.cliArgs.agentPort === 'string'
+            ? parseInt(this.cliArgs.agentPort, 10)
+            : undefined;
+        const clientPortFromCli = this.cliArgs.clientPort && typeof this.cliArgs.clientPort === 'string'
+            ? parseInt(this.cliArgs.clientPort, 10)
+            : undefined;
+        const servicePortFromCli = this.cliArgs.servicePort && typeof this.cliArgs.servicePort === 'string'
+            ? parseInt(this.cliArgs.servicePort, 10)
+            : undefined;
+        const logLevelFromCli = this.cliArgs.logLevel && typeof this.cliArgs.logLevel === 'string'
+            ? this.cliArgs.logLevel
+            : undefined;
+        // Priority: CLI args > provided options > config file > environment vars > defaults
+        return {
+            port: portFromCli ||
+                options.port ||
+                orchestratorSettings.agentPort ||
+                Number(process.env.PORT) ||
+                3000,
+            clientPort: clientPortFromCli ||
+                options.clientPort ||
+                orchestratorSettings.clientPort ||
+                Number(process.env.CLIENT_PORT) ||
+                3001,
+            servicePort: servicePortFromCli ||
+                options.servicePort ||
+                orchestratorSettings.servicePort ||
+                Number(process.env.SERVICE_PORT) ||
+                3002,
+            logLevel: logLevelFromCli ||
+                options.logLevel ||
+                orchestratorSettings.logLevel ||
+                process.env.LOG_LEVEL ||
+                'info'
+        };
     }
     /**
      * Load the configuration file

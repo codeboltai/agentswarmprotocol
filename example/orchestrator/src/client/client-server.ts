@@ -17,6 +17,7 @@ interface ClientServerConfig {
 
 /**
  * ClientServer - Handles WebSocket communication with clients
+ * Responsible only for communication layer, not business logic
  */
 class ClientServer {
   private eventBus: EventEmitter;
@@ -33,39 +34,10 @@ class ClientServer {
     this.clientConnections = new Map(); // Store client connections
     this.pendingResponses = {}; // Track pending responses
     this.clientRegistry = config.clientRegistry || new ClientRegistry();
+    
     // Initialize clientServer and clientWss to null as they'll be set in start()
     this.clientServer = null as unknown as http.Server;
     this.clientWss = null as unknown as WebSocket.Server;
-    
-    // Set up event listeners for client communication
-    this.setupEventListeners();
-  }
-
-  setupEventListeners(): void {
-    // Listen for task results from agents and forward to clients
-    this.eventBus.on('task.result', (clientId: string, taskId: string, content: any) => {
-      this.forwardTaskResultToClient(clientId, taskId, content);
-    });
-    
-    // Listen for task errors from agents and forward to clients
-    this.eventBus.on('task.error', (clientId: string, message: any) => {
-      this.forwardTaskErrorToClient(clientId, message);
-    });
-
-    // Listen for task notifications
-    this.eventBus.on('task.notification', (clientId: string, content: any) => {
-      this.forwardTaskNotificationToClient(clientId, content);
-    });
-
-    // Listen for service notifications
-    this.eventBus.on('service.notification', (clientId: string, content: any) => {
-      this.forwardServiceNotificationToClient(clientId, content);
-    });
-
-    // Listen for MCP task executions
-    this.eventBus.on('mcp.task.execution', (clientId: string, content: any) => {
-      this.forwardMCPTaskExecutionToClient(clientId, content);
-    });
   }
 
   async start(): Promise<ClientServer> {
@@ -99,17 +71,15 @@ class ClientServer {
       ws.on('message', async (message: WebSocket.Data) => {
         try {
           const parsedMessage = JSON.parse(message.toString());
-          await this.handleClientMessage(parsedMessage, clientWs);
+          await this.handleMessage(parsedMessage, clientId);
         } catch (error) {
           console.error('Error handling client message:', error);
-          this.sendToClient(clientWs, {
-            id: uuidv4(),
-            type: 'error',
-            content: {
-              error: 'Error processing message',
-              details: error instanceof Error ? error.message : String(error)
-            }
-          });
+          this.sendError(
+            clientId,
+            'Error processing message',
+            null,
+            error instanceof Error ? error.message : String(error)
+          );
         }
       });
       
@@ -126,7 +96,7 @@ class ClientServer {
       });
       
       // Send welcome message to client
-      this.sendToClient(clientWs, {
+      this.send(clientId, {
         id: uuidv4(),
         type: 'orchestrator.welcome',
         content: {
@@ -145,459 +115,107 @@ class ClientServer {
     return this;
   }
 
-  // Handle messages from clients
-  async handleClientMessage(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    console.log(`Received client message: ${JSON.stringify(message)}`);
-    
-    if (!message.type) {
-      return this.sendToClient(ws, {
-        id: uuidv4(),
-        type: 'error',
-        content: {
-          error: 'Invalid message format',
-          details: 'Message type is required'
-        }
-      });
-    }
-    
-    try {
-      switch (message.type) {
-        case 'client.register':
-          await this.handleClientRegistration(message, ws);
-          break;
-          
-        case 'client.list':
-          await this.handleClientList(message, ws);
-          break;
-          
-        case 'task.create':
-          await this.handleClientTaskCreation(message, ws);
-          break;
-          
-        case 'task.status':
-          await this.handleClientTaskStatus(message, ws);
-          break;
-          
-        case 'agent.list':
-          await this.handleClientAgentList(message, ws);
-          break;
-          
-        case 'mcp.server.list':
-          await this.handleClientMCPServerList(message, ws);
-          break;
-          
-        case 'client.message':
-          await this.handleClientDirectMessage(message, ws);
-          break;
-          
-        case 'mcp.server.tools':
-          await this.handleClientMCPServerTools(message, ws);
-          break;
-          
-        case 'mcp.tool.execute':
-          await this.handleClientMCPToolExecution(message, ws);
-          break;
-          
-        default:
-          this.sendToClient(ws, {
-            id: uuidv4(),
-            type: 'error',
-            content: {
-              error: 'Unsupported message type',
-              details: `Message type '${message.type}' is not supported`
-            }
-          });
-      }
-    } catch (error) {
-      console.error('Error handling client message:', error);
-      this.sendToClient(ws, {
-        id: uuidv4(),
-        type: 'error',
-        content: {
-          error: 'Error processing message',
-          details: error instanceof Error ? error.message : String(error)
-        }
-      });
-    }
-  }
-  
-  // Handle client registration
-  async handleClientRegistration(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    const content = message.content || {};
-    const clientId = ws.id;
-    
-    // Update client in registry with provided information
-    const client = this.clientRegistry.updateClient({
-      id: clientId,
-      name: content.name,
-      metadata: content.metadata || {},
-      status: 'online'
-    });
-    
-    // Respond with success
-    this.sendToClient(ws, {
-      id: message.id || uuidv4(),
-      type: 'client.register.response',
+  // Helper method to send error responses with consistent format
+  sendError(clientId: string, errorMessage: string, requestId: string | null = null, details?: string): void {
+    const message: BaseMessage = {
+      id: uuidv4(),
+      type: 'error',
       content: {
-        success: true,
-        client: {
-          id: client.id,
-          name: client.name,
-          status: client.status,
-          registeredAt: client.registeredAt,
-          lastActiveAt: client.lastActiveAt
-        }
-      }
-    });
-    
-    // Notify about client registration/update
-    this.eventBus.emit('client.registered', client);
-  }
-  
-  // Handle client list request
-  async handleClientList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    const content = message.content || {};
-    const filters = content.filters || {};
-    const requestId = uuidv4();
-
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.list.result.${requestId}`, (clients: Client[]) => {
-      // Send response
-      this.sendToClient(ws, {
-        id: message.id || uuidv4(),
-        type: 'client.list.response',
-        content: {
-          clients: clients
-        }
-      });
-    });
-
-    this.eventBus.once(`client.list.error.${requestId}`, (error) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting client list',
-          details: error.error
-        }
-      });
-    });
-
-    // Emit event to get the client list from MessageHandler
-    this.eventBus.emit('client.list.request', filters, requestId);
-  }
-  
-  // Handle task creation request from client
-  async handleClientTaskCreation(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    const requestId = uuidv4();
-
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.task.create.result.${requestId}`, (result: any) => {
-      // The task is now completed - send the result
-      this.sendToClient(ws, {
-        type: 'task.result',
-        id: message.id,
-        content: result
-      });
-    });
-
-    this.eventBus.once(`client.task.create.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error creating task',
-          details: result.error
-        }
-      });
-    });
-
-    // Emit task creation event with the request ID
-    this.eventBus.emit('client.task.create', message, ws.id, requestId);
-    // Note: The task.created notification is now sent directly in the orchestrator's event handler
-  }
-  
-  // Handle task status request from client
-  async handleClientTaskStatus(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    const requestId = uuidv4();
-
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.task.status.result.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'task.status',
-        id: message.id,
-        content: result
-      });
-    });
-
-    this.eventBus.once(`client.task.status.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting task status',
-          details: result.error
-        }
-      });
-    });
-
-    // Emit task status request event with the request ID
-    this.eventBus.emit('client.task.status', message.content.taskId, requestId);
-  }
-  
-  // Handle agent list request from client
-  async handleClientAgentList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    const requestId = uuidv4();
-
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.agent.list.result.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'agent.list',
-        id: message.id,
-        content: {
-          agents: result
-        }
-      });
-    });
-
-    this.eventBus.once(`client.agent.list.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting agent list',
-          details: result.error
-        }
-      });
-    });
-
-    // Emit agent list request event with the request ID
-    this.eventBus.emit('client.agent.list', {}, requestId);
-  }
-  
-  // Handle MCP server list request from client
-  async handleClientMCPServerList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    console.log(`Processing MCP server list request: ${JSON.stringify(message)}`);
-    const requestId = uuidv4();
-    
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.mcp.server.list.result.${requestId}`, (result: any) => {
-      console.log(`Received MCP server list result: ${JSON.stringify(result)}`);
-      
-      this.sendToClient(ws, {
-        type: 'mcp.server.list',
-        id: message.id, // Use id for consistency
-        content: {
-          servers: result
-        }
-      });
-    });
-    
-    this.eventBus.once(`client.mcp.server.list.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id, // Use id for consistency
-        content: {
-          error: 'Error getting MCP server list',
-          details: result.error
-        }
-      });
-    });
-    
-    // Emit MCP server list request event with the request ID
-    this.eventBus.emit('client.mcp.server.list', message.content?.filters || {}, requestId);
-  }
-
-  // Handle MCP server tools request from client
-  async handleClientMCPServerTools(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    console.log(`Processing MCP server tools request: ${JSON.stringify(message)}`);
-    
-    if (!message.content?.serverId) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Invalid request',
-          details: 'Server ID is required'
-        }
-      });
-    }
-    
-    const requestId = uuidv4();
-    
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.mcp.server.tools.result.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'mcp.server.tools',
-        id: message.id,
-        content: {
-          serverId: message.content.serverId,
-          tools: result
-        }
-      });
-    });
-    
-    this.eventBus.once(`client.mcp.server.tools.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error getting MCP server tools',
-          details: result.error
-        }
-      });
-    });
-    
-    // Emit MCP server tools request event with the request ID
-    this.eventBus.emit('client.mcp.server.tools', message.content.serverId, requestId);
-  }
-  
-  // Handle MCP tool execution request from client
-  async handleClientMCPToolExecution(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    console.log(`Processing MCP tool execution request: ${JSON.stringify(message)}`);
-    
-    if (!message.content?.serverId || !message.content?.toolName) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Invalid request',
-          details: 'Server ID and tool name are required'
-        }
-      });
-    }
-    
-    const requestId = uuidv4();
-    
-    // Set up one-time listeners for result and error
-    this.eventBus.once(`client.mcp.tool.execute.result.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'mcp.tool.execution.result',
-        id: message.id,
-        content: result
-      });
-    });
-    
-    this.eventBus.once(`client.mcp.tool.execute.error.${requestId}`, (result: any) => {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Error executing MCP tool',
-          details: result.error
-        }
-      });
-    });
-    
-    // Emit MCP tool execution request event with the request ID
-    this.eventBus.emit('client.mcp.tool.execute', {
-      serverId: message.content.serverId,
-      toolName: message.content.toolName,
-      parameters: message.content.parameters || {},
-      clientId: ws.id
-    }, requestId);
-  }
-
-  // Handle direct message from client
-  async handleClientDirectMessage(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    // A client message can be of two types:
-    // 1. A message from a client to an agent
-    // 2. A message from a client to another client
-    
-    const targetType = message.content?.target?.type;
-    const targetId = message.content?.target?.id;
-    
-    if (!targetType || !targetId) {
-      return this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Invalid target',
-          details: 'Target type and ID are required'
-        }
-      });
-    }
-    
-    // Enhance message with sender information
-    const enhancedMessage = {
-      ...message,
-      content: {
-        ...message.content,
-        sender: {
-          id: ws.id,
-          type: 'client'
-        }
+        error: errorMessage,
+        details: details || errorMessage
       }
     };
     
-    // Forward the message based on target type
-    if (targetType === 'agent') {
-      this.eventBus.emit('client.message.agent', enhancedMessage, targetId, (result: any) => {
-        if (result.error) {
-          this.sendToClient(ws, {
-            type: 'error',
-            id: message.id,
-            content: {
-              error: 'Error sending message to agent',
-              details: result.error
-            }
-          });
-          return;
-        }
+    if (requestId) {
+      message.requestId = requestId;
+    }
+    
+    try {
+      this.send(clientId, message);
+    } catch (error) {
+      console.error('Error sending error message:', error);
+    }
+  }
+
+  // Handle messages from clients - similar to AgentServer pattern
+  async handleMessage(message: BaseMessage, clientId: string): Promise<void> {
+    console.log(`Received client message: ${JSON.stringify(message)}`);
+    
+    if (!message.type) {
+      return this.sendError(clientId, 'Invalid message format', message.id, 'Message type is required');
+    }
+    
+    // Handle different message types with switch-case for better readability
+    switch (message.type) {
+      // Client registration and management
+      case 'client.register':
+        this.eventBus.emit('client.register', message, clientId, this);
+        break;
         
-        // Confirm message delivery
-        this.sendToClient(ws, {
-          type: 'message.sent',
-          id: message.id,
-          content: {
-            target: {
-              type: targetType,
-              id: targetId
-            },
-            result: result
-          }
-        });
-      });
-    } else if (targetType === 'client') {
-      this.eventBus.emit('client.message.client', enhancedMessage, targetId, (result: any) => {
-        if (result.error) {
-          this.sendToClient(ws, {
-            type: 'error',
-            id: message.id,
-            content: {
-              error: 'Error sending message to client',
-              details: result.error
-            }
-          });
-          return;
-        }
+      case 'client.list':
+        this.eventBus.emit('client.list.request', message, clientId, this);
+        break;
         
-        // Confirm message delivery
-        this.sendToClient(ws, {
-          type: 'message.sent',
-          id: message.id,
+      // Task-related operations
+      case 'task.create':
+        this.eventBus.emit('client.task.create.request', message, clientId, this);
+        break;
+        
+      case 'task.status':
+        this.eventBus.emit('client.task.status.request', message, clientId, this);
+        break;
+        
+      // Agent operations
+      case 'agent.list':
+        this.eventBus.emit('client.agent.list.request', message, clientId, this);
+        break;
+        
+      // MCP-related operations
+      case 'mcp.server.list':
+        this.eventBus.emit('client.mcp.server.list.request', message, clientId, this);
+        break;
+        
+      case 'mcp.server.tools':
+        this.eventBus.emit('client.mcp.server.tools.request', message, clientId, this);
+        break;
+        
+      case 'mcp.tool.execute':
+        this.eventBus.emit('client.mcp.tool.execute.request', message, clientId, this);
+        break;
+        
+      // Message routing
+      case 'client.message':
+        this.eventBus.emit('client.direct.message', message, clientId, this);
+        break;
+        
+      case 'ping':
+        this.send(clientId, {
+          id: uuidv4(),
+          type: 'pong',
           content: {
-            target: {
-              type: targetType,
-              id: targetId
-            }
-          }
+            timestamp: Date.now()
+          },
+          requestId: message.id,
+          timestamp: Date.now().toString()
         });
-      });
-    } else {
-      this.sendToClient(ws, {
-        type: 'error',
-        id: message.id,
-        content: {
-          error: 'Unsupported target type',
-          details: `Target type '${targetType}' is not supported`
+        break;
+        
+      // Unrecognized message type
+      default:
+        // For any unhandled message types, still emit the event but warn about it
+        this.eventBus.emit(message.type, message, clientId, this);
+        
+        // If no listeners for this specific message type, log a warning
+        if (this.eventBus.listenerCount(message.type) === 0) {
+          console.warn(`No handlers registered for message type: ${message.type}`);
+          this.sendError(clientId, `Unsupported message type: ${message.type}`, message.id);
         }
-      });
+        break;
     }
   }
   
-  // Helper method to send messages to clients
-  sendToClient(ws: WebSocketWithId, message: BaseMessage): void {
+  // Helper method to send messages to clients - similar to AgentServer.send
+  send(clientId: string, message: BaseMessage): string {
     if (!message.id) {
       message.id = uuidv4();
     }
@@ -605,89 +223,42 @@ class ClientServer {
     message.timestamp = Date.now().toString();
     
     try {
-      ws.send(JSON.stringify(message));
+      // Find the client connection
+      const connection = this.getClientConnection(clientId);
+      
+      if (!connection) {
+        throw new Error(`Connection not found for client ID: ${clientId}`);
+      }
+      
+      connection.send(JSON.stringify(message));
+      
+      // Update client's lastActiveAt timestamp
+      const client = this.clientRegistry.getClientById(clientId);
+      if (client) {
+        this.clientRegistry.updateClient({
+          ...client,
+          lastActiveAt: new Date().toISOString()
+        });
+      }
+      
+      return message.id;
     } catch (error) {
       console.error('Error sending message to client:', error);
       throw error;
     }
   }
   
-  // Forward task results to clients
-  forwardTaskResultToClient(clientId: string, taskId: string, content: any): void {
-    const clientWs = this.getClientConnection(clientId);
-    if (!clientWs) {
-      console.log(`Client ${clientId} is not connected, cannot forward task result`);
-      return;
+  /**
+   * Send a message to a client by ID - wrapper around send for external use
+   * @param clientId - ID of the client to send the message to
+   * @param message - The message to send
+   */
+  sendMessageToClient(clientId: string, message: any): void {
+    try {
+      this.send(clientId, message);
+    } catch (error) {
+      console.error(`Error sending message to client ${clientId}:`, error);
     }
-    
-    this.sendToClient(clientWs, {
-      id: uuidv4(),
-      type: 'task.result',
-      content: {
-        taskId,
-        ...content
-      }
-    });
-  }
-  
-  // Forward task errors to clients
-  forwardTaskErrorToClient(clientId: string, message: any): void {
-    const clientWs = this.getClientConnection(clientId);
-    if (!clientWs) {
-      console.log(`Client ${clientId} is not connected, cannot forward task error`);
-      return;
-    }
-    
-    this.sendToClient(clientWs, {
-      id: uuidv4(),
-      type: 'task.error',
-      content: message
-    });
-  }
-  
-  // Forward task notifications to clients
-  forwardTaskNotificationToClient(clientId: string, content: any): void {
-    const clientWs = this.getClientConnection(clientId);
-    if (!clientWs) {
-      console.log(`Client ${clientId} is not connected, cannot forward task notification`);
-      return;
-    }
-    
-    this.sendToClient(clientWs, {
-      id: uuidv4(),
-      type: 'task.notification',
-      content: content
-    });
-  }
-  
-  // Forward service notifications to clients
-  forwardServiceNotificationToClient(clientId: string, content: any): void {
-    const clientWs = this.getClientConnection(clientId);
-    if (!clientWs) {
-      console.log(`Client ${clientId} is not connected, cannot forward service notification`);
-      return;
-    }
-    
-    this.sendToClient(clientWs, {
-      id: uuidv4(),
-      type: 'service.notification',
-      content: content
-    });
-  }
-  
-  // Forward MCP task executions to clients
-  forwardMCPTaskExecutionToClient(clientId: string, content: any): void {
-    const clientWs = this.getClientConnection(clientId);
-    if (!clientWs) {
-      console.log(`Client ${clientId} is not connected, cannot forward MCP task execution`);
-      return;
-    }
-    
-    this.sendToClient(clientWs, {
-      id: uuidv4(),
-      type: 'mcp.task.execution',
-      content: content
-    });
   }
   
   /**
@@ -716,23 +287,77 @@ class ClientServer {
     return this.getClientConnection(clientId) !== undefined;
   }
   
-  // Stop the client server
-  stop(): void {
-    if (this.clientServer) {
-      this.clientServer.close(() => {
-        console.log('Client server stopped');
+  // Forward task results to clients - called by the Orchestrator
+  forwardTaskResultToClient(clientId: string, taskId: string, content: any): void {
+    try {
+      this.send(clientId, {
+        id: uuidv4(),
+        type: 'task.result',
+        content: {
+          taskId,
+          ...content
+        }
       });
-      
-      // Close all client connections
-      this.clientConnections.forEach((ws) => {
-        ws.terminate();
+    } catch (error) {
+      console.log(`Error forwarding task result to client ${clientId}: ${error}`);
+    }
+  }
+  
+  // Forward task errors to clients - called by the Orchestrator
+  forwardTaskErrorToClient(clientId: string, message: any): void {
+    try {
+      this.send(clientId, {
+        id: uuidv4(),
+        type: 'task.error',
+        content: message
       });
+    } catch (error) {
+      console.log(`Error forwarding task error to client ${clientId}: ${error}`);
+    }
+  }
+  
+  // Forward task notifications to clients - called by the Orchestrator
+  forwardTaskNotificationToClient(clientId: string, content: any): void {
+    try {
+      this.send(clientId, {
+        id: uuidv4(),
+        type: 'task.notification',
+        content: content
+      });
+    } catch (error) {
+      console.log(`Error forwarding task notification to client ${clientId}: ${error}`);
+    }
+  }
+  
+  // Forward service notifications to clients - called by the Orchestrator
+  forwardServiceNotificationToClient(clientId: string, content: any): void {
+    try {
+      this.send(clientId, {
+        id: uuidv4(),
+        type: 'service.notification',
+        content: content
+      });
+    } catch (error) {
+      console.log(`Error forwarding service notification to client ${clientId}: ${error}`);
+    }
+  }
+  
+  // Forward MCP task executions to clients - called by the Orchestrator
+  forwardMCPTaskExecutionToClient(clientId: string, content: any): void {
+    try {
+      this.send(clientId, {
+        id: uuidv4(),
+        type: 'mcp.task.execution',
+        content: content
+      });
+    } catch (error) {
+      console.log(`Error forwarding MCP task execution to client ${clientId}: ${error}`);
     }
   }
   
   // Helper method to send a message and wait for a response
   async sendAndWaitForResponse(
-    ws: WebSocketWithId, 
+    clientId: string, 
     message: BaseMessage, 
     options: SendOptions = {}
   ): Promise<any> {
@@ -793,35 +418,21 @@ class ClientServer {
       this.eventBus.on('client.response.message', responseHandler);
       
       // Send the message
-      this.sendToClient(ws, message);
+      this.send(clientId, message);
     });
   }
-
-  /**
-   * Send a message to a client by ID
-   * @param clientId - ID of the client to send the message to
-   * @param message - The message to send
-   */
-  sendMessageToClient(clientId: string, message: any): void {
-    const connection = this.getClientConnection(clientId);
-    if (!connection) {
-      console.warn(`Cannot send message to client ${clientId}: No active connection`);
-      return;
-    }
-    
-    try {
-      this.sendToClient(connection, message);
+  
+  // Stop the client server
+  stop(): void {
+    if (this.clientServer) {
+      this.clientServer.close(() => {
+        console.log('Client server stopped');
+      });
       
-      // Update client's lastActiveAt timestamp
-      const client = this.clientRegistry.getClientById(clientId);
-      if (client) {
-        this.clientRegistry.updateClient({
-          ...client,
-          lastActiveAt: new Date().toISOString()
-        });
-      }
-    } catch (error) {
-      console.error(`Error sending message to client ${clientId}:`, error);
+      // Close all client connections
+      this.clientConnections.forEach((ws) => {
+        ws.terminate();
+      });
     }
   }
 }

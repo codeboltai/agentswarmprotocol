@@ -49,6 +49,8 @@ class ServiceServer {
         // Initialize server and wss to null as they'll be set in start()
         this.server = null;
         this.wss = null;
+        // Initialize connections map
+        this.connections = new Map();
     }
     async start() {
         // Create HTTP server for services
@@ -64,26 +66,34 @@ class ServiceServer {
             const connectionId = (0, uuid_1.v4)();
             const wsWithId = ws;
             wsWithId.id = connectionId;
+            // Store connection directly in our map
+            this.connections.set(connectionId, wsWithId);
             console.log(`New service connection established: ${connectionId}`);
             // Handle incoming messages from services
             ws.on('message', async (message) => {
                 try {
                     const parsedMessage = JSON.parse(message.toString());
-                    await this.handleMessage(parsedMessage, wsWithId);
+                    // Store the WebSocket connection in the registry
+                    this.services.setConnection(connectionId, wsWithId);
+                    await this.handleMessage(parsedMessage, connectionId);
                 }
                 catch (error) {
                     console.error('Error handling message from service:', error);
-                    this.sendError(wsWithId, 'Error processing message', error instanceof Error ? error.message : String(error));
+                    this.sendError(connectionId, 'Error processing message', null, error instanceof Error ? error.message : String(error));
                 }
             });
             // Handle disconnections
             ws.on('close', () => {
                 console.log(`Service connection closed: ${connectionId}`);
+                // Remove from our direct connections map
+                this.connections.delete(connectionId);
+                // Let the registry handle the disconnection
+                this.services.handleDisconnection(connectionId);
                 // Emit event for disconnection, let the message handler deal with it
                 this.eventBus.emit('service.disconnected', connectionId);
             });
             // Send welcome message
-            this.send(wsWithId, {
+            this.send(connectionId, {
                 id: (0, uuid_1.v4)(),
                 type: 'orchestrator.welcome',
                 content: {
@@ -98,116 +108,71 @@ class ServiceServer {
         });
         return this;
     }
-    async handleMessage(message, ws) {
+    async handleMessage(message, connectionId) {
         console.log(`Received service message: ${JSON.stringify(message)}`);
         if (!message.type) {
-            return this.sendError(ws, 'Invalid message format: type is required', message.id);
+            return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
         }
-        try {
-            switch (message.type) {
-                case 'service.register':
-                    // Emit registration event and wait for response
-                    this.eventBus.emit('service.register', message, ws.id, (registrationResult) => {
-                        if (registrationResult.error) {
-                            this.sendError(ws, registrationResult.error, message.id);
-                            return;
-                        }
-                        // Store connection object with the service
-                        const service = this.services.getServiceById(registrationResult.serviceId);
-                        if (service) {
-                            service.connection = ws;
-                            this.services.updateServiceStatus(service.id, service.status);
-                        }
-                        // Send confirmation
-                        this.send(ws, {
-                            id: (0, uuid_1.v4)(),
-                            type: 'service.registered',
-                            content: registrationResult,
-                            requestId: message.id
-                        });
-                    });
-                    break;
-                case 'service.status.update':
-                    // Emit service status update event
-                    this.eventBus.emit('service.status.update', message, ws.id, (result) => {
-                        if (result.error) {
-                            this.sendError(ws, result.error, message.id);
-                            return;
-                        }
-                        // Send confirmation
-                        this.send(ws, {
-                            id: (0, uuid_1.v4)(),
-                            type: 'service.status.updated',
-                            content: result,
-                            requestId: message.id
-                        });
-                    });
-                    break;
-                case 'service.task.result':
-                    // Emit task result event
-                    this.eventBus.emit('service.task.result.received', message);
-                    this.eventBus.emit('response.message', message);
-                    break;
-                case 'service.task.notification':
-                    // Handle task notification from service
-                    const serviceId = this.services.getServiceByConnectionId(ws.id)?.id;
-                    if (!serviceId) {
-                        this.sendError(ws, 'Service not registered or unknown', message.id);
-                        return;
-                    }
-                    const service = this.services.getServiceById(serviceId);
-                    if (!service) {
-                        this.sendError(ws, 'Service not found', message.id);
-                        return;
-                    }
-                    // Enhance the notification with service information
-                    const enhancedNotification = {
-                        ...message,
-                        content: {
-                            ...message.content,
-                            serviceId: service.id,
-                            serviceName: service.name
-                        }
-                    };
-                    // Emit the notification event for the orchestrator to handle
-                    this.eventBus.emit('service.task.notification.received', enhancedNotification);
-                    // Confirm receipt
-                    this.send(ws, {
-                        id: (0, uuid_1.v4)(),
-                        type: 'notification.received',
-                        content: {
-                            message: 'Notification received',
-                            notificationId: message.id
-                        },
-                        requestId: message.id
-                    });
-                    break;
-                case 'service.error':
-                    // Emit service error event
-                    this.eventBus.emit('service.error.received', message);
-                    break;
-                case 'pong':
-                    // Handle ping response
-                    break;
-                default:
-                    console.warn(`Unhandled message type from service: ${message.type}`);
-                    this.sendError(ws, `Unsupported message type: ${message.type}`, message.id);
-            }
-        }
-        catch (error) {
-            console.error('Error handling service message:', error);
-            this.sendError(ws, error instanceof Error ? error.message : String(error), message.id);
+        // Handle different message types with switch-case for better readability
+        switch (message.type) {
+            case 'service.register':
+                this.eventBus.emit('service.register', message, connectionId, this);
+                break;
+            case 'service.status.update':
+                this.eventBus.emit('service.status.update', message, connectionId, this);
+                break;
+            case 'service.task.result':
+                this.eventBus.emit('service.task.result.received', message, connectionId, this);
+                break;
+            case 'service.task.notification':
+                this.eventBus.emit('service.task.notification', message, connectionId, this);
+                break;
+            case 'service.error':
+                this.eventBus.emit('service.error.received', message, connectionId, this);
+                break;
+            case 'ping':
+                this.send(connectionId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'pong',
+                    content: {
+                        timestamp: Date.now()
+                    },
+                    requestId: message.id,
+                    timestamp: Date.now().toString()
+                });
+                break;
+            default:
+                // For any unhandled message types, still emit the event but warn about it
+                this.eventBus.emit(message.type, message, connectionId, this);
+                // If no listeners for this specific message type, log a warning
+                if (this.eventBus.listenerCount(message.type) === 0) {
+                    console.warn(`No handlers registered for message type: ${message.type}`);
+                    this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
+                }
+                break;
         }
     }
     // Helper method to send messages
-    send(ws, message) {
+    send(connectionId, message) {
         if (!message.id) {
             message.id = (0, uuid_1.v4)();
         }
         message.timestamp = Date.now().toString();
         try {
-            ws.send(JSON.stringify(message));
-            return message.id;
+            // First try to get the connection directly from our connections map
+            let ws = this.connections.get(connectionId);
+            // If not found, try to get it from the service registry
+            if (!ws) {
+                ws = this.services.getConnection(connectionId);
+            }
+            if (ws) {
+                ws.send(JSON.stringify(message));
+                return message.id;
+            }
+            else {
+                console.warn(`Connection not found for ID: ${connectionId}`);
+                throw new Error('Connection not found');
+            }
         }
         catch (error) {
             console.error('Error sending message to service:', error);
@@ -215,26 +180,38 @@ class ServiceServer {
         }
     }
     // Helper method to send an error response
-    sendError(ws, errorMessage, requestId = null) {
+    sendError(connectionId, errorMessage, requestId = null, details) {
         const message = {
             id: (0, uuid_1.v4)(),
             type: 'error',
             content: {
-                error: errorMessage
+                error: errorMessage,
+                details: details || errorMessage
             }
         };
         if (requestId) {
             message.requestId = requestId;
         }
         try {
-            ws.send(JSON.stringify(message));
+            // First try to get the connection directly from our connections map
+            let ws = this.connections.get(connectionId);
+            // If not found, try to get it from the service registry
+            if (!ws) {
+                ws = this.services.getConnection(connectionId);
+            }
+            if (ws) {
+                ws.send(JSON.stringify(message));
+            }
+            else {
+                console.warn(`Failed to send error, connection not found for ID: ${connectionId}`);
+            }
         }
         catch (error) {
             console.error('Error sending error message to service:', error);
         }
     }
     // Helper method to send a message and wait for a response
-    async sendAndWaitForResponse(ws, message, options = {}) {
+    async sendAndWaitForResponse(connectionId, message, options = {}) {
         const timeout = options.timeout || 30000; // Default 30 second timeout
         return new Promise((resolve, reject) => {
             // Generate an ID if not present
@@ -283,8 +260,6 @@ class ServiceServer {
                         delete this.pendingResponses[messageId];
                     }
                 }
-                // Remove the event listener to prevent memory leaks
-                this.eventBus.removeListener('response.message', responseHandler);
                 // Resolve the promise with the response
                 resolve(response);
             };
@@ -306,7 +281,6 @@ class ServiceServer {
                 responseCallback(incomingMessage);
             };
             // Add listener for response
-            this.eventBus.on('response.message', responseHandler);
             // Store the response callback
             if (!this.pendingResponses[messageId]) {
                 this.pendingResponses[messageId] = [];
@@ -317,7 +291,7 @@ class ServiceServer {
                 timer: timeoutId
             });
             // Send the message
-            this.send(ws, message);
+            this.send(connectionId, message);
         });
     }
     stop() {
