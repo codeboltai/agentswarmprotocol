@@ -59,10 +59,40 @@ class MessageHandler {
     this.eventBus.on('client.registered', this.handleClientRegistered.bind(this));
     
     // Listen for client list requests
-    this.eventBus.on('client.list.request', (filters: any, callback: Function) => {
-      const clientList = this.getClientList(filters);
-      callback(clientList);
-    });
+    this.eventBus.on('client.list.request', this.handleClientListRequest.bind(this));
+    
+    // Listen for agent list requests
+    this.eventBus.on('agent.list.request', this.handleAgentListRequest.bind(this));
+    
+    // Listen for service list requests
+    this.eventBus.on('client.service.list', this.handleServiceListRequest.bind(this));
+    
+    // Listen for service task execution requests
+    this.eventBus.on('service.task.execute', this.handleServiceTaskExecuteEvent.bind(this));
+    
+    // Listen for client agent list requests
+    this.eventBus.on('client.agent.list', this.handleClientAgentListRequest.bind(this));
+    
+    // Listen for client task creation requests
+    this.eventBus.on('client.task.create', this.handleClientTaskCreateRequest.bind(this));
+    
+    // Listen for client task status requests
+    this.eventBus.on('client.task.status', this.handleClientTaskStatusRequest.bind(this));
+    
+    // Listen for client MCP server list requests
+    this.eventBus.on('client.mcp.server.list', this.handleClientMCPServerListRequest.bind(this));
+    
+    // Listen for client MCP server tools requests
+    this.eventBus.on('client.mcp.server.tools', this.handleClientMCPServerToolsRequest.bind(this));
+    
+    // Listen for client MCP tool execution requests
+    this.eventBus.on('client.mcp.tool.execute', this.handleClientMCPToolExecuteRequest.bind(this));
+    
+    // Listen for service registration events
+    this.eventBus.on('service.register', this.handleServiceRegisterEvent.bind(this));
+    
+    // Listen for service status update events
+    this.eventBus.on('service.status.update', this.handleServiceStatusUpdateEvent.bind(this));
     
     // Listen for client disconnection events
     this.eventBus.on('client.disconnected', this.handleClientDisconnected.bind(this));
@@ -91,6 +121,42 @@ class MessageHandler {
     
     // For example, initialize any settings for the client
     // Or notify other components about the new client
+  }
+
+  /**
+   * Handle client list request
+   * @param filters Optional filters for the client list
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleClientListRequest(filters: any, requestId?: string): void {
+    try {
+      const clientList = this.getClientList(filters);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.list.result.${requestId || 'default'}`, clientList);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.list.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle agent list request
+   * @param filters Optional filters for the agent list
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleAgentListRequest(filters: any, requestId?: string): void {
+    try {
+      const agentList = this.getAgentList(filters);
+      // Emit result event with the request ID
+      this.eventBus.emit(`agent.list.result.${requestId || 'default'}`, agentList);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`agent.list.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
   }
 
   /**
@@ -315,6 +381,28 @@ class MessageHandler {
       this.eventBus.on('service.task.failed', errorHandler);
     });
   }
+
+  /**
+   * Handle service task execute event
+   * @param message The service task message
+   * @param connectionId The connection ID
+   * @param requestId The request ID for tracking the response
+   */
+  private async handleServiceTaskExecuteEvent(message: any, connectionId: string, requestId?: string): Promise<void> {
+    try {
+      // Execute the service task and get the result
+      const result = await this.handleServiceTaskExecuteRequest(message, connectionId);
+      
+      // Emit the result event with the request ID
+      this.eventBus.emit(`service.task.execute.result.${requestId || 'default'}`, result);
+    } catch (error) {
+      // Emit the error event with the request ID
+      this.eventBus.emit(`service.task.execute.error.${requestId || 'default'}`, {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
   /**
    * Handle MCP service request
    * @param params - MCP request parameters
@@ -709,6 +797,207 @@ class MessageHandler {
         manifest: service.manifest
       }
     };
+  }
+
+  /**
+   * Handle service list request
+   * @param filters Optional filters for the service list
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleServiceListRequest(filters: any, requestId?: string): void {
+    try {
+      // Get all services matching the filters
+      const serviceList = this.services.getAllServices(filters).map(service => ({
+        id: service.id,
+        name: service.name,
+        status: service.status,
+        capabilities: service.capabilities
+      }));
+      
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.service.list.result.${requestId || 'default'}`, serviceList);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.service.list.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client agent list request
+   * @param filters Optional filters for the agent list
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleClientAgentListRequest(filters: any, requestId?: string): void {
+    try {
+      const agentList = this.getAgentList(filters);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.agent.list.result.${requestId || 'default'}`, agentList);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.agent.list.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client task create request
+   * @param message The task creation message
+   * @param clientId The client ID
+   * @param requestId Optional request ID for tracking the response
+   */
+  private async handleClientTaskCreateRequest(message: BaseMessage, clientId: string, requestId?: string): Promise<void> {
+    try {
+      const result = await this.handleTaskCreation(message, clientId);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.task.create.result.${requestId || 'default'}`, result);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.task.create.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client task status request
+   * @param taskId The task ID to get status for
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleClientTaskStatusRequest(taskId: string, requestId?: string): void {
+    try {
+      const taskStatus = this.getTaskStatus(taskId);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.task.status.result.${requestId || 'default'}`, taskStatus);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.task.status.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client MCP server list request
+   * @param filters Optional filters for the MCP server list
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleClientMCPServerListRequest(filters: any, requestId?: string): void {
+    try {
+      const servers = this.mcp.getServerList(filters);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.mcp.server.list.result.${requestId || 'default'}`, servers);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.mcp.server.list.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client MCP server tools request
+   * @param serverId The MCP server ID
+   * @param requestId Optional request ID for tracking the response
+   */
+  private async handleClientMCPServerToolsRequest(serverId: string, requestId?: string): Promise<void> {
+    try {
+      const tools = await this.mcp.getToolList(serverId);
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.mcp.server.tools.result.${requestId || 'default'}`, tools);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.mcp.server.tools.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle client MCP tool execute request
+   * @param params The tool execution parameters
+   * @param requestId Optional request ID for tracking the response
+   */
+  private async handleClientMCPToolExecuteRequest(params: any, requestId?: string): Promise<void> {
+    try {
+      const result = await this.mcp.executeServerTool(
+        params.serverId, 
+        params.toolName, 
+        params.parameters || {}
+      );
+      
+      // Emit result event with the request ID
+      this.eventBus.emit(`client.mcp.tool.execute.result.${requestId || 'default'}`, {
+        serverId: params.serverId,
+        toolName: params.toolName,
+        result,
+        status: 'success'
+      });
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`client.mcp.tool.execute.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle service registration event
+   * @param message The service registration message
+   * @param connectionId The service connection ID
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleServiceRegisterEvent(message: any, connectionId: string, requestId?: string): void {
+    try {
+      const result = this.handleServiceRegistration(message, connectionId);
+      // Emit result event with the request ID
+      this.eventBus.emit(`service.register.result.${requestId || 'default'}`, result);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`service.register.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Handle service status update event
+   * @param message The service status update message
+   * @param connectionId The service connection ID
+   * @param requestId Optional request ID for tracking the response
+   */
+  private handleServiceStatusUpdateEvent(message: any, connectionId: string, requestId?: string): void {
+    try {
+      // Get the service by connection ID
+      const service = this.services.getServiceByConnectionId(connectionId);
+      if (!service) {
+        throw new Error('Service not registered');
+      }
+      
+      // Update service status
+      const { status, message: statusMessage } = message.content;
+      this.services.updateServiceStatus(service.id, status, {
+        message: statusMessage,
+        updatedAt: new Date().toISOString()
+      });
+      
+      // Prepare response
+      const result = {
+        serviceId: service.id,
+        status,
+        message: `Service status updated to ${status}`
+      };
+      
+      // Emit result event with the request ID
+      this.eventBus.emit(`service.status.update.result.${requestId || 'default'}`, result);
+    } catch (error) {
+      // Emit error event with the request ID
+      this.eventBus.emit(`service.status.update.error.${requestId || 'default'}`, { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
   }
 }
 

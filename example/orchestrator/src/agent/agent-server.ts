@@ -157,64 +157,18 @@ class AgentServer {
           break;
           
         case 'agent.list.request':
-          // Emit agent list request event
-          this.eventBus.emit('agent.list.request', message.content?.filters || {}, (result: any) => {
-            if (result.error) {
-              this.sendError(connectionId, result.error, message.id);
-              return;
-            }
-            
-            // Send the result back to the agent
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'agent.list.response',
-              content: {
-                agents: result
-              },
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            });
-          });
+          // Handle agent list request through dedicated method
+          this.handleAgentListRequest(message, connectionId);
           break;
           
         case 'service.list':
-          // Emit service list event
-          this.eventBus.emit('client.service.list', message.content?.filters || {}, (services: any) => {
-            if (services.error) {
-              this.sendError(connectionId, services.error, message.id);
-              return;
-            }
-            
-            // Send the result back to the agent
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'service.list.result',
-              content: {
-                services
-              },
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            });
-          });
+          // Handle service list request through dedicated method
+          this.handleServiceListRequest(message, connectionId);
           break;
           
         case 'service.task.execute':
-          // Emit service task execute event
-          this.eventBus.emit('service.task.execute', message, connectionId, (serviceResult: any) => {
-            if (serviceResult.error) {
-              this.sendError(connectionId, serviceResult.error, message.id);
-              return;
-            }
-            
-            // Send the result back
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'service.task.result',
-              content: serviceResult,
-              requestId: message.id,
-              timestamp: Date.now().toString()
-            });
-          });
+          // Handle service task execution through dedicated method
+          this.handleServiceTaskExecute(message, connectionId);
           break;
           
         case 'task.result':
@@ -447,6 +401,100 @@ class AgentServer {
       console.error('Error handling message:', error);
       this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
     }
+  }
+
+  /**
+   * Handle agent list request
+   * @param message The request message
+   * @param connectionId The connection ID
+   */
+  private handleAgentListRequest(message: BaseMessage, connectionId: string): void {
+    // Generate a unique request ID
+    const requestId = uuidv4();
+    
+    // Set up one-time listener for the result
+    this.eventBus.once(`agent.list.result.${requestId}`, (result: any) => {
+      // Send the result back to the agent
+      this.send(connectionId, {
+        id: uuidv4(),
+        type: 'agent.list.response',
+        content: {
+          agents: result
+        },
+        requestId: message.id,
+        timestamp: Date.now().toString()
+      });
+    });
+    
+    // Set up one-time listener for errors
+    this.eventBus.once(`agent.list.error.${requestId}`, (errorResult: any) => {
+      this.sendError(connectionId, errorResult.error, message.id);
+    });
+    
+    // Emit the request event with the request ID
+    this.eventBus.emit('agent.list.request', message.content?.filters || {}, requestId);
+  }
+
+  /**
+   * Handle service list request
+   * @param message The request message
+   * @param connectionId The connection ID
+   */
+  private handleServiceListRequest(message: BaseMessage, connectionId: string): void {
+    // Generate a unique request ID
+    const requestId = uuidv4();
+    
+    // Set up one-time listener for the result
+    this.eventBus.once(`client.service.list.result.${requestId}`, (services: any) => {
+      // Send the result back to the agent
+      this.send(connectionId, {
+        id: uuidv4(),
+        type: 'service.list.result',
+        content: {
+          services
+        },
+        requestId: message.id,
+        timestamp: Date.now().toString()
+      });
+    });
+    
+    // Set up one-time listener for errors
+    this.eventBus.once(`client.service.list.error.${requestId}`, (errorResult: any) => {
+      this.sendError(connectionId, errorResult.error, message.id);
+    });
+    
+    // Emit the request event with the request ID
+    this.eventBus.emit('client.service.list', message.content?.filters || {}, requestId);
+  }
+
+  /**
+   * Handle service task execute request
+   * @param message The request message
+   * @param connectionId The connection ID
+   */
+  private handleServiceTaskExecute(message: BaseMessage, connectionId: string): void {
+    // Emit service task execute event and set up result listener
+    const requestId = uuidv4();
+    
+    // Set up one-time listener for the result
+    this.eventBus.once(`service.task.execute.result.${requestId}`, (serviceResult: any) => {
+      if (serviceResult.error) {
+        this.sendError(connectionId, serviceResult.error, message.id);
+        return;
+      }
+      
+      // Send the result back
+      this.send(connectionId, {
+        id: uuidv4(),
+        type: 'service.task.result',
+        content: serviceResult,
+        requestId: message.id,
+        timestamp: Date.now().toString()
+      });
+    });
+    
+    // Emit the request event with the request ID
+    this.eventBus.emit('service.task.execute', message, connectionId, requestId);
   }
 
   // Helper method to send messages

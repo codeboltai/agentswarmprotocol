@@ -133,41 +133,13 @@ class ServiceServer {
     try {
       switch (message.type) {
         case 'service.register':
-          // Emit registration event and wait for response
-          this.eventBus.emit('service.register', message, connectionId, (registrationResult: any) => {
-            if (registrationResult.error) {
-              this.sendError(connectionId, registrationResult.error, message.id);
-              return;
-            }
-            
-            // The connection is already stored from the message handler
-            
-            // Send confirmation
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'service.registered',
-              content: registrationResult,
-              requestId: message.id
-            });
-          });
+          // Handle service registration through dedicated method
+          await this.handleServiceRegister(message, connectionId);
           break;
           
         case 'service.status.update':
-          // Emit service status update event
-          this.eventBus.emit('service.status.update', message, connectionId, (result: any) => {
-            if (result.error) {
-              this.sendError(connectionId, result.error, message.id);
-              return;
-            }
-            
-            // Send confirmation
-            this.send(connectionId, {
-              id: uuidv4(),
-              type: 'service.status.updated',
-              content: result,
-              requestId: message.id
-            });
-          });
+          // Handle service status update through dedicated method
+          await this.handleServiceStatusUpdate(message, connectionId);
           break;
           
         case 'service.task.result':
@@ -202,10 +174,10 @@ class ServiceServer {
             }
           };
           
-          // Emit the notification event for the orchestrator to handle
-          this.eventBus.emit('service.task.notification.received', enhancedNotification);
+          // Emit event for the notification
+          this.eventBus.emit('service.notification.received', enhancedNotification);
           
-          // Confirm receipt
+          // Send confirmation
           this.send(connectionId, {
             id: uuidv4(),
             type: 'notification.received',
@@ -227,13 +199,69 @@ class ServiceServer {
           break;
           
         default:
-          console.warn(`Unhandled message type from service: ${message.type}`);
+          console.warn(`Unhandled message type in service-server: ${message.type}`);
           this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
       }
     } catch (error) {
-      console.error('Error handling service message:', error);
+      console.error('Error handling message in service-server:', error);
       this.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
     }
+  }
+
+  /**
+   * Handle service registration
+   * @param message The service registration message
+   * @param connectionId The service connection ID
+   */
+  private async handleServiceRegister(message: BaseMessage, connectionId: string): Promise<void> {
+    // Generate a unique request ID
+    const requestId = uuidv4();
+    
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`service.register.result.${requestId}`, (registrationResult: any) => {
+      // Send confirmation
+      this.send(connectionId, {
+        id: uuidv4(),
+        type: 'service.registered',
+        content: registrationResult,
+        requestId: message.id
+      });
+    });
+    
+    this.eventBus.once(`service.register.error.${requestId}`, (errorResult: any) => {
+      this.sendError(connectionId, errorResult.error, message.id);
+    });
+    
+    // Emit registration event with the request ID
+    this.eventBus.emit('service.register', message, connectionId, requestId);
+  }
+
+  /**
+   * Handle service status update
+   * @param message The service status update message
+   * @param connectionId The service connection ID
+   */
+  private async handleServiceStatusUpdate(message: BaseMessage, connectionId: string): Promise<void> {
+    // Generate a unique request ID
+    const requestId = uuidv4();
+    
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`service.status.update.result.${requestId}`, (result: any) => {
+      // Send confirmation
+      this.send(connectionId, {
+        id: uuidv4(),
+        type: 'service.status.updated',
+        content: result,
+        requestId: message.id
+      });
+    });
+    
+    this.eventBus.once(`service.status.update.error.${requestId}`, (errorResult: any) => {
+      this.sendError(connectionId, errorResult.error, message.id);
+    });
+    
+    // Emit service status update event with the request ID
+    this.eventBus.emit('service.status.update', message, connectionId, requestId);
   }
 
   // Helper method to send messages

@@ -258,9 +258,10 @@ class ClientServer {
   async handleClientList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
     const content = message.content || {};
     const filters = content.filters || {};
-    
-    // Emit event to get the client list from MessageHandler
-    this.eventBus.emit('client.list.request', filters, (clients: Client[]) => {
+    const requestId = uuidv4();
+
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.list.result.${requestId}`, (clients: Client[]) => {
       // Send response
       this.sendToClient(ws, {
         id: message.id || uuidv4(),
@@ -270,24 +271,28 @@ class ClientServer {
         }
       });
     });
+
+    this.eventBus.once(`client.list.error.${requestId}`, (error) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error getting client list',
+          details: error.error
+        }
+      });
+    });
+
+    // Emit event to get the client list from MessageHandler
+    this.eventBus.emit('client.list.request', filters, requestId);
   }
   
   // Handle task creation request from client
   async handleClientTaskCreation(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    // Emit task creation event and wait for response (which now only resolves on task completion)
-    this.eventBus.emit('client.task.create', message, ws.id, (result: any) => {
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id,
-          content: {
-            error: 'Error creating task',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
+    const requestId = uuidv4();
+
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.task.create.result.${requestId}`, (result: any) => {
       // The task is now completed - send the result
       this.sendToClient(ws, {
         type: 'task.result',
@@ -295,49 +300,57 @@ class ClientServer {
         content: result
       });
     });
+
+    this.eventBus.once(`client.task.create.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error creating task',
+          details: result.error
+        }
+      });
+    });
+
+    // Emit task creation event with the request ID
+    this.eventBus.emit('client.task.create', message, ws.id, requestId);
     // Note: The task.created notification is now sent directly in the orchestrator's event handler
   }
   
   // Handle task status request from client
   async handleClientTaskStatus(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    // Emit task status request event
-    this.eventBus.emit('client.task.status', message.content.taskId, (result: any) => {
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id,
-          content: {
-            error: 'Error getting task status',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
+    const requestId = uuidv4();
+
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.task.status.result.${requestId}`, (result: any) => {
       this.sendToClient(ws, {
         type: 'task.status',
         id: message.id,
         content: result
       });
     });
+
+    this.eventBus.once(`client.task.status.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error getting task status',
+          details: result.error
+        }
+      });
+    });
+
+    // Emit task status request event with the request ID
+    this.eventBus.emit('client.task.status', message.content.taskId, requestId);
   }
   
   // Handle agent list request from client
   async handleClientAgentList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
-    // Emit agent list request event
-    this.eventBus.emit('client.agent.list', {}, (result: any) => {
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id,
-          content: {
-            error: 'Error getting agent list',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
+    const requestId = uuidv4();
+
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.agent.list.result.${requestId}`, (result: any) => {
       this.sendToClient(ws, {
         type: 'agent.list',
         id: message.id,
@@ -346,27 +359,30 @@ class ClientServer {
         }
       });
     });
+
+    this.eventBus.once(`client.agent.list.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error getting agent list',
+          details: result.error
+        }
+      });
+    });
+
+    // Emit agent list request event with the request ID
+    this.eventBus.emit('client.agent.list', {}, requestId);
   }
   
   // Handle MCP server list request from client
   async handleClientMCPServerList(message: BaseMessage, ws: WebSocketWithId): Promise<void> {
     console.log(`Processing MCP server list request: ${JSON.stringify(message)}`);
+    const requestId = uuidv4();
     
-    // Emit MCP server list request event
-    this.eventBus.emit('client.mcp.server.list', message.content?.filters || {}, (result: any) => {
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.mcp.server.list.result.${requestId}`, (result: any) => {
       console.log(`Received MCP server list result: ${JSON.stringify(result)}`);
-      
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id, // Use id for consistency
-          content: {
-            error: 'Error getting MCP server list',
-            details: result.error
-          }
-        });
-        return;
-      }
       
       this.sendToClient(ws, {
         type: 'mcp.server.list',
@@ -376,6 +392,20 @@ class ClientServer {
         }
       });
     });
+    
+    this.eventBus.once(`client.mcp.server.list.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id, // Use id for consistency
+        content: {
+          error: 'Error getting MCP server list',
+          details: result.error
+        }
+      });
+    });
+    
+    // Emit MCP server list request event with the request ID
+    this.eventBus.emit('client.mcp.server.list', message.content?.filters || {}, requestId);
   }
 
   // Handle MCP server tools request from client
@@ -393,20 +423,10 @@ class ClientServer {
       });
     }
     
-    // Emit MCP server tools request event
-    this.eventBus.emit('client.mcp.server.tools', message.content.serverId, (result: any) => {
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id,
-          content: {
-            error: 'Error getting MCP server tools',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
+    const requestId = uuidv4();
+    
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.mcp.server.tools.result.${requestId}`, (result: any) => {
       this.sendToClient(ws, {
         type: 'mcp.server.tools',
         id: message.id,
@@ -416,6 +436,20 @@ class ClientServer {
         }
       });
     });
+    
+    this.eventBus.once(`client.mcp.server.tools.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error getting MCP server tools',
+          details: result.error
+        }
+      });
+    });
+    
+    // Emit MCP server tools request event with the request ID
+    this.eventBus.emit('client.mcp.server.tools', message.content.serverId, requestId);
   }
   
   // Handle MCP tool execution request from client
@@ -433,35 +467,35 @@ class ClientServer {
       });
     }
     
-    // Emit MCP tool execution request event
+    const requestId = uuidv4();
+    
+    // Set up one-time listeners for result and error
+    this.eventBus.once(`client.mcp.tool.execute.result.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'mcp.tool.execution.result',
+        id: message.id,
+        content: result
+      });
+    });
+    
+    this.eventBus.once(`client.mcp.tool.execute.error.${requestId}`, (result: any) => {
+      this.sendToClient(ws, {
+        type: 'error',
+        id: message.id,
+        content: {
+          error: 'Error executing MCP tool',
+          details: result.error
+        }
+      });
+    });
+    
+    // Emit MCP tool execution request event with the request ID
     this.eventBus.emit('client.mcp.tool.execute', {
       serverId: message.content.serverId,
       toolName: message.content.toolName,
       parameters: message.content.parameters || {},
       clientId: ws.id
-    }, (result: any) => {
-      if (result.error) {
-        this.sendToClient(ws, {
-          type: 'error',
-          id: message.id,
-          content: {
-            error: 'Error executing MCP tool',
-            details: result.error
-          }
-        });
-        return;
-      }
-      
-      this.sendToClient(ws, {
-        type: 'mcp.tool.execution',
-        id: message.id,
-        content: {
-          serverId: message.content.serverId,
-          toolName: message.content.toolName,
-          result: result
-        }
-      });
-    });
+    }, requestId);
   }
 
   // Handle direct message from client
