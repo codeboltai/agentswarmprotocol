@@ -14,36 +14,7 @@ class MessageHandler {
         this.clients = config.clients;
         this.eventBus = config.eventBus;
         this.mcp = config.mcp;
-        // Listen for agent registration events
-        this.eventBus.on('agent.registered', this.handleAgentRegistered.bind(this));
-        // Listen for client registration events
-        this.eventBus.on('client.registered', this.handleClientRegistered.bind(this));
-        // Listen for client list requests
-        this.eventBus.on('client.list.request', this.handleClientListRequest.bind(this));
-        // Listen for agent list requests
-        this.eventBus.on('agent.list.request', this.handleAgentListRequest.bind(this));
-        // Listen for service list requests
-        this.eventBus.on('client.service.list', this.handleServiceListRequest.bind(this));
-        // Listen for service task execution requests
-        this.eventBus.on('service.task.execute', this.handleServiceTaskExecuteEvent.bind(this));
-        // Listen for client agent list requests
-        this.eventBus.on('client.agent.list', this.handleClientAgentListRequest.bind(this));
-        // Listen for client task creation requests
-        this.eventBus.on('client.task.create', this.handleClientTaskCreateRequest.bind(this));
-        // Listen for client task status requests
-        this.eventBus.on('client.task.status', this.handleClientTaskStatusRequest.bind(this));
-        // Listen for client MCP server list requests
-        this.eventBus.on('client.mcp.server.list', this.handleClientMCPServerListRequest.bind(this));
-        // Listen for client MCP server tools requests
-        this.eventBus.on('client.mcp.server.tools', this.handleClientMCPServerToolsRequest.bind(this));
-        // Listen for client MCP tool execution requests
-        this.eventBus.on('client.mcp.tool.execute', this.handleClientMCPToolExecuteRequest.bind(this));
-        // Listen for service registration events
-        this.eventBus.on('service.register', this.handleServiceRegisterEvent.bind(this));
-        // Listen for service status update events
-        this.eventBus.on('service.status.update', this.handleServiceStatusUpdateEvent.bind(this));
-        // Listen for client disconnection events
-        this.eventBus.on('client.disconnected', this.handleClientDisconnected.bind(this));
+        // No longer setting up event listeners here - will be set up in index.ts
     }
     /**
      * Handle agent registered event

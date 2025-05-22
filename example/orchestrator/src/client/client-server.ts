@@ -167,7 +167,7 @@ class ClientServer {
         
       // Agent operations
       case 'agent.list':
-        this.eventBus.emit('client.agent.list.request', message, clientId);
+        this.eventBus.emit('client.agent.list.request', message, clientId, this);
         break;
         
       // MCP-related operations

@@ -116,19 +116,19 @@ class ServiceServer {
         // Handle different message types with switch-case for better readability
         switch (message.type) {
             case 'service.register':
-                this.eventBus.emit('service.register', message, connectionId, this);
+                this.eventBus.emit('service.register', message, connectionId);
                 break;
             case 'service.status.update':
-                this.eventBus.emit('service.status.update', message, connectionId, this);
+                this.eventBus.emit('service.status.update', message, connectionId);
                 break;
             case 'service.task.result':
-                this.eventBus.emit('service.task.result.received', message, connectionId, this);
+                this.eventBus.emit('service.task.result.received', message, connectionId);
                 break;
             case 'service.task.notification':
-                this.eventBus.emit('service.task.notification', message, connectionId, this);
+                this.eventBus.emit('service.task.notification', message, connectionId);
                 break;
             case 'service.error':
-                this.eventBus.emit('service.error.received', message, connectionId, this);
+                this.eventBus.emit('service.error.received', message, connectionId);
                 break;
             case 'ping':
                 this.send(connectionId, {
@@ -143,7 +143,7 @@ class ServiceServer {
                 break;
             default:
                 // For any unhandled message types, still emit the event but warn about it
-                this.eventBus.emit(message.type, message, connectionId, this);
+                this.eventBus.emit(message.type, message, connectionId);
                 // If no listeners for this specific message type, log a warning
                 if (this.eventBus.listenerCount(message.type) === 0) {
                     console.warn(`No handlers registered for message type: ${message.type}`);

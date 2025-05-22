@@ -1,197 +1,67 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MCPAdapter = void 0;
+const uuid_1 = require("uuid");
 const mcp_client_1 = require("./mcp-client");
 const mcp_manager_1 = require("./mcp-manager");
 /**
  * MCPAdapter - Adapter for integrating MCP servers with the orchestrator
  * Handles the translation between orchestrator requests and MCP protocol
+ * Implements MCPInterface for MessageHandler
  */
 class MCPAdapter {
     constructor(eventBus) {
         this.mcpManager = new mcp_manager_1.MCPManager();
         this.eventBus = eventBus;
         this.activeClients = new Map(); // Map of serverIds to MCPClient instances
-        this.setupEventListeners();
     }
     /**
-     * Set up event listeners for MCP-related events
+     * Register a new MCP server
+     * Implementation of MCPInterface.registerServer
+     * @param {any} server - Server to register
      */
-    setupEventListeners() {
-        // Listen for MCP server registration
-        this.eventBus.on('mcp.server.register', this.handleServerRegister.bind(this));
-        // Listen for MCP server connection
-        this.eventBus.on('mcp.server.connect', this.handleServerConnect.bind(this));
-        // Listen for MCP server disconnection
-        this.eventBus.on('mcp.server.disconnect', this.handleServerDisconnect.bind(this));
-        // Listen for MCP tool execution requests
-        this.eventBus.on('mcp.tool.execute', this.handleToolExecute.bind(this));
-        // Listen for MCP server list requests
-        this.eventBus.on('mcp.server.list', this.handleServerList.bind(this));
-        // Also listen for SDK-style 'mcp.servers.list' for compatibility
-        this.eventBus.on('mcp.servers.list', this.handleServerList.bind(this));
-        // Listen for MCP tool list requests
-        this.eventBus.on('mcp.tool.list', this.handleToolList.bind(this));
-        // Also listen for SDK-style 'mcp.tools.list' for compatibility
-        this.eventBus.on('mcp.tools.list', this.handleToolList.bind(this));
-        // Listen for agent task requests that might involve MCP
-        this.eventBus.on('agent.task.mcp', this.handleAgentTaskMcp.bind(this));
-        // Agent MCP Servers List Request
-        this.eventBus.on('agent.mcp.servers.list', this.handleAgentMcpServersList.bind(this));
-        // Agent MCP Tools List Request
-        this.eventBus.on('agent.mcp.tools.list', this.handleAgentMcpToolsList.bind(this));
-        // Agent MCP Tool Execute Request
-        this.eventBus.on('agent.mcp.tool.execute', this.handleAgentMcpToolExecute.bind(this));
+    registerServer(server) {
+        this.mcpManager.registerServer({
+            id: server.id || (0, uuid_1.v4)(),
+            name: server.name,
+            path: server.path,
+            type: server.type || 'node',
+            capabilities: server.capabilities || [],
+            command: server.command,
+            args: server.args,
+            metadata: server.metadata || {}
+        });
     }
     /**
-     * Handle MCP server registration event
+     * Get server list
+     * Implementation of MCPInterface.getServerList
+     * @param {any} filters - Optional filters
+     * @returns {any[]} List of servers
      */
-    async handleServerRegister(message, requestId) {
-        try {
-            const result = await this.registerMCPServer(message);
-            this.eventBus.emit('mcp.server.register.result', result, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.server.register.error', { error: error.message }, requestId);
-        }
+    getServerList(filters = {}) {
+        return this.listMCPServers(filters);
     }
     /**
-     * Handle MCP server connection event
+     * Get tool list for a server
+     * Implementation of MCPInterface.getToolList
+     * @param {string} serverId - Server ID
+     * @returns {any[]} List of tools
      */
-    async handleServerConnect(message, requestId) {
-        try {
-            const result = await this.connectToMCPServer(message.serverId);
-            this.eventBus.emit('mcp.server.connect.result', result, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.server.connect.error', { error: error.message }, requestId);
-        }
+    getToolList(serverId) {
+        // This is a synchronous method in the interface but our implementation is async
+        // We need to return a placeholder and manage expectations in implementations
+        return [];
     }
     /**
-     * Handle MCP server disconnection event
+     * Execute a tool on a server
+     * Implementation of MCPInterface.executeServerTool
+     * @param {string} serverId - Server ID
+     * @param {string} toolName - Tool name
+     * @param {any} args - Tool arguments
+     * @returns {Promise<any>} Tool result
      */
-    async handleServerDisconnect(message, requestId) {
-        try {
-            const result = await this.disconnectMCPServer(message.serverId);
-            this.eventBus.emit('mcp.server.disconnect.result', result, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.server.disconnect.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle MCP tool execution event
-     */
-    async handleToolExecute(message, requestId) {
-        try {
-            const result = await this.executeMCPTool(message.serverId, message.toolName, message.toolArgs || message.parameters || {});
-            this.eventBus.emit('mcp.tool.execute.result', {
-                serverId: message.serverId,
-                toolName: message.toolName,
-                result,
-                status: 'success'
-            }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.tool.execute.error', {
-                serverId: message.serverId,
-                toolName: message.toolName,
-                status: 'error',
-                error: error.message
-            }, requestId);
-        }
-    }
-    /**
-     * Handle MCP server list event
-     */
-    handleServerList(message, requestId) {
-        try {
-            const result = this.listMCPServers(message.filters);
-            this.eventBus.emit('mcp.server.list.result', { servers: result }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.server.list.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle MCP tool list event
-     */
-    async handleToolList(message, requestId) {
-        try {
-            const result = await this.listMCPTools(message.serverId);
-            this.eventBus.emit('mcp.tool.list.result', {
-                serverId: message.serverId,
-                tools: result
-            }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('mcp.tool.list.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle agent task MCP event
-     */
-    async handleAgentTaskMcp(message, agentId, requestId) {
-        try {
-            const result = await this.handleAgentMCPRequest(message, agentId);
-            this.eventBus.emit('agent.task.mcp.result', result, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('agent.task.mcp.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle agent MCP servers list event
-     */
-    handleAgentMcpServersList(message, requestId) {
-        try {
-            const servers = this.listMCPServers(message.filters || {});
-            this.eventBus.emit('agent.mcp.servers.list.result', {
-                servers
-            }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('agent.mcp.servers.list.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle agent MCP tools list event
-     */
-    async handleAgentMcpToolsList(message, requestId) {
-        try {
-            const tools = await this.listMCPTools(message.serverId);
-            const serverInfo = this.mcpManager.getServerById(message.serverId);
-            this.eventBus.emit('agent.mcp.tools.list.result', {
-                serverId: message.serverId,
-                serverName: serverInfo?.name || 'unknown',
-                tools
-            }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('agent.mcp.tools.list.error', { error: error.message }, requestId);
-        }
-    }
-    /**
-     * Handle agent MCP tool execute event
-     */
-    async handleAgentMcpToolExecute(message, requestId) {
-        try {
-            const result = await this.executeMCPTool(message.serverId, message.toolName, message.parameters);
-            this.eventBus.emit('agent.mcp.tool.execute.result', {
-                serverId: message.serverId,
-                toolName: message.toolName,
-                result,
-                status: 'success'
-            }, requestId);
-        }
-        catch (error) {
-            this.eventBus.emit('agent.mcp.tool.execute.error', {
-                serverId: message.serverId,
-                toolName: message.toolName,
-                status: 'error',
-                error: error.message
-            }, requestId);
-        }
+    async executeServerTool(serverId, toolName, args) {
+        return this.executeMCPTool(serverId, toolName, args);
     }
     /**
      * Register a new MCP server
@@ -393,6 +263,14 @@ class MCPAdapter {
             default:
                 throw new Error(`Unknown MCP action: ${action}`);
         }
+    }
+    /**
+     * Get a server by ID
+     * @param {string} serverId - ID of the server
+     * @returns {MCPServer|undefined} Server if found, undefined otherwise
+     */
+    getServerById(serverId) {
+        return this.mcpManager.getServerById(serverId);
     }
 }
 exports.MCPAdapter = MCPAdapter;

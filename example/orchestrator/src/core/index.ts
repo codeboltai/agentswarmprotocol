@@ -1394,7 +1394,7 @@ class Orchestrator {
     });
     
     // Client agent list request handler
-    this.eventBus.on('client.agent.list.request', (message: any, clientId: string, clientServer: any) => {
+    this.eventBus.on('client.agent.list.request', (message: any, clientId: string) => {
       try {
         const filters = message.content?.filters || {};
         
@@ -1402,7 +1402,7 @@ class Orchestrator {
         const agents = this.messageHandler.getAgentList(filters);
         
         // Send response
-        clientServer.send(clientId, {
+        this.clientServer.send(clientId, {
           id: message.id || uuidv4(),
           type: 'agent.list',
           content: {
