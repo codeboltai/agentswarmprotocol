@@ -449,15 +449,15 @@ class Orchestrator {
     // Register handlers for specific message types
     
     // Agent registration
-    this.eventBus.on('agent.register', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('agent.register', (message: any, connectionId: string) => {
       try {
         const registrationResult = this.agentServer.handleAgentRegistration(message, connectionId);
         if (registrationResult.error) {
-          agentServer.sendError(connectionId, registrationResult.error, message.id);
+          this.agentServer.sendError(connectionId, registrationResult.error, message.id);
           return;
         }
         
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'agent.registered',
           content: registrationResult,
@@ -465,12 +465,32 @@ class Orchestrator {
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+      }
+    });
+    
+    // Temp
+    this.eventBus.on('agent.list.result', (message: any, connectionId: string) => {
+      try {
+        const filters = message.content?.filters || {};
+
+        // Send response
+        this.agentServer.send(connectionId, {
+          id: uuidv4(),
+          type: 'agent.list.response',
+          content: {
+            agents: message
+          },
+          requestId: message.id,
+          timestamp: Date.now().toString()
+        });
+      } catch (error) {
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
     
     // Service list request
-    this.eventBus.on('service.list', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('service.list', (message: any, connectionId: string) => {
       try {
         const filters = message.content?.filters || {};
         
@@ -478,7 +498,7 @@ class Orchestrator {
         const services = this.services.getAllServices(filters);
         
         // Send response
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'service.list.result',
           content: {
@@ -488,7 +508,7 @@ class Orchestrator {
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
     
@@ -496,42 +516,64 @@ class Orchestrator {
     this.eventBus.on('service.task.execute', (message: any, connectionId: string, serviceServer: any) => {
       this.messageHandler.handleServiceTaskExecuteEvent(message, connectionId, message?.id);
     });
+
+    //Temp
+    this.eventBus.on('service.task.execute.result', async (message: any, connectionId: string) => {
+      try {
+        
+        // Instead of using a callback, send response directly through the serviceServer
+        this.agentServer.send(connectionId, {
+          id: uuidv4(),
+          type: 'service.task.result',
+          content: message,
+          requestId: message.id,
+          timestamp: Date.now().toString()
+        });
+      } catch (error) {
+        // Send error through serviceServer
+        this.agentServer.sendError(
+          connectionId,
+          `Error executing service task: ${error instanceof Error ? error.message : String(error)}`,
+          message.id
+        );
+      }
+    });
     
     // Task result
-    this.eventBus.on('task.result', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('task.result', (message: any, connectionId: string) => {
       // Emit task result event
       this.eventBus.emit('task.result.received', message);
       // No response needed
     });
     
     // Task error
-    this.eventBus.on('task.error', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('task.error', (message: any, connectionId: string) => {
       // Emit task error event
       this.eventBus.emit('task.error.received', message);
       // No response needed
     });
     
     // Task status
-    this.eventBus.on('task.status', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('task.status', (message: any, connectionId: string) => {
       console.log(`Task status update received: ${message.content.taskId} status: ${message.content.status}`);
       this.eventBus.emit('task.status.received', message);
       // No response needed
     });
     
     // Service task result
-    this.eventBus.on('service.task.result', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('service.task.result', (message: any, connectionId: string) => {
       console.log(`Service task result received: ${message.id}`);
       this.eventBus.emit('service.task.result.received', message);
       // No response needed
     });
     
     // Task notification
-    this.eventBus.on('task.notification', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('task.notification', (message: any, connectionId: string) => {
       // Get the agent information from the connection
       const agent = this.agents.getAgentByConnectionId(connectionId);
       
       if (!agent) {
-        agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
+        this.agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
         return;
       }
       
@@ -549,7 +591,7 @@ class Orchestrator {
       this.eventBus.emit('task.notification.received', enhancedNotification);
       
       // Confirm receipt
-      agentServer.send(connectionId, {
+      this.agentServer.send(connectionId, {
         id: uuidv4(),
         type: 'notification.received',
         content: {
@@ -562,12 +604,12 @@ class Orchestrator {
     });
     
     // Agent status
-    this.eventBus.on('agent.status', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('agent.status', (message: any, connectionId: string) => {
       // Get the agent information from the connection
       const statusAgent = this.agents.getAgentByConnectionId(connectionId);
       
       if (!statusAgent) {
-        agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
+        this.agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
         return;
       }
       
@@ -579,7 +621,7 @@ class Orchestrator {
       );
       
       // Confirm receipt
-      agentServer.send(connectionId, {
+      this.agentServer.send(connectionId, {
         id: uuidv4(),
         type: 'agent.status.updated',
         content: {
@@ -594,57 +636,57 @@ class Orchestrator {
     ////////--------------------Check Start --------------------
 
     
-     // MCP servers list
-     this.eventBus.on('mcp.servers.list', (message: any, connectionId: string, agentServer: AgentServer) => {
+    // MCP servers list
+    this.eventBus.on('mcp.servers.list', (message: any, connectionId: string) => {
       try {
         const response = this.messageHandler.handleMessage(message, connectionId);
         
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           ...response,
           id: uuidv4(),
           requestId: message.id,
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
     
     // MCP tools list
-    this.eventBus.on('mcp.tools.list', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('mcp.tools.list', (message: any, connectionId: string) => {
       try {
         const response = this.messageHandler.handleMessage(message, connectionId);
         
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           ...response,
           id: uuidv4(),
           requestId: message.id,
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
     
     // MCP tool execute
-    this.eventBus.on('mcp.tool.execute', (message: any, connectionId: string, agentServer: AgentServer) => {
+    this.eventBus.on('mcp.tool.execute', (message: any, connectionId: string) => {
       try {
         const response = this.messageHandler.handleMessage(message, connectionId);
         
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           ...response,
           id: uuidv4(),
           requestId: message.id,
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
     
     // Ping
-    this.eventBus.on('ping', (message: any, connectionId: string, agentServer: AgentServer) => {
-      agentServer.send(connectionId, {
+    this.eventBus.on('ping', (message: any, connectionId: string) => {
+      this.agentServer.send(connectionId, {
         id: uuidv4(),
         type: 'pong',
         content: {
@@ -655,8 +697,8 @@ class Orchestrator {
       });
     });
     
-    // Backward compatibility: MCP servers list request
-    this.eventBus.on('mcp.servers.list.request', (message: any, connectionId: string, serverObj: any) => {
+    // Backward compatibility: MCP servers list request (UPDATED to direct response pattern)
+    this.eventBus.on('mcp.servers.list.request', (message: any, connectionId: string) => {
       try {
         const filters = message.content?.filters || {};
         
@@ -664,7 +706,7 @@ class Orchestrator {
         const servers = this.mcpAdapter.listMCPServers(filters);
         
         // Send response through the appropriate server
-        serverObj.send(connectionId, {
+        this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'mcp.servers.list.response',
           content: {
@@ -674,22 +716,21 @@ class Orchestrator {
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        serverObj.sendError(
+        this.agentServer.sendError(
           connectionId, 
-          'Error getting MCP server list', 
-          message.id,
-          error instanceof Error ? error.message : String(error)
+          `Error getting MCP server list: ${error instanceof Error ? error.message : String(error)}`,
+          message.id
         );
       }
     });
     
-    // Backward compatibility: MCP tools list request
-    this.eventBus.on('mcp.tools.list.request', (message: any, connectionId: string, serverObj: any) => {
+    // Backward compatibility: MCP tools list request (UPDATED to direct response pattern)
+    this.eventBus.on('mcp.tools.list.request', (message: any, connectionId: string) => {
       try {
         const serverId = message.content?.serverId;
         
         if (!serverId) {
-          serverObj.sendError(connectionId, 'Server ID is required', message.id);
+          this.agentServer.sendError(connectionId, 'Server ID is required', message.id);
           return;
         }
         
@@ -697,7 +738,7 @@ class Orchestrator {
         const tools = this.mcpAdapter.getToolList(serverId);
         
         // Send response
-        serverObj.send(connectionId, {
+        this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'mcp.tools.list.response',
           content: {
@@ -708,23 +749,22 @@ class Orchestrator {
           timestamp: Date.now().toString()
         });
       } catch (error) {
-        serverObj.sendError(
+        this.agentServer.sendError(
           connectionId, 
-          'Error getting MCP tools list', 
-          message.id,
-          error instanceof Error ? error.message : String(error)
+          `Error getting MCP tools list: ${error instanceof Error ? error.message : String(error)}`,
+          message.id
         );
       }
     });
     
-    // Backward compatibility: MCP tool execute request
-    this.eventBus.on('mcp.tool.execute.request', async (message: any, connectionId: string, serverObj: any) => {
+    // Backward compatibility: MCP tool execute request (UPDATED to direct response pattern)
+    this.eventBus.on('mcp.tool.execute.request', async (message: any, connectionId: string) => {
       try {
         const params = message.content || {};
         const { serverId, toolName, parameters } = params;
         
         if (!serverId || !toolName) {
-          serverObj.sendError(connectionId, 'Server ID and tool name are required', message.id);
+          this.agentServer.sendError(connectionId, 'Server ID and tool name are required', message.id);
           return;
         }
         
@@ -733,7 +773,7 @@ class Orchestrator {
           const result = await this.mcpAdapter.executeServerTool(serverId, toolName, parameters || {});
           
           // Send success response
-          serverObj.send(connectionId, {
+          this.agentServer.send(connectionId, {
             id: uuidv4(),
             type: 'mcp.tool.execution.result',
             content: {
@@ -747,7 +787,7 @@ class Orchestrator {
           });
         } catch (toolError) {
           // Send tool execution error
-          serverObj.send(connectionId, {
+          this.agentServer.send(connectionId, {
             id: uuidv4(),
             type: 'mcp.tool.execution.result',
             content: {
@@ -762,11 +802,10 @@ class Orchestrator {
         }
       } catch (error) {
         // Send general error
-        serverObj.sendError(
+        this.agentServer.sendError(
           connectionId, 
-          'Error executing MCP tool', 
-          message.id,
-          error instanceof Error ? error.message : String(error)
+          `Error executing MCP tool: ${error instanceof Error ? error.message : String(error)}`,
+          message.id
         );
       }
     });
@@ -1016,13 +1055,13 @@ class Orchestrator {
       try {
         const agent = this.agents.getAgentByConnectionId(connectionId);
         if (!agent) {
-          agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
+          this.agentServer.sendError(connectionId, 'Agent not registered or unknown', message.id);
           return;
         }
         
         const { status, message: statusMessage } = message.content;
         if (!status) {
-          agentServer.sendError(connectionId, 'Status is required for status update', message.id);
+          this.agentServer.sendError(connectionId, 'Status is required for status update', message.id);
           return;
         }
         
@@ -1033,7 +1072,7 @@ class Orchestrator {
         });
         
         // Send success response directly
-        agentServer.send(connectionId, {
+        this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'agent.status.updated',
           content: {
@@ -1050,7 +1089,7 @@ class Orchestrator {
         
         console.log(`Agent ${agent.name} (${agent.id}) status updated to ${status}`);
       } catch (error) {
-        agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
+        this.agentServer.sendError(connectionId, error instanceof Error ? error.message : String(error), message.id);
       }
     });
 
@@ -1815,37 +1854,6 @@ class Orchestrator {
 
 // Create and export singleton orchestrator instance
 const orchestrator = new Orchestrator();
-
-if (require.main === module) {
-  orchestrator.start()
-    .catch(error => {
-      console.error('Failed to start orchestrator:', error);
-      process.exit(1);
-    });
-  
-  // Handle graceful shutdown
-  process.on('SIGINT', async () => {
-    console.log('Received SIGINT, shutting down gracefully');
-    try {
-      await orchestrator.stop();
-      process.exit(0);
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-      process.exit(1);
-    }
-  });
-  
-  process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, shutting down gracefully');
-    try {
-      await orchestrator.stop();
-      process.exit(0);
-    } catch (error) {
-      console.error('Error during shutdown:', error);
-      process.exit(1);
-    }
-  });
-}
 
 
 export default orchestrator;

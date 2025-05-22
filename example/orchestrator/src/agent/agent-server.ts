@@ -136,67 +136,67 @@ class AgentServer {
     // Handle different message types with switch-case for better readability
     switch (message.type) {
       case 'agent.register':
-        this.eventBus.emit('agent.register', message, connectionId, this);
+        this.eventBus.emit('agent.register', message, connectionId);
         break;
         
       case 'agent.list.request':
-        this.eventBus.emit('agent.list.request', message, connectionId, this);
+        this.eventBus.emit('agent.list.request', message, connectionId);
         break;
         
       case 'service.list':
-        this.eventBus.emit('service.list', message, connectionId, this);
+        this.eventBus.emit('service.list', message, connectionId);
         break;
         
       case 'service.task.execute':
-        this.eventBus.emit('service.task.execute', message, connectionId, this);
+        this.eventBus.emit('service.task.execute', message, connectionId);
         break;
         
       case 'task.result':
-        this.eventBus.emit('task.result', message, connectionId, this);
+        this.eventBus.emit('task.result', message, connectionId);
         break;
         
       case 'task.error':
-        this.eventBus.emit('task.error', message, connectionId, this);
+        this.eventBus.emit('task.error', message, connectionId);
         break;
         
       case 'task.status':
-        this.eventBus.emit('task.status', message, connectionId, this);
+        this.eventBus.emit('task.status', message, connectionId);
         break;
         
       case 'service.task.result':
-        this.eventBus.emit('service.task.result', message, connectionId, this);
+        this.eventBus.emit('service.task.result', message, connectionId);
         break;
         
       case 'task.notification':
-        this.eventBus.emit('task.notification', message, connectionId, this);
+        this.eventBus.emit('task.notification', message, connectionId);
         break;
         
       case 'agent.status':
-        this.eventBus.emit('agent.status', message, connectionId, this);
+        this.eventBus.emit('agent.status', message, connectionId);
         break;
         
       case 'mcp.servers.list':
       case 'mcp.servers.list.request': // backward compatibility
-        this.eventBus.emit('mcp.servers.list', message, connectionId, this);
+        this.eventBus.emit('mcp.servers.list', message, connectionId);
         break;
         
       case 'mcp.tools.list':
       case 'mcp.tools.list.request': // backward compatibility
-        this.eventBus.emit('mcp.tools.list', message, connectionId, this);
+        this.eventBus.emit('mcp.tools.list', message, connectionId);
         break;
         
       case 'mcp.tool.execute':
       case 'mcp.tool.execute.request': // backward compatibility
-        this.eventBus.emit('mcp.tool.execute', message, connectionId, this);
+        this.eventBus.emit('mcp.tool.execute', message, connectionId);
         break;
         
       case 'ping':
-        this.eventBus.emit('ping', message, connectionId, this);
+        this.eventBus.emit('ping', message, connectionId);
         break;
         
       default:
         // For any unhandled message types, still emit the event but warn about it
-        this.eventBus.emit(message.type, message, connectionId, this);
+        this.eventBus.emit(message.type, message, connectionId);
         
         // If no listeners for this specific message type, log a warning
         if (this.eventBus.listenerCount(message.type) === 0) {
