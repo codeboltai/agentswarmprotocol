@@ -160,12 +160,75 @@ class Orchestrator {
             this.messageHandler.handleClientMCPToolExecuteRequest(params, requestId);
         });
         // Listen for service registration events
-        this.eventBus.on('service.register', (message, connectionId, requestId) => {
-            this.messageHandler.handleServiceRegisterEvent(message, connectionId, requestId);
+        this.eventBus.on('service.register', (message, connectionId, serviceServer) => {
+            try {
+                const content = message.content || {};
+                if (!content.name) {
+                    return this.serviceServer.sendError(connectionId, 'Service name is required', message.id);
+                }
+                // Register the service
+                const serviceId = content.id || (0, uuid_1.v4)();
+                const service = {
+                    id: serviceId,
+                    name: content.name,
+                    type: content.type || 'service',
+                    capabilities: content.capabilities || [],
+                    status: 'online',
+                    connectionId, // Include the connectionId in the service object
+                    registeredAt: new Date().toISOString(),
+                    metadata: content.metadata || {}
+                };
+                // Register in registry - passing only the service object
+                this.services.registerService(service);
+                // Respond with confirmation
+                this.serviceServer.send(connectionId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'service.registered',
+                    content: {
+                        id: serviceId,
+                        name: service.name,
+                        status: service.status,
+                        message: 'Service successfully registered'
+                    },
+                    requestId: message.id
+                });
+                console.log(`Service ${service.name} (${serviceId}) registered successfully`);
+            }
+            catch (error) {
+                this.serviceServer.sendError(connectionId, 'Error registering service', message.id, error instanceof Error ? error.message : String(error));
+            }
         });
         // Listen for service status update events
-        this.eventBus.on('service.status.update', (message, connectionId, requestId) => {
-            this.messageHandler.handleServiceStatusUpdateEvent(message, connectionId, requestId);
+        this.eventBus.on('service.status.update', (message, connectionId, serviceServer) => {
+            try {
+                const content = message.content || {};
+                const { status } = content;
+                if (!status) {
+                    return this.serviceServer.sendError(connectionId, 'Status is required', message.id);
+                }
+                // Get service ID from connection
+                const service = this.services.getServiceByConnectionId(connectionId);
+                if (!service) {
+                    return this.serviceServer.sendError(connectionId, 'Service not found or not registered', message.id);
+                }
+                // Update service status
+                this.services.updateServiceStatus(service.id, status, content);
+                // Respond with confirmation
+                this.serviceServer.send(connectionId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'service.status.updated',
+                    content: {
+                        id: service.id,
+                        status,
+                        message: 'Service status updated successfully'
+                    },
+                    requestId: message.id
+                });
+                console.log(`Service ${service.name} (${service.id}) status updated to ${status}`);
+            }
+            catch (error) {
+                this.serviceServer.sendError(connectionId, 'Error updating service status', message.id, error instanceof Error ? error.message : String(error));
+            }
         });
         // Listen for client disconnection events
         this.eventBus.on('client.disconnected', (connectionId) => {
@@ -1241,13 +1304,13 @@ class Orchestrator {
             }
         });
         // Client agent list request handler
-        this.eventBus.on('client.agent.list.request', (message, clientId, clientServer) => {
+        this.eventBus.on('client.agent.list.request', (message, clientId) => {
             try {
                 const filters = message.content?.filters || {};
                 // Get agent list from registry
                 const agents = this.messageHandler.getAgentList(filters);
                 // Send response
-                clientServer.send(clientId, {
+                this.clientServer.send(clientId, {
                     id: message.id || (0, uuid_1.v4)(),
                     type: 'agent.list',
                     content: {
@@ -1256,7 +1319,7 @@ class Orchestrator {
                 });
             }
             catch (error) {
-                clientServer.sendError(clientId, 'Error getting agent list', message.id, error instanceof Error ? error.message : String(error));
+                this.clientServer.sendError(clientId, 'Error getting agent list', message.id, error instanceof Error ? error.message : String(error));
             }
         });
         // Client direct message handler
@@ -1333,7 +1396,7 @@ class Orchestrator {
             try {
                 const content = message.content || {};
                 if (!content.name) {
-                    return serviceServer.sendError(connectionId, 'Service name is required', message.id);
+                    return this.serviceServer.sendError(connectionId, 'Service name is required', message.id);
                 }
                 // Register the service
                 const serviceId = content.id || (0, uuid_1.v4)();
@@ -1350,7 +1413,7 @@ class Orchestrator {
                 // Register in registry - passing only the service object
                 this.services.registerService(service);
                 // Respond with confirmation
-                serviceServer.send(connectionId, {
+                this.serviceServer.send(connectionId, {
                     id: (0, uuid_1.v4)(),
                     type: 'service.registered',
                     content: {
@@ -1364,7 +1427,7 @@ class Orchestrator {
                 console.log(`Service ${service.name} (${serviceId}) registered successfully`);
             }
             catch (error) {
-                serviceServer.sendError(connectionId, 'Error registering service', message.id, error instanceof Error ? error.message : String(error));
+                this.serviceServer.sendError(connectionId, 'Error registering service', message.id, error instanceof Error ? error.message : String(error));
             }
         });
         this.eventBus.on('service.status.update', (message, connectionId, serviceServer) => {
@@ -1372,17 +1435,17 @@ class Orchestrator {
                 const content = message.content || {};
                 const { status } = content;
                 if (!status) {
-                    return serviceServer.sendError(connectionId, 'Status is required', message.id);
+                    return this.serviceServer.sendError(connectionId, 'Status is required', message.id);
                 }
                 // Get service ID from connection
                 const service = this.services.getServiceByConnectionId(connectionId);
                 if (!service) {
-                    return serviceServer.sendError(connectionId, 'Service not found or not registered', message.id);
+                    return this.serviceServer.sendError(connectionId, 'Service not found or not registered', message.id);
                 }
                 // Update service status
                 this.services.updateServiceStatus(service.id, status, content);
                 // Respond with confirmation
-                serviceServer.send(connectionId, {
+                this.serviceServer.send(connectionId, {
                     id: (0, uuid_1.v4)(),
                     type: 'service.status.updated',
                     content: {
@@ -1395,7 +1458,7 @@ class Orchestrator {
                 console.log(`Service ${service.name} (${service.id}) status updated to ${status}`);
             }
             catch (error) {
-                serviceServer.sendError(connectionId, 'Error updating service status', message.id, error instanceof Error ? error.message : String(error));
+                this.serviceServer.sendError(connectionId, 'Error updating service status', message.id, error instanceof Error ? error.message : String(error));
             }
         });
         this.eventBus.on('service.task.notification', (message, connectionId, serviceServer) => {
@@ -1403,11 +1466,11 @@ class Orchestrator {
                 // Get service info
                 const serviceId = this.services.getServiceByConnectionId(connectionId)?.id;
                 if (!serviceId) {
-                    return serviceServer.sendError(connectionId, 'Service not registered or unknown', message.id);
+                    return this.serviceServer.sendError(connectionId, 'Service not registered or unknown', message.id);
                 }
                 const service = this.services.getServiceById(serviceId);
                 if (!service) {
-                    return serviceServer.sendError(connectionId, 'Service not found', message.id);
+                    return this.serviceServer.sendError(connectionId, 'Service not found', message.id);
                 }
                 // Enhance the notification with service information
                 const enhancedNotification = {
@@ -1428,7 +1491,7 @@ class Orchestrator {
                     }
                 }
                 // Send confirmation
-                serviceServer.send(connectionId, {
+                this.serviceServer.send(connectionId, {
                     id: (0, uuid_1.v4)(),
                     type: 'notification.received',
                     content: {
@@ -1439,7 +1502,7 @@ class Orchestrator {
                 });
             }
             catch (error) {
-                serviceServer.sendError(connectionId, 'Error processing notification', message.id, error instanceof Error ? error.message : String(error));
+                this.serviceServer.sendError(connectionId, 'Error processing notification', message.id, error instanceof Error ? error.message : String(error));
             }
         });
     }

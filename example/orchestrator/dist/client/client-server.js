@@ -141,17 +141,17 @@ class ClientServer {
         switch (message.type) {
             // Client registration and management
             case 'client.register':
-                this.eventBus.emit('client.register', message, clientId, this);
+                this.eventBus.emit('client.register', message, clientId);
                 break;
             case 'client.list':
-                this.eventBus.emit('client.list.request', message, clientId, this);
+                this.eventBus.emit('client.list.request', message, clientId);
                 break;
             // Task-related operations
             case 'task.create':
-                this.eventBus.emit('client.task.create.request', message, clientId, this);
+                this.eventBus.emit('client.task.create.request', message, clientId);
                 break;
             case 'task.status':
-                this.eventBus.emit('client.task.status.request', message, clientId, this);
+                this.eventBus.emit('client.task.status.request', message, clientId);
                 break;
             // Agent operations
             case 'agent.list':
@@ -159,17 +159,17 @@ class ClientServer {
                 break;
             // MCP-related operations
             case 'mcp.server.list':
-                this.eventBus.emit('client.mcp.server.list.request', message, clientId, this);
+                this.eventBus.emit('client.mcp.server.list.request', message, clientId);
                 break;
             case 'mcp.server.tools':
-                this.eventBus.emit('client.mcp.server.tools.request', message, clientId, this);
+                this.eventBus.emit('client.mcp.server.tools.request', message, clientId);
                 break;
             case 'mcp.tool.execute':
-                this.eventBus.emit('client.mcp.tool.execute.request', message, clientId, this);
+                this.eventBus.emit('client.mcp.tool.execute.request', message, clientId);
                 break;
             // Message routing
             case 'client.message':
-                this.eventBus.emit('client.direct.message', message, clientId, this);
+                this.eventBus.emit('client.direct.message', message, clientId);
                 break;
             case 'ping':
                 this.send(clientId, {
@@ -185,7 +185,7 @@ class ClientServer {
             // Unrecognized message type
             default:
                 // For any unhandled message types, still emit the event but warn about it
-                this.eventBus.emit(message.type, message, clientId, this);
+                this.eventBus.emit(message.type, message, clientId);
                 // If no listeners for this specific message type, log a warning
                 if (this.eventBus.listenerCount(message.type) === 0) {
                     console.warn(`No handlers registered for message type: ${message.type}`);
