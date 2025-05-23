@@ -212,8 +212,18 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     // System Level Messages between Agent And Orchestrator
     // Task Level Communication between Agent And Orchestrator
     /**
-     * Register a handler for all tasks
-     * @param handler Handler function
+     * Send a request message and wait for a response
+     * @param message - The message to send
+     * @param options - Additional options
+     * @param options.timeout - Timeout in milliseconds
+     * @returns The response message
+     */
+    async sendRequestWaitForResponse(message, options = {}) {
+        return this.webSocketManager.sendRequestWaitForResponse(message, options);
+    }
+    /**
+     * Register a task handler that will be called whenever a task is received
+     * @param handler Task handler function
      */
     onTask(handler) {
         this.taskHandler.onTask(handler);

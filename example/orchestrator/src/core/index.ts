@@ -466,7 +466,7 @@ class Orchestrator {
     });
     
     // Listen for service registration events
-    this.eventBus.on('service.register', (message: any, connectionId: string, serviceServer: any) => {
+    this.eventBus.on('service.register', (message: any, connectionId: string) => {
       try {
         const content = message.content || {};
         
@@ -507,9 +507,8 @@ class Orchestrator {
       } catch (error) {
         this.serviceServer.sendError(
           connectionId, 
-          'Error registering service', 
-          message.id,
-          error instanceof Error ? error.message : String(error)
+          'Error during service registration: ' + (error instanceof Error ? error.message : String(error)),
+          message.id
         );
       }
     });

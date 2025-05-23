@@ -250,8 +250,19 @@ class SwarmAgentSDK extends EventEmitter {
   // Task Level Communication between Agent And Orchestrator
 
   /**
-   * Register a handler for all tasks
-   * @param handler Handler function
+   * Send a request message and wait for a response
+   * @param message - The message to send
+   * @param options - Additional options
+   * @param options.timeout - Timeout in milliseconds
+   * @returns The response message
+   */
+  async sendRequestWaitForResponse(message: Partial<BaseMessage>, options: { timeout?: number } = {}): Promise<any> {
+    return this.webSocketManager.sendRequestWaitForResponse(message, options);
+  }
+
+  /**
+   * Register a task handler that will be called whenever a task is received
+   * @param handler Task handler function
    */
   onTask(handler: TaskHandler): SwarmAgentSDK {
     this.taskHandler.onTask(handler);
@@ -420,7 +431,6 @@ class SwarmAgentSDK extends EventEmitter {
   ): Promise<any> {
     return this.mcpManager.executeMCPTool(serverId, toolName, parameters, timeout);
   }
-  
 }
 
 export { SwarmAgentSDK };

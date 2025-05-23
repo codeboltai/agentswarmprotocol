@@ -8,6 +8,8 @@ export interface PendingResponse {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
   timer: NodeJS.Timeout;
+  customEvent?: string;
+  anyMessageId?: boolean;
 }
 
 export interface AgentConfig {

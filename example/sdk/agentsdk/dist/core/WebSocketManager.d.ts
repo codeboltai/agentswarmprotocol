@@ -10,6 +10,7 @@ export declare class WebSocketManager extends EventEmitter {
     private connected;
     private connecting;
     private pendingResponses;
+    private defaultTimeout;
     constructor(orchestratorUrl: string, autoReconnect?: boolean, reconnectInterval?: number, logger?: Console);
     /**
      * Connect to the orchestrator
@@ -31,6 +32,20 @@ export declare class WebSocketManager extends EventEmitter {
      * @param timeout Timeout in milliseconds
      */
     sendAndWaitForResponse(message: BaseMessage, timeout?: number): Promise<BaseMessage>;
+    /**
+     * Send a request message and wait for a response
+     * @param message - The message to send
+     * @param options - Additional options
+     * @param options.timeout - Timeout in milliseconds
+     * @param options.customEvent - Custom event type to wait for (if specified, only messages with this event type will resolve)
+     * @param options.anyMessageId - If true, resolve for any message with the custom event type, regardless of message ID
+     * @returns The response message
+     */
+    sendRequestWaitForResponse(message: any, options?: {
+        timeout?: number;
+        customEvent?: string;
+        anyMessageId?: boolean;
+    }): Promise<any>;
     /**
      * Check if connected to the orchestrator
      */

@@ -2,7 +2,7 @@
  * SwarmAgentSDK - Base class for creating agents that connect to the Agent Swarm Protocol
  */
 import { EventEmitter } from 'events';
-import { AgentStatus } from '@agentswarmprotocol/types/common';
+import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
 import { AgentConfig, TaskHandler } from './core/types';
 declare class SwarmAgentSDK extends EventEmitter {
     protected agentId: string;
@@ -53,8 +53,18 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     setStatus(status: AgentStatus): Promise<void>;
     /**
-     * Register a handler for all tasks
-     * @param handler Handler function
+     * Send a request message and wait for a response
+     * @param message - The message to send
+     * @param options - Additional options
+     * @param options.timeout - Timeout in milliseconds
+     * @returns The response message
+     */
+    sendRequestWaitForResponse(message: Partial<BaseMessage>, options?: {
+        timeout?: number;
+    }): Promise<any>;
+    /**
+     * Register a task handler that will be called whenever a task is received
+     * @param handler Task handler function
      */
     onTask(handler: TaskHandler): SwarmAgentSDK;
     /**
