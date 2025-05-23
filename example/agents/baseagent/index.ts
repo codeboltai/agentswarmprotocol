@@ -73,13 +73,40 @@ agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   };
 });
 
+// Function to get and display available services
+async function getAvailableServices() {
+  try {
+    console.log('Fetching available services...');
+    const services = await agent.getServiceList();
+    
+    if (services && services.length > 0) {
+      console.log('Available services:');
+      services.forEach((service, index) => {
+        console.log(`  ${index + 1}. ${service.name} (ID: ${service.id})`);
+        console.log(`     Status: ${service.status}`);
+        if (service.capabilities && service.capabilities.length > 0) {
+          console.log(`     Capabilities: ${service.capabilities.join(', ')}`);
+        }
+        console.log('');
+      });
+    } else {
+      console.log('No services are currently available.');
+    }
+  } catch (error) {
+    console.error('Error fetching services:', error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Listen for events
 agent.on('connected', () => {
   console.log('Connected to orchestrator');
 });
 
-agent.on('registered', () => {
+agent.on('registered', async () => {
   console.log('Agent registered with orchestrator');
+  
+  // Get the list of available services after registration
+  await getAvailableServices();
 });
 
 agent.on('error', (error) => {
@@ -92,8 +119,13 @@ agent.on('disconnected', () => {
 
 // Connect to the orchestrator
 agent.connect()
-  .then(() => {
+  .then(async () => {
     console.log('Agent started and connected to orchestrator');
+    
+    // Also get services after connection (in case registration event doesn't fire)
+    setTimeout(async () => {
+      await getAvailableServices();
+    }, 2000);
   })
   .catch(error => {
     console.error('Connection error:', error.message);

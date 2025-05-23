@@ -320,7 +320,7 @@ class AgentServer {
       console.log(`Agent ${name} (${actualId}) registered successfully with connection ${connectionId}`);
       
       // Emit event for agent registration
-      this.eventBus.emit('agent.registered', actualId, connectionId);
+      // this.eventBus.emit('agent.registered', actualId, connectionId);
       
       return {
         id: actualId,

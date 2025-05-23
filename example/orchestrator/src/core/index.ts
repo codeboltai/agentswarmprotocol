@@ -145,12 +145,7 @@ class Orchestrator {
         );
       }
     });
-    
-    // Message Handler event listeners - moved from message-handler.ts
-    // Listen for agent registration events
-    this.eventBus.on('agent.registered', (agentId: string, connectionId: string) => {
-      this.messageHandler.handleAgentRegistered(agentId, connectionId);
-    });
+  
     
     // Listen for client registration events
     this.eventBus.on('client.registered', (client: any) => {

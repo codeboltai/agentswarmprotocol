@@ -54,19 +54,6 @@ class MessageHandler {
   }
 
   /**
-   * Handle agent registered event
-   * @param agentId The ID of the registered agent
-   * @param connectionId The connection ID of the agent
-   */
-  handleAgentRegistered(agentId: string, connectionId: string): void {
-    // Perform any additional business logic needed when an agent is registered
-    console.log(`MessageHandler: Agent ${agentId} registered with connection ${connectionId}`);
-    
-    // For example, initialize any tasks or settings for the agent
-    // Or notify other components about the new agent
-  }
-
-  /**
    * Handle client registered event
    * @param client The client that was registered
    */

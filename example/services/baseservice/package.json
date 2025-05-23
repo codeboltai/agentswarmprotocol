@@ -4,9 +4,9 @@
   "description": "A simple base service for Agent Swarm Protocol",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node index.ts",
-    "build": "tsc",
-    "dev": "ts-node-dev --respawn index.ts"
+    "start": "cd ../../sdk/servicesdk && npm run build && cd - && ts-node index.ts",
+    "build": "cd ../../sdk/servicesdk && npm run build && cd - && tsc",
+    "dev": "cd ../../sdk/servicesdk && npm run build && cd - && ts-node-dev --respawn index.ts"
   },
   "dependencies": {
     "@agent-swarm/service-sdk": "file:../../sdk/servicesdk"
