@@ -179,8 +179,34 @@ class Orchestrator {
     
   
      // Listen for service list requests
-     this.eventBus.on('agent.service.list', (filters: any, requestId?: string) => {
-      this.messageHandler.handleServiceListRequest(filters, requestId);
+     this.eventBus.on('agent.service.list.request', (message: any, connectionId: string) => {
+      try {
+        const filters = message.content?.filters || {};
+        const serviceList = this.services.getAllServices(filters).map(service => ({
+          id: service.id,
+          name: service.name,
+          status: service.status,
+          capabilities: service.capabilities
+        }));
+        
+        // Send response back to the agent
+        this.agentServer.send(connectionId, {
+          id: uuidv4(),
+          type: 'agent.service.list.response',
+          content: {
+            services: serviceList
+          },
+          requestId: message.id
+        });
+        
+        console.log(`Service list sent to agent (${serviceList.length} services)`);
+      } catch (error) {
+        this.agentServer.sendError(
+          connectionId,
+          'Error getting service list: ' + (error instanceof Error ? error.message : String(error)),
+          message.id
+        );
+      }
     });
     
     // Listen for service task execution requests

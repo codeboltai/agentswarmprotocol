@@ -77,7 +77,7 @@ export class ServiceManager {
       
       const response = await this.webSocketManager.sendAndWaitForResponse({
         id: uuidv4(),
-        type: 'service.list',
+        type: 'agent.service.list.request',
         content: { filters }
       } as BaseMessage);
       

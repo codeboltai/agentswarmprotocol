@@ -439,31 +439,6 @@ class MessageHandler {
   }
 
   /**
-   * Handle service list request
-   * @param filters Optional filters for the service list
-   * @param requestId Optional request ID for tracking the response
-   */
-  handleServiceListRequest(filters: any, requestId?: string): void {
-    try {
-      // Get all services matching the filters
-      const serviceList = this.services.getAllServices(filters).map(service => ({
-        id: service.id,
-        name: service.name,
-        status: service.status,
-        capabilities: service.capabilities
-      }));
-      
-      // Emit result event with the request ID
-      this.eventBus.emit(`client.service.list.result.${requestId || 'default'}`, serviceList);
-    } catch (error) {
-      // Emit error event with the request ID
-      this.eventBus.emit(`client.service.list.error.${requestId || 'default'}`, { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
-
-  /**
    * Handle client agent list request
    * @param filters Optional filters for the agent list
    * @param requestId Optional request ID for tracking the response
