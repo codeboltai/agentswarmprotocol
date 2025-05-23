@@ -121,6 +121,31 @@ class Orchestrator {
     // 2. Parameter counts match between emitter and listener
     // 3. All emitters include proper error handling
     
+    // Handle agent registration - add new event handler for agent.register
+    this.eventBus.on('agent.register', (message: any, connectionId: string) => {
+      try {
+        const result = this.agentServer.handleAgentRegistration(message, connectionId);
+        if (result.error) {
+          this.agentServer.sendError(connectionId, result.error, message.id);
+          return;
+        }
+        
+        // Send registration confirmation to the agent
+        this.agentServer.send(connectionId, {
+          id: uuidv4(),
+          type: 'agent.registered',
+          content: result,
+          requestId: message.id
+        });
+      } catch (error) {
+        this.agentServer.sendError(
+          connectionId, 
+          'Error during agent registration: ' + (error instanceof Error ? error.message : String(error)),
+          message.id
+        );
+      }
+    });
+    
     // Message Handler event listeners - moved from message-handler.ts
     // Listen for agent registration events
     this.eventBus.on('agent.registered', (agentId: string, connectionId: string) => {
