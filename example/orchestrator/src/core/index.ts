@@ -1190,7 +1190,7 @@ class Orchestrator {
         
         this.clientServer.send(clientId, {
           id: uuidv4(),
-          type: 'agent.list',
+          type: 'client.agent.list.response',
           content: {
             agents: agents.map((agent: any) => ({
               id: agent.id,

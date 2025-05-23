@@ -19,7 +19,7 @@ class AgentManager {
      */
     async getAgentsList(filters = {}) {
         const response = await this.wsClient.sendRequestWaitForResponse({
-            type: 'agent.list',
+            type: 'client.agent.list.request',
             content: { filters }
         });
         return response.content.agents;

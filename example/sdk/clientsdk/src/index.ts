@@ -66,14 +66,14 @@ export class SwarmClientSDK extends EventEmitter {
     
     // Handle specific message types
     switch (message.type) {
-      case 'orchestrator.welcome':
+      case 'orchestrator.client.welcome':
         if (message.content && message.content.clientId) {
           this.clientId = message.content.clientId;
         }
         this.emit('welcome', message.content);
         break;
         
-      case 'agent.list':
+      case 'client.agent.list.response':
         this.emit('agent.list', message.content.agents);
         break;
         

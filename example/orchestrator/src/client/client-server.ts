@@ -98,7 +98,7 @@ class ClientServer {
       // Send welcome message to client
       this.send(clientId, {
         id: uuidv4(),
-        type: 'orchestrator.welcome',
+        type: 'orchestrator.client.welcome',
         content: {
           message: 'Connected to ASP Client Interface',
           clientId: clientId,
@@ -166,7 +166,7 @@ class ClientServer {
         break;
         
       // Agent operations
-      case 'agent.list':
+      case 'client.agent.list.request':
         this.eventBus.emit('client.agent.list.request', message, clientId, this);
         break;
         
