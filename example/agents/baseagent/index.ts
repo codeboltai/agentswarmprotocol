@@ -78,6 +78,7 @@ async function getAvailableServices() {
   try {
     console.log('Fetching available services...');
     const services = await agent.getServiceList();
+    console.log('Available services:', services.length);
     
     if (services && services.length > 0) {
       console.log('Available services:');

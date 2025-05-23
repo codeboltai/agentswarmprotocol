@@ -31,7 +31,7 @@ class SwarmAgentSDK extends EventEmitter {
 
   constructor(config: AgentConfig = {}) {
     super();
-    
+
     // Initialize properties
     this.agentId = config.agentId || uuidv4();
     this.name = config.name || 'Generic Agent';
@@ -40,7 +40,7 @@ class SwarmAgentSDK extends EventEmitter {
     this.description = config.description || 'Generic Agent';
     this.manifest = config.manifest || {};
     this.logger = config.logger || console;
-    
+
     // Initialize modules
     this.webSocketManager = new WebSocketManager(
       config.orchestratorUrl || 'ws://localhost:3000',
@@ -48,12 +48,12 @@ class SwarmAgentSDK extends EventEmitter {
       config.reconnectInterval || 5000,
       this.logger
     );
-    
+
     this.taskHandler = new TaskHandlerClass(this.webSocketManager, this.agentId, this.logger);
     this.agentManager = new AgentManager(this.webSocketManager, this.agentId, this.logger);
     this.serviceManager = new ServiceManager(this.webSocketManager, this.logger);
     this.mcpManager = new MCPManager(this.webSocketManager, this.logger);
-    
+
     // Set up event forwarding
     this.setupEventForwarding();
   }
@@ -135,6 +135,8 @@ class SwarmAgentSDK extends EventEmitter {
         break;
       case 'orchestrator.welcome':
         this.emit('welcome', message.content);
+      case 'agent.service.list.response':
+        this.emit('agent.service.list.response ', message.content);
         break;
       case 'task.execute':
         this.taskHandler.handleTask(message as TaskExecuteMessage);
@@ -211,10 +213,10 @@ class SwarmAgentSDK extends EventEmitter {
    * @private
    */
   private sendPong(messageId: string): void {
-    this.webSocketManager.send({ 
-      type: 'pong', 
-      id: messageId, 
-      content: {} 
+    this.webSocketManager.send({
+      type: 'pong',
+      id: messageId,
+      content: {}
     } as BaseMessage);
   }
 
@@ -346,9 +348,9 @@ class SwarmAgentSDK extends EventEmitter {
       this.logger.error('executeServiceTask called with empty serviceId');
       return Promise.reject(new Error('Service ID is required for executing a service task'));
     }
-    
+
     this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}"`);
-    
+
     try {
       return this.serviceManager.executeServiceTask(serviceId, toolName, params, options)
         .catch(error => {
@@ -357,13 +359,13 @@ class SwarmAgentSDK extends EventEmitter {
             this.logger.error(`Service connection error: Unable to find service "${serviceId}". Make sure the service is running and connected.`);
             throw new Error(`Service "${serviceId}" is not connected or does not exist. Please verify the service is running and properly registered.`);
           }
-          
+
           // Handle other common errors
           if (error.message.includes('timed out')) {
             this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}"`);
             throw new Error(`Service task "${toolName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
           }
-          
+
           // Pass through other errors
           throw error;
         });
@@ -393,7 +395,7 @@ class SwarmAgentSDK extends EventEmitter {
     return this.serviceManager.getServiceToolList(serviceId, options);
   }
 
- 
+
   // MCP Manager methods
   //OK
   /**
@@ -424,9 +426,9 @@ class SwarmAgentSDK extends EventEmitter {
    * @param timeout Request timeout
    */
   executeMCPTool(
-    serverId: string, 
-    toolName: string, 
-    parameters: Record<string, any> = {}, 
+    serverId: string,
+    toolName: string,
+    parameters: Record<string, any> = {},
     timeout = 60000
   ): Promise<any> {
     return this.mcpManager.executeMCPTool(serverId, toolName, parameters, timeout);
