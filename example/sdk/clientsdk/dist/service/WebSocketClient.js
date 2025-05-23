@@ -311,36 +311,32 @@ class WebSocketClient extends events_1.EventEmitter {
         // Check for pending responses
         if (messageId && this.pendingResponses.has(messageId)) {
             const pendingResponse = this.pendingResponses.get(messageId);
-            console.log('pendingResponse', pendingResponse);
             // Check if we need to match a custom event
             if (pendingResponse.customEvent) {
                 // Only resolve if the message type matches the custom event
                 if (message.type === pendingResponse.customEvent) {
                     const isError = message.type === 'error' || (message.content && message.content.error);
-                    if (this.handleResponse(messageId, message, isError)) {
-                        console.log(`Resolved pending response for message ID: ${messageId} with custom event: ${pendingResponse.customEvent}`);
-                        return;
-                    }
+                    this.handleResponse(messageId, message, isError);
+                    console.log(`Resolved pending response for message ID: ${messageId} with custom event: ${pendingResponse.customEvent}`);
+                    // return;
                 }
                 // If custom event doesn't match, don't resolve and continue processing
             }
             else {
                 // No custom event specified, resolve for any message with this ID
                 const isError = message.type === 'error' || (message.content && message.content.error);
-                if (this.handleResponse(messageId, message, isError)) {
-                    console.log(`Resolved pending response for message ID: ${messageId}`);
-                    return;
-                }
+                this.handleResponse(messageId, message, isError);
+                console.log(`Resolved pending response for message ID: ${messageId}`);
+                // return;
             }
         }
         // Check for anyMessageId responses (custom event with any message ID)
         for (const [pendingId, pendingResponse] of this.pendingResponses.entries()) {
             if (pendingResponse.anyMessageId && pendingResponse.customEvent && message.type === pendingResponse.customEvent) {
                 const isError = message.type === 'error' || (message.content && message.content.error);
-                if (this.handleResponse(pendingId, message, isError)) {
-                    console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
-                    return;
-                }
+                this.handleResponse(pendingId, message, isError);
+                console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
+                // return;
             }
         }
         // Special handling for task.created messages to help pending requests
@@ -469,9 +465,9 @@ class WebSocketClient extends events_1.EventEmitter {
             else {
                 resolve(message);
             }
-            return true;
+            // return true;
         }
-        return false;
+        // return false;
     }
     /**
      * Get the map of pending responses (for debugging purposes)

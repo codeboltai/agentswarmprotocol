@@ -90,7 +90,7 @@ export declare class WebSocketClient extends EventEmitter {
      * @param isError - Whether this is an error response
      * @returns Whether a pending response was found and handled
      */
-    handleResponse(requestId: string, message: any, isError?: boolean): boolean;
+    handleResponse(requestId: string, message: any, isError?: boolean): void;
     /**
      * Get the map of pending responses (for debugging purposes)
      */
