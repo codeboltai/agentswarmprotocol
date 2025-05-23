@@ -153,6 +153,19 @@ class AgentServer {
             case 'agent.status':
                 this.eventBus.emit('agent.status', message, connectionId);
                 break;
+            case 'agent.request':
+                // Map the AgentManager format to the orchestrator format
+                const mappedMessage = {
+                    ...message,
+                    content: {
+                        targetAgentName: message.content.targetAgent,
+                        taskType: message.content.taskData?.type || 'generic',
+                        taskData: message.content.taskData,
+                        timeout: message.content.timeout
+                    }
+                };
+                this.eventBus.emit('agent.task.request', mappedMessage, connectionId);
+                break;
             case 'mcp.servers.list':
             case 'mcp.servers.list.request': // backward compatibility
                 this.eventBus.emit('mcp.servers.list', message, connectionId);

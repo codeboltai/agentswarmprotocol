@@ -171,6 +171,10 @@ class ClientServer {
             case 'client.message':
                 this.eventBus.emit('client.direct.message', message, clientId);
                 break;
+            // NEW: Handle task.message from client SDK
+            case 'task.message':
+                this.eventBus.emit('task.message', message, clientId);
+                break;
             case 'ping':
                 this.send(clientId, {
                     id: (0, uuid_1.v4)(),
