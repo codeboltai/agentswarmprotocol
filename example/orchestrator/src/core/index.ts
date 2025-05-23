@@ -222,7 +222,7 @@ class Orchestrator {
     });
     
     // Listen for client task creation requests
-    this.eventBus.on('client.task.create.request', async (message: any, clientId: string) => {
+    this.eventBus.on('client.agent.task.create.request', async (message: any, clientId: string) => {
       try {
         const { agentName, agentId, taskData } = message.content;
 
@@ -307,7 +307,7 @@ class Orchestrator {
         // Send response to client
         this.clientServer.send(clientId, {
           id: uuidv4(),
-          type: 'task.created',
+          type: 'client.agent.task.create.response',
           content: {
             taskId,
             agentId: agent.id,

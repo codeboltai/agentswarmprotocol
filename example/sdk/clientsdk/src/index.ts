@@ -97,7 +97,7 @@ export class SwarmClientSDK extends EventEmitter {
         }
         break;
         
-      case 'task.created':
+      case 'client.agent.task.create.response':
         this.emit('task.created', message.content);
         break;
 
