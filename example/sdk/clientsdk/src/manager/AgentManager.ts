@@ -25,6 +25,8 @@ export class AgentManager {
     const response = await this.wsClient.sendRequestWaitForResponse({
       type: 'client.agent.list.request',
       content: { filters }
+    }, {
+      customEvent: 'client.agent.list.response'
     });
     
     return response.content.agents;

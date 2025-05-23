@@ -6,7 +6,7 @@ import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 interface PendingResponse {
     resolve: (value: any) => void;
     reject: (reason?: any) => void;
-    timeout: NodeJS.Timeout;
+    timeout?: NodeJS.Timeout;
     customEvent?: string;
     anyMessageId?: boolean;
 }

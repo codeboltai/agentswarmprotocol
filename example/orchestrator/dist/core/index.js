@@ -1050,7 +1050,7 @@ class Orchestrator {
                 const agents = this.agents.getAllAgents();
                 this.clientServer.send(clientId, {
                     id: (0, uuid_1.v4)(),
-                    type: 'agent.list',
+                    type: 'client.agent.list.response',
                     content: {
                         agents: agents.map((agent) => ({
                             id: agent.id,

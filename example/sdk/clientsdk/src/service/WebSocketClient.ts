@@ -320,25 +320,22 @@ export class WebSocketClient extends EventEmitter {
    * @param message - The received message
    */
   private async handleMessage(message: any): Promise<void> {
-    // Add debug logging for task-related messages
-    if (message.type === 'task.created' || message.type === 'task.result' || message.type === 'task.status') {
-      console.log(`WebSocketClient received ${message.type} message:`, 
-        message.type === 'task.created' ? 
-          `taskId: ${message.content?.taskId}` : 
-          `taskId: ${message.content?.taskId}, status: ${message.content?.status}`);
-    }
+  
+    
+    // Ensure message ID is properly extracted for consistent use
+    const messageId = message.requestId;
     
     // Check for pending responses
-    if (message.id && this.pendingResponses.has(message.id)) {
-      const pendingResponse = this.pendingResponses.get(message.id)!;
+    if (messageId && this.pendingResponses.has(messageId)) {
+      const pendingResponse = this.pendingResponses.get(messageId)!;
       
       // Check if we need to match a custom event
       if (pendingResponse.customEvent) {
         // Only resolve if the message type matches the custom event
         if (message.type === pendingResponse.customEvent) {
           const isError = message.type === 'error' || (message.content && message.content.error);
-          if (this.handleResponse(message.requestId, message, isError)) {
-            console.log(`Resolved pending response for message ID: ${message.id} with custom event: ${pendingResponse.customEvent}`);
+          if (this.handleResponse(messageId, message, isError)) {
+            console.log(`Resolved pending response for message ID: ${messageId} with custom event: ${pendingResponse.customEvent}`);
             return;
           }
         }
@@ -346,8 +343,8 @@ export class WebSocketClient extends EventEmitter {
       } else {
         // No custom event specified, resolve for any message with this ID
         const isError = message.type === 'error' || (message.content && message.content.error);
-        if (this.handleResponse(message.requestId, message, isError)) {
-          console.log(`Resolved pending response for message ID: ${message.id}`);
+        if (this.handleResponse(messageId, message, isError)) {
+          console.log(`Resolved pending response for message ID: ${messageId}`);
           return;
         }
       }
@@ -358,7 +355,7 @@ export class WebSocketClient extends EventEmitter {
       if (pendingResponse.anyMessageId && pendingResponse.customEvent && message.type === pendingResponse.customEvent) {
         const isError = message.type === 'error' || (message.content && message.content.error);
         if (this.handleResponse(pendingId, message, isError)) {
-          console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${message.id})`);
+          console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
           return;
         }
       }
@@ -367,9 +364,9 @@ export class WebSocketClient extends EventEmitter {
     // Special handling for task.created messages to help pending requests
     if (message.type === 'task.created' && message.content && message.content.taskId) {
       // Store the relationship between the original request ID and the taskId
-      console.log(`Storing taskId ${message.content.taskId} for message ID: ${message.id}`);
+      console.log(`Storing taskId ${message.content.taskId} for message ID: ${messageId}`);
       this.emit('task.created.mapping', {
-        messageId: message.id,
+        messageId: messageId,
         taskId: message.content.taskId
       });
     }
@@ -443,16 +440,14 @@ export class WebSocketClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       let timeoutId: NodeJS.Timeout | undefined;
       
-      // Set up timeout only if explicitly provided
-      if (options.timeout !== undefined) {
-        timeoutId = setTimeout(() => {
-          if (this.pendingResponses.has(messageId)) {
-            this.pendingResponses.delete(messageId);
-            console.log(`Request ${messageId} (${message.type}) timed out after ${options.timeout}ms`);
-            reject(new Error(`Request timed out after ${options.timeout}ms. Type: ${message.type}`));
-          }
-        }, options.timeout);
-      }
+      // Always set up timeout using the computed timeout value
+      timeoutId = setTimeout(() => {
+        if (this.pendingResponses.has(messageId)) {
+          this.pendingResponses.delete(messageId);
+          console.log(`Request ${messageId} (${message.type}) timed out after ${timeout}ms`);
+          reject(new Error(`Request timed out after ${timeout}ms. Type: ${message.type}`));
+        }
+      }, timeout);
 
       // Store the pending response handlers
       this.pendingResponses.set(messageId, {
