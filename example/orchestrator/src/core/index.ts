@@ -177,8 +177,9 @@ class Orchestrator {
       this.messageHandler.handleAgentListRequest(filters, requestId);
     });
     
-    // Listen for service list requests
-    this.eventBus.on('client.service.list', (filters: any, requestId?: string) => {
+  
+     // Listen for service list requests
+     this.eventBus.on('agent.service.list', (filters: any, requestId?: string) => {
       this.messageHandler.handleServiceListRequest(filters, requestId);
     });
     
