@@ -34,7 +34,7 @@ export class TaskManager {
     
     // Create task
     const response = await this.wsClient.sendRequestWaitForResponse({
-      type: 'task.create',
+      type: 'client.agent.task.create.request',
       content: {
         event: 'task.completed',
         agentId,

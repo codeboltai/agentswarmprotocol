@@ -157,8 +157,8 @@ class ClientServer {
         break;
         
       // Task-related operations
-      case 'task.create':
-        this.eventBus.emit('client.task.create.request', message, clientId);
+      case 'client.agent.task.create.request':
+        this.eventBus.emit('client.agent.task.create.request', message, clientId);
         break;
         
       case 'task.status':

@@ -136,68 +136,6 @@ class MessageHandler {
   }
 
   /**
-   * Handle a client task creation request
-   * @param {BaseMessage} message - The task creation message
-   * @param {string} clientId - The client's connection ID
-   * @returns {Object} Task creation result
-   */
-  async handleTaskCreation(message: BaseMessage, clientId: string) {
-    const { agentName, agentId, taskData } = message.content;
-
-    console.log(`Task creation request received: ${JSON.stringify({
-      agentName,
-      agentId,
-      hasTaskData: !!taskData,
-      taskDataType: taskData ? typeof taskData : 'undefined',
-      taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
-    })}`);
-
-    if (!taskData) {
-      throw new Error('Invalid task creation request: taskData is required');
-    }
-
-    // Allow direct targeting by ID or lookup by name
-    let agent: Agent | undefined;
-
-    if (agentId) {
-      // Find agent directly by ID
-      agent = this.agents.getAgentById(agentId);
-      if (!agent) {
-        throw new Error(`Agent not found: No agent found with ID '${agentId}'`);
-      }
-    } else if (agentName) {
-      // Find the agent by name
-      agent = this.agents.getAgentByName(agentName);
-      if (!agent) {
-        throw new Error(`Agent not found: No agent found with name '${agentName}'`);
-      }
-    } else {
-      throw new Error('Invalid task creation request: Either agentName or agentId is required');
-    }
-
-    // Create a task
-    const taskId = uuidv4();
-
-    // Register task in task registry
-    this.tasks.registerTask(taskId, {
-      agentId: agent.id,
-      clientId: clientId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      taskData
-    });
-
-    // Emit event for task creation
-    this.eventBus.emit('task.created', taskId, agent.id, clientId, taskData);
-
-    return {
-      taskId,
-      agentId: agent.id,
-      status: 'pending'
-    };
-  }
-
-  /**
    * Get information about a specific task
    * @param {string} taskId - The ID of the task
    * @returns {Object} Task information
@@ -457,25 +395,6 @@ class MessageHandler {
   }
 
   /**
-   * Handle client task create request
-   * @param message The task creation message
-   * @param clientId The client ID
-   * @param requestId Optional request ID for tracking the response
-   */
-  async handleClientTaskCreateRequest(message: BaseMessage, clientId: string, requestId?: string): Promise<void> {
-    try {
-      const result = await this.handleTaskCreation(message, clientId);
-      // Emit result event with the request ID
-      this.eventBus.emit(`client.task.create.result.${requestId || 'default'}`, result);
-    } catch (error) {
-      // Emit error event with the request ID
-      this.eventBus.emit(`client.task.create.error.${requestId || 'default'}`, { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
-
-  /**
    * Handle client task status request
    * @param taskId The task ID to get status for
    * @param requestId Optional request ID for tracking the response
@@ -492,7 +411,6 @@ class MessageHandler {
       });
     }
   }
-
 
   /**
    * Handle client MCP server tools request

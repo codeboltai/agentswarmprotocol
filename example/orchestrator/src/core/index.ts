@@ -20,7 +20,8 @@ import {
   WebSocketWithId,
   SendOptions,
   TaskStatus,
-  ServiceStatus
+  ServiceStatus,
+  Agent
 } from '@agentswarmprotocol/types/dist/common';
 
 // Load environment variables
@@ -221,8 +222,105 @@ class Orchestrator {
     });
     
     // Listen for client task creation requests
-    this.eventBus.on('client.task.create', (message: any, clientId: string, requestId?: string) => {
-      this.messageHandler.handleClientTaskCreateRequest(message, clientId, requestId);
+    this.eventBus.on('client.task.create.request', async (message: any, clientId: string) => {
+      try {
+        const { agentName, agentId, taskData } = message.content;
+
+        console.log(`Task creation request received: ${JSON.stringify({
+          agentName,
+          agentId,
+          hasTaskData: !!taskData,
+          taskDataType: taskData ? typeof taskData : 'undefined',
+          taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
+        })}`);
+
+        if (!taskData) {
+          throw new Error('Invalid task creation request: taskData is required');
+        }
+
+        // Allow direct targeting by ID or lookup by name
+        let agent: Agent | undefined;
+
+        if (agentId) {
+          // Find agent directly by ID
+          agent = this.agents.getAgentById(agentId);
+          if (!agent) {
+            throw new Error(`Agent not found: No agent found with ID '${agentId}'`);
+          }
+        } else if (agentName) {
+          // Find the agent by name
+          agent = this.agents.getAgentByName(agentName);
+          if (!agent) {
+            throw new Error(`Agent not found: No agent found with name '${agentName}'`);
+          }
+        } else {
+          throw new Error('Invalid task creation request: Either agentName or agentId is required');
+        }
+
+        // Create a task
+        const taskId = uuidv4();
+
+        // Register task in task registry
+        this.tasks.registerTask(taskId, {
+          type: 'client.task',
+          name: `Client task for ${agent.name}`,
+          severity: 'normal',
+          agentId: agent.id,
+          clientId: clientId,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          taskData
+        });
+
+        // Get the agent connection and send task directly
+        const connection = this.agents.getConnectionByAgentId(agent.id);
+        if (!connection) {
+          // Update task status to failed
+          this.tasks.updateTaskStatus(taskId, 'failed', { 
+            error: 'Agent connection not found',
+            metadata: { failedAt: new Date().toISOString() }
+          });
+          
+          throw new Error('Cannot deliver task to agent: not connected');
+        }
+
+        // Create a task message to send to the agent
+        const taskMessage = {
+          id: taskId,
+          type: 'task.execute',
+          content: {
+            taskId: taskId,
+            type: taskData.taskType,
+            data: taskData
+          }
+        };
+        
+        // Send the task to the agent
+        this.agentServer.send(connection, taskMessage);
+        console.log(`Task ${taskId} sent to agent ${agent.id}`);
+        
+        // Update task status to running
+        this.tasks.updateTaskStatus(taskId, 'running', {
+          metadata: { startedAt: new Date().toISOString() }
+        });
+
+        // Send response to client
+        this.clientServer.send(clientId, {
+          id: uuidv4(),
+          type: 'task.created',
+          content: {
+            taskId,
+            agentId: agent.id,
+            agentName: agent.name,
+            status: 'running'
+          },
+          requestId: message.id
+        });
+        
+      } catch (error) {
+        this.clientServer.sendError(clientId, 'Error creating task', message.id,
+          error instanceof Error ? error.message : String(error));
+      }
     });
     
     // Listen for client task status requests
@@ -362,16 +460,55 @@ class Orchestrator {
           requestId: message.id
         });
         
-        // Emit task created event to send to target agent
-        this.eventBus.emit('task.created', childTaskId, targetAgent.id, requestingAgent.id, {
-          taskType,
-          ...taskData,
-          metadata: {
-            requestingAgent: {
-              id: requestingAgent.id,
-              name: requestingAgent.name
+        // Get target agent connection and send task directly
+        const targetConnection = this.agents.getConnectionByAgentId(targetAgent.id);
+        if (!targetConnection) {
+          // Update task status to failed
+          this.tasks.updateTaskStatus(childTaskId, 'failed', { 
+            error: 'Target agent connection not found',
+            metadata: { failedAt: new Date().toISOString() }
+          });
+          
+          // Notify requesting agent of failure
+          this.agentServer.send(connectionId, {
+            id: uuidv4(),
+            type: 'childagent.response',
+            content: {
+              childTaskId,
+              error: 'Target agent not connected',
+              status: 'failed'
+            }
+          });
+          return;
+        }
+
+        // Create a task message to send to the target agent
+        const taskMessage = {
+          id: childTaskId,
+          type: 'task.execute',
+          content: {
+            taskId: childTaskId,
+            type: taskType,
+            data: {
+              taskType,
+              ...taskData,
+              metadata: {
+                requestingAgent: {
+                  id: requestingAgent.id,
+                  name: requestingAgent.name
+                }
+              }
             }
           }
+        };
+        
+        // Send the task to the target agent
+        this.agentServer.send(targetConnection, taskMessage);
+        console.log(`Child task ${childTaskId} sent from agent ${requestingAgent.id} to agent ${targetAgent.id}`);
+        
+        // Update task status to running
+        this.tasks.updateTaskStatus(childTaskId, 'running', {
+          metadata: { startedAt: new Date().toISOString() }
         });
         
       } catch (error) {
@@ -799,96 +936,6 @@ class Orchestrator {
       }
     });
     
-    // Listen for task created events
-    this.eventBus.on('task.created', (taskId: string, agentId: string, clientId: string, taskData: any) => {
-      console.log(`Task ${taskId} created for agent ${agentId} by client ${clientId}`);
-      
-      // Get the agent connection
-      const connection = this.agents.getConnectionByAgentId(agentId);
-      if (!connection) {
-        console.error(`Cannot send task ${taskId} to agent ${agentId}: Agent connection not found`);
-        this.tasks.updateTaskStatus(taskId, 'failed', { 
-          error: 'Agent connection not found',
-          metadata: {
-            failedAt: new Date().toISOString()
-          }
-        });
-        
-        // Notify client if one is specified
-        if (clientId) {
-          this.clientServer.send(clientId, {
-            id: uuidv4(),
-            type: 'task.error',
-            content: {
-              taskId,
-              error: 'Agent connection not found',
-              message: 'Cannot deliver task to agent: not connected'
-            }
-          });
-        }
-        return;
-      }
-
-      // Create a task message to send to the agent
-      const taskMessage = {
-        id: taskId,
-        type: 'task.execute',
-        content: {
-          taskId: taskId,
-          type: taskData.taskType,
-          data: taskData
-        }
-      };
-      
-      // Send the task to the agent
-      try {
-        this.agentServer.send(connection, taskMessage);
-        console.log(`Task ${taskId} sent to agent ${agentId}`);
-        
-        // Update task status to running
-        this.tasks.updateTaskStatus(taskId, 'running', {
-          metadata: {
-            startedAt: new Date().toISOString()
-          }
-        });
-        
-        // Notify client if one is specified
-        if (clientId) {
-          this.clientServer.send(clientId, {
-            id: uuidv4(),
-            type: 'task.status',
-            content: {
-              taskId,
-              status: 'running',
-              agentId,
-              message: 'Task sent to agent'
-            }
-          });
-        }
-      } catch (error) {
-        console.error(`Error sending task ${taskId} to agent ${agentId}:`, error);
-        this.tasks.updateTaskStatus(taskId, 'failed', { 
-          error: error instanceof Error ? error.message : String(error),
-          metadata: {
-            failedAt: new Date().toISOString()
-          }
-        });
-        
-        // Notify client if one is specified
-        if (clientId) {
-          this.clientServer.send(clientId, {
-            id: uuidv4(),
-            type: 'task.error',
-            content: {
-              taskId,
-              error: error instanceof Error ? error.message : String(error),
-              message: 'Failed to send task to agent'
-            }
-          });
-        }
-      }
-    });
-
     // NEW: Handle task completion events
     this.eventBus.on('task.result', (message: any, connectionId: string) => {
       try {
@@ -1118,110 +1165,6 @@ class Orchestrator {
     });
 
     // NEW: Handle missing client events that are emitted but not handled
-    
-    // Handle client task creation requests
-    this.eventBus.on('client.task.create.request', (message: any, clientId: string) => {
-      try {
-        const { agentId, agentName, taskData } = message.content;
-        
-        if (!agentId && !agentName) {
-          this.clientServer.sendError(clientId, 'Agent ID or agent name is required', message.id);
-          return;
-        }
-        
-        // Find the agent
-        let agent = agentId ? this.agents.getAgentById(agentId) : this.agents.getAgentByName(agentName);
-        if (!agent) {
-          this.clientServer.sendError(clientId, `Agent ${agentId || agentName} not found`, message.id);
-          return;
-        }
-        
-        // Create a task
-        const taskId = uuidv4();
-        
-        // Register the task
-        this.tasks.registerTask(taskId, {
-          type: 'client.task',
-          name: `Client task for ${agent.name}`,
-          severity: 'normal',
-          agentId: agent.id,
-          clientId: clientId,
-          status: 'pending' as TaskStatus,
-          createdAt: new Date().toISOString(),
-          taskData: taskData || {}
-        });
-        
-        // Send task to agent
-        if (agent.connectionId) {
-          this.agentServer.send(agent.connectionId, {
-            id: taskId,
-            type: 'task.execute',
-            content: {
-              taskId,
-              taskData: taskData || {},
-              clientId,
-              metadata: {
-                clientId,
-                timestamp: new Date().toISOString()
-              }
-            }
-          });
-        }
-        
-        // Send response to client
-        this.clientServer.send(clientId, {
-          id: uuidv4(),
-          type: 'task.created',
-          content: {
-            taskId,
-            agentId: agent.id,
-            agentName: agent.name,
-            status: 'created'
-          },
-          requestId: message.id
-        });
-        
-      } catch (error) {
-        this.clientServer.sendError(clientId, 'Error creating task', message.id,
-          error instanceof Error ? error.message : String(error));
-      }
-    });
-    
-    // Handle client task status requests
-    this.eventBus.on('client.task.status.request', (message: any, clientId: string) => {
-      try {
-        const { taskId } = message.content;
-        
-        if (!taskId) {
-          this.clientServer.sendError(clientId, 'Task ID is required', message.id);
-          return;
-        }
-        
-        const task = this.tasks.getTask(taskId);
-        if (!task) {
-          this.clientServer.sendError(clientId, `Task ${taskId} not found`, message.id);
-          return;
-        }
-        
-        // Send task status to client
-        this.clientServer.send(clientId, {
-          id: uuidv4(),
-          type: 'task.status',
-          content: {
-            taskId,
-            status: task.status,
-            agentId: task.agentId,
-            createdAt: task.createdAt,
-            result: task.result
-          },
-          requestId: message.id
-        });
-        
-      } catch (error) {
-        this.clientServer.sendError(clientId, 'Error getting task status', message.id,
-          error instanceof Error ? error.message : String(error));
-      }
-    });
     
     // Handle client agent list requests
     this.eventBus.on('client.agent.list.request', (message: any, clientId: string, clientServer: any) => {
