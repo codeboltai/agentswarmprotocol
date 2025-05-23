@@ -81,10 +81,17 @@ export interface ConnectionOptions {
 
 // MCP interfaces
 export interface MCPInterface {
-  registerServer(server: MCPServer): void;
-  getServerList(filters?: any): MCPServer[];
-  getToolList(serverId: string): MCPTool[];
+  registerServer(server: any): void;
+  listMCPServers(filters?: any): any[];
+  getToolList(serverId: string): any[];
   executeServerTool(serverId: string, toolName: string, args: any): Promise<any>;
+  registerMCPServer(message: any): Promise<{ serverId: string, name: string, status: string }>;
+  connectToMCPServer(serverId: string): Promise<{ serverId: string, status: string, tools: any[] }>;
+  disconnectMCPServer(serverId: string): Promise<{ serverId: string, status: string }>;
+  executeMCPTool(serverId: string, toolName: string, toolArgs: Record<string, any>): Promise<any>;
+  listMCPTools(serverId: string): Promise<any[]>;
+  handleAgentMCPRequest(message: any, agentId: string): Promise<any>;
+  getServerById(serverId: string): any;
 }
 
 // Message handler interfaces

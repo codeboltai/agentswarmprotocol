@@ -129,7 +129,7 @@ export class SwarmClientSDK extends EventEmitter {
         this.emit('service.completed', message.content);
         break;
 
-      case 'mcp.server.list':
+      case 'client.mcp.server.list.response':
         this.emit('mcp.server.list', message.content.servers);
         break;
       

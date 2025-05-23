@@ -386,7 +386,7 @@ class MessageHandler {
    * @returns List of MCP servers
    */
   async handleMCPServersListRequest(agent: Agent): Promise<any> {
-    const servers = this.mcp.getServerList();
+    const servers = this.mcp.listMCPServers();
     return {
       servers
     };
@@ -400,7 +400,7 @@ class MessageHandler {
    */
   async handleMCPToolsListRequest(serverId: string, agent: Agent): Promise<any> {
     const tools = await this.mcp.getToolList(serverId);
-    const servers = this.mcp.getServerList();
+    const servers = this.mcp.listMCPServers();
     const serverInfo = servers.find(server => server.id === serverId);
 
     return {
@@ -493,23 +493,6 @@ class MessageHandler {
     }
   }
 
-  /**
-   * Handle client MCP server list request
-   * @param filters Optional filters for the MCP server list
-   * @param requestId Optional request ID for tracking the response
-   */
-  handleClientMCPServerListRequest(filters: any, requestId?: string): void {
-    try {
-      const servers = this.mcp.getServerList(filters);
-      // Emit result event with the request ID
-      this.eventBus.emit(`client.mcp.server.list.result.${requestId || 'default'}`, servers);
-    } catch (error) {
-      // Emit error event with the request ID
-      this.eventBus.emit(`client.mcp.server.list.error.${requestId || 'default'}`, { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
 
   /**
    * Handle client MCP server tools request

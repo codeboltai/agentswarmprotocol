@@ -171,7 +171,7 @@ class ClientServer {
         break;
         
       // MCP-related operations
-      case 'mcp.server.list':
+      case 'client.mcp.server.list.request':
         this.eventBus.emit('client.mcp.server.list.request', message, clientId);
         break;
         

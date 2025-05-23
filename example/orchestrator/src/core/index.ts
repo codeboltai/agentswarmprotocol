@@ -233,10 +233,10 @@ class Orchestrator {
       }
     });
     
-    // Listen for client MCP server list requests
-    this.eventBus.on('client.mcp.server.list', (filters: any, requestId?: string) => {
-      this.messageHandler.handleClientMCPServerListRequest(filters, requestId);
-    });
+    // // Listen for client MCP server list requests
+    // this.eventBus.on('client.mcp.server.list', (filters: any, requestId?: string) => {
+    //   this.messageHandler.handleClientMCPServerListRequest(filters, requestId);
+    // });
     
     // Listen for client MCP server tools requests
     this.eventBus.on('client.mcp.server.tools', (serverId: string, requestId?: string) => {
@@ -710,26 +710,6 @@ class Orchestrator {
           status: 'error',
           error: (error as Error).message
         }, requestId);
-      }
-    });
-
-    // Listen for MCP server list requests
-    this.eventBus.on('mcp.server.list', (message: { filters?: MCPServerFilters }, requestId?: string) => {
-      try {
-        const result = this.mcpAdapter.listMCPServers(message.filters);
-        this.eventBus.emit('mcp.server.list.result', { servers: result }, requestId);
-      } catch (error) {
-        this.eventBus.emit('mcp.server.list.error', { error: (error as Error).message }, requestId);
-      }
-    });
-
-    // Also listen for SDK-style 'mcp.servers.list' for compatibility
-    this.eventBus.on('mcp.servers.list', (message: { filters?: MCPServerFilters }, requestId?: string) => {
-      try {
-        const result = this.mcpAdapter.listMCPServers(message.filters);
-        this.eventBus.emit('mcp.server.list.result', { servers: result }, requestId);
-      } catch (error) {
-        this.eventBus.emit('mcp.server.list.error', { error: (error as Error).message }, requestId);
       }
     });
 
@@ -1273,11 +1253,11 @@ class Orchestrator {
     // Handle client MCP server list requests
     this.eventBus.on('client.mcp.server.list.request', (message: any, clientId: string) => {
       try {
-        const servers = this.mcpAdapter.getServerList();
+        const servers = this.mcpAdapter.listMCPServers();
         
         this.clientServer.send(clientId, {
           id: uuidv4(),
-          type: 'mcp.server.list',
+          type: 'client.mcp.server.list.response',
           content: {
             servers: servers.map((server: any) => ({
               id: server.id,
@@ -1296,7 +1276,7 @@ class Orchestrator {
     });
     
     // Handle client MCP server tools requests
-    this.eventBus.on('client.mcp.server.tools.request', (message: any, clientId: string) => {
+    this.eventBus.on('client.mcp.server.tools.request', async (message: any, clientId: string) => {
       try {
         const { serverId } = message.content;
         
@@ -1305,7 +1285,7 @@ class Orchestrator {
           return;
         }
         
-        const tools = this.mcpAdapter.getServerList().find((server: any) => server.id === serverId)?.tools || [];
+        const tools = await this.mcpAdapter.listMCPTools(serverId);
         
         this.clientServer.send(clientId, {
           id: uuidv4(),

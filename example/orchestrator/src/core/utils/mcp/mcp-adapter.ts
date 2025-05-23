@@ -85,15 +85,6 @@ class MCPAdapter implements MCPInterface {
     });
   }
 
-  /**
-   * Get server list
-   * Implementation of MCPInterface.getServerList
-   * @param {any} filters - Optional filters
-   * @returns {any[]} List of servers
-   */
-  getServerList(filters: any = {}): any[] {
-    return this.listMCPServers(filters);
-  }
 
   /**
    * Get tool list for a server
