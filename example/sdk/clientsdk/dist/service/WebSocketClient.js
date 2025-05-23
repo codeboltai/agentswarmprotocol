@@ -136,6 +136,12 @@ class WebSocketClient extends events_1.EventEmitter {
                         console.log('Disconnected from orchestrator');
                         this.connected = false;
                         this.emit('disconnected');
+                        // Reject any pending responses with connection closed error
+                        for (const [id, pendingResponse] of this.pendingResponses.entries()) {
+                            clearTimeout(pendingResponse.timeout);
+                            pendingResponse.reject(new Error('Connection closed'));
+                            this.pendingResponses.delete(id);
+                        }
                         // Attempt to reconnect if enabled
                         if (this.autoReconnect) {
                             console.log(`Attempting to reconnect in ${this.reconnectInterval / 1000} seconds...`);
@@ -174,6 +180,12 @@ class WebSocketClient extends events_1.EventEmitter {
                         console.log('Disconnected from orchestrator');
                         this.connected = false;
                         this.emit('disconnected');
+                        // Reject any pending responses with connection closed error
+                        for (const [id, pendingResponse] of this.pendingResponses.entries()) {
+                            clearTimeout(pendingResponse.timeout);
+                            pendingResponse.reject(new Error('Connection closed'));
+                            this.pendingResponses.delete(id);
+                        }
                         // Attempt to reconnect if enabled
                         if (this.autoReconnect) {
                             console.log(`Attempting to reconnect in ${this.reconnectInterval / 1000} seconds...`);
@@ -247,6 +259,12 @@ class WebSocketClient extends events_1.EventEmitter {
     disconnect() {
         if (this.ws) {
             this.autoReconnect = false; // Disable reconnection
+            // Reject any pending responses with connection closed error
+            for (const [id, pendingResponse] of this.pendingResponses.entries()) {
+                clearTimeout(pendingResponse.timeout);
+                pendingResponse.reject(new Error('Connection closed'));
+                this.pendingResponses.delete(id);
+            }
             if (isBrowser() || this.forceBrowserWebSocket) {
                 this.ws.close();
             }
@@ -291,17 +309,37 @@ class WebSocketClient extends events_1.EventEmitter {
         }
         // Check for pending responses
         if (message.id && this.pendingResponses.has(message.id)) {
-            const { resolve, reject, timeout } = this.pendingResponses.get(message.id);
-            clearTimeout(timeout);
-            this.pendingResponses.delete(message.id);
-            if (message.type === 'error' || (message.content && message.content.error)) {
-                reject(new Error(message.content ? message.content.error : 'Unknown error'));
+            const pendingResponse = this.pendingResponses.get(message.id);
+            // Check if we need to match a custom event
+            if (pendingResponse.customEvent) {
+                // Only resolve if the message type matches the custom event
+                if (message.type === pendingResponse.customEvent) {
+                    const isError = message.type === 'error' || (message.content && message.content.error);
+                    if (this.handleResponse(message.requestId, message, isError)) {
+                        console.log(`Resolved pending response for message ID: ${message.id} with custom event: ${pendingResponse.customEvent}`);
+                        return;
+                    }
+                }
+                // If custom event doesn't match, don't resolve and continue processing
             }
             else {
-                console.log(`Resolved pending response for message ID: ${message.id}`);
-                resolve(message);
+                // No custom event specified, resolve for any message with this ID
+                const isError = message.type === 'error' || (message.content && message.content.error);
+                if (this.handleResponse(message.requestId, message, isError)) {
+                    console.log(`Resolved pending response for message ID: ${message.id}`);
+                    return;
+                }
             }
-            return;
+        }
+        // Check for anyMessageId responses (custom event with any message ID)
+        for (const [pendingId, pendingResponse] of this.pendingResponses.entries()) {
+            if (pendingResponse.anyMessageId && pendingResponse.customEvent && message.type === pendingResponse.customEvent) {
+                const isError = message.type === 'error' || (message.content && message.content.error);
+                if (this.handleResponse(pendingId, message, isError)) {
+                    console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${message.id})`);
+                    return;
+                }
+            }
         }
         // Special handling for task.created messages to help pending requests
         if (message.type === 'task.created' && message.content && message.content.taskId) {
@@ -339,6 +377,9 @@ class WebSocketClient extends events_1.EventEmitter {
      * Send a request message and wait for a response
      * @param message - The message to send
      * @param options - Additional options
+     * @param options.timeout - Timeout in milliseconds
+     * @param options.customEvent - Custom event type to wait for (if specified, only messages with this event type will resolve)
+     * @param options.anyMessageId - If true, resolve for any message with the custom event type, regardless of message ID
      * @returns The response message
      */
     async sendRequestWaitForResponse(message, options = {}) {
@@ -355,100 +396,40 @@ class WebSocketClient extends events_1.EventEmitter {
         }
         const timeout = options.timeout || this.defaultTimeout;
         const messageId = message.id;
-        const eventName = options.event;
-        const noTimeout = options.noTimeout || false;
-        // Special case for task.create - we'll return after getting the task.created response
-        // since the actual task completion will be handled by event listeners
-        const isTaskCreate = message.type === 'task.create';
-        console.log(`Sending request with ID ${messageId}${isTaskCreate ? ' (task.create)' : ''}`);
+        const customEvent = options.customEvent;
+        const anyMessageId = options.anyMessageId;
+        // Validate options
+        if (anyMessageId && !customEvent) {
+            throw new Error('anyMessageId option requires customEvent to be specified');
+        }
+        console.log(`Sending request with ID ${messageId} (${message.type})${customEvent ? ` waiting for custom event: ${customEvent}` : ''}${anyMessageId ? ' (any message ID)' : ''}`);
         return new Promise((resolve, reject) => {
-            let timeoutId = null;
-            let eventHandler = null;
-            let taskCreatedHandler = null;
-            let taskResultHandler = null;
-            let taskId = null;
-            // Setup event listener if needed
-            if (eventName) {
-                eventHandler = (eventData) => {
-                    // Check if this event is for our message ID
-                    if (eventData && eventData.id === messageId) {
-                        cleanup();
-                        resolve(eventData);
-                    }
-                };
-                // Add the event listener
-                this.on(eventName, eventHandler);
-            }
-            // For task creation, let's specifically listen for task.created responses
-            if (isTaskCreate) {
-                // Listen for the task.created message from the orchestrator
-                taskCreatedHandler = (createdMsg) => {
-                    if (createdMsg &&
-                        createdMsg.type === 'task.created' &&
-                        createdMsg.id === messageId) {
-                        console.log('Task created message received:', JSON.stringify(createdMsg.content));
-                        // Store the taskId for reference
-                        if (createdMsg.content && createdMsg.content.taskId) {
-                            taskId = createdMsg.content.taskId;
-                            console.log(`Task created with ID: ${taskId}`);
-                            // If noTimeout is true, immediately resolve with the task.created message
-                            // The caller will be responsible for setting up event listeners for completion
-                            if (noTimeout) {
-                                console.log(`noTimeout set, resolving task.create immediately with task ID: ${taskId}`);
-                                cleanup();
-                                resolve(createdMsg);
-                            }
-                        }
-                    }
-                };
-                // Add the task.created message listener
-                this.on('message', taskCreatedHandler);
-            }
-            // Create cleanup function
-            const cleanup = () => {
-                if (timeoutId) {
-                    clearTimeout(timeoutId);
+            // Set up timeout
+            const timeoutId = setTimeout(() => {
+                if (this.pendingResponses.has(messageId)) {
+                    this.pendingResponses.delete(messageId);
+                    console.log(`Request ${messageId} (${message.type}) timed out after ${timeout}ms`);
+                    reject(new Error(`Request timed out after ${timeout}ms. Type: ${message.type}`));
                 }
-                if (eventHandler && eventName) {
-                    this.removeListener(eventName, eventHandler);
-                }
-                if (isTaskCreate && taskCreatedHandler) {
-                    this.removeListener('message', taskCreatedHandler);
-                }
-                this.pendingResponses.delete(messageId);
-            };
-            // Set timeout if not disabled
-            if (!noTimeout) {
-                timeoutId = setTimeout(() => {
-                    console.log(`Timeout reached for message ${messageId}`);
-                    cleanup();
-                    if (this.pendingResponses.has(messageId)) {
-                        this.pendingResponses.delete(messageId);
-                        reject(new Error(`Timeout waiting for response to message ${messageId}`));
-                    }
-                }, timeout);
-            }
-            else {
-                console.log(`No timeout set for message ${messageId}`);
-                // Set a dummy timeout for cleanup purposes
-                timeoutId = setTimeout(() => { }, 2147483647); // Max 32-bit integer in milliseconds
-            }
-            // Store pending response
+            }, timeout);
+            // Store the pending response handlers
             this.pendingResponses.set(messageId, {
-                resolve: (data) => {
-                    cleanup();
-                    resolve(data);
-                },
-                reject: (error) => {
-                    cleanup();
-                    reject(error);
-                },
-                timeout: timeoutId
+                resolve,
+                reject,
+                timeout: timeoutId,
+                customEvent,
+                anyMessageId
             });
             // Send the message
             this.send(message).catch(error => {
-                cleanup();
-                reject(error);
+                // Clean up on send error
+                clearTimeout(timeoutId);
+                this.pendingResponses.delete(messageId);
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                console.error(`Failed to send message ${messageId} (${message.type}): ${errorMessage}`);
+                reject(error instanceof Error
+                    ? error
+                    : new Error(`Failed to send message: ${errorMessage}`));
             });
         });
     }
@@ -460,6 +441,34 @@ class WebSocketClient extends events_1.EventEmitter {
             clearTimeout(timeout);
         }
         this.pendingResponses.clear();
+    }
+    /**
+     * Handle response for a pending request
+     * @param requestId - The request ID to handle
+     * @param message - The response message
+     * @param isError - Whether this is an error response
+     * @returns Whether a pending response was found and handled
+     */
+    handleResponse(requestId, message, isError = false) {
+        if (this.pendingResponses.has(requestId)) {
+            const { resolve, reject, timeout, customEvent, anyMessageId } = this.pendingResponses.get(requestId);
+            clearTimeout(timeout);
+            this.pendingResponses.delete(requestId);
+            if (isError) {
+                reject(new Error(message.content ? message.content.error : 'Unknown error'));
+            }
+            else {
+                resolve(message);
+            }
+            return true;
+        }
+        return false;
+    }
+    /**
+     * Get the map of pending responses (for debugging purposes)
+     */
+    getPendingResponses() {
+        return this.pendingResponses;
     }
 }
 exports.WebSocketClient = WebSocketClient;

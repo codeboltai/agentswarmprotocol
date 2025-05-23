@@ -146,6 +146,93 @@ const sdk = new SwarmClientSDK({
 - `agent-list` - Emitted when an agent list is received
 - `orchestrator-error` - Emitted when an error is received from the orchestrator
 
+## WebSocketClient
+
+The WebSocketClient provides a robust WebSocket connection to the orchestrator with support for both browser and Node.js environments.
+
+### Basic Usage
+
+```typescript
+import { WebSocketClient } from '@agentswarmprotocol/clientsdk';
+
+const client = new WebSocketClient({
+  orchestratorUrl: 'ws://localhost:3001',
+  autoReconnect: true,
+  reconnectInterval: 5000,
+  defaultTimeout: 30000
+});
+
+// Connect to orchestrator
+await client.connect();
+
+// Send a simple message
+const response = await client.sendRequestWaitForResponse({
+  id: 'msg-1',
+  type: 'ping',
+  content: { message: 'Hello' }
+});
+```
+
+### Advanced Usage with Custom Events
+
+The `sendRequestWaitForResponse` method supports advanced options for more flexible response handling:
+
+#### Custom Event Matching
+
+Wait for a specific event type, regardless of other messages with the same ID:
+
+```typescript
+// Only resolve when a 'task.completed' message is received with the same message ID
+const response = await client.sendRequestWaitForResponse({
+  id: 'task-123',
+  type: 'task.create',
+  content: { task: 'process data' }
+}, {
+  customEvent: 'task.completed',
+  timeout: 60000
+});
+```
+
+#### Any Message ID with Custom Event
+
+Wait for a specific event type from any message, regardless of message ID:
+
+```typescript
+// Resolve when any 'user.login' event is received, regardless of message ID
+const response = await client.sendRequestWaitForResponse({
+  id: 'login-request-456',
+  type: 'auth.request',
+  content: { username: 'user123' }
+}, {
+  customEvent: 'user.login',
+  anyMessageId: true,
+  timeout: 30000
+});
+```
+
+#### Options
+
+- `timeout`: Maximum time to wait for response (default: 30000ms)
+- `customEvent`: Specific event type to wait for. If specified, only messages with this event type will resolve the promise
+- `anyMessageId`: If true, resolve for any message with the custom event type, regardless of message ID. Requires `customEvent` to be specified
+
+### Event Handling
+
+```typescript
+// Listen for specific events
+client.on('task.result', (data) => {
+  console.log('Task completed:', data);
+});
+
+client.on('connected', () => {
+  console.log('Connected to orchestrator');
+});
+
+client.on('disconnected', () => {
+  console.log('Disconnected from orchestrator');
+});
+```
+
 ## License
 
 MIT
