@@ -3,7 +3,7 @@
  * Summarizes content and extracts key information
  */
 
-const SwarmAgentSDK = require('../../sdk/agentsdk');
+const SwarmAgentSDK = require('../../../sdk/agentsdk/dist');
 
 class SummarizationAgent extends SwarmAgentSDK {
   constructor(config = {}) {

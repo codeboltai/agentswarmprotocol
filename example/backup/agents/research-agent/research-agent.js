@@ -1,4 +1,4 @@
-const SwarmAgentSDK = require('../../sdk/agentsdk');
+const SwarmAgentSDK = require('../../../sdk/agentsdk/dist');
 
 /**
  * ResearchAgent - Specialized agent for research tasks

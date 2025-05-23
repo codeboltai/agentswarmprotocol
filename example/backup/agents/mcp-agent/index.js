@@ -2,7 +2,7 @@
  * MCP Agent - Demonstrates MCP functionality in Agent Swarm Protocol
  */
 
-const SwarmAgentSDK = require('../../sdk/agentsdk');
+const SwarmAgentSDK = require('../../../sdk/agentsdk/dist');
 const { v4: uuidv4 } = require('uuid');
 
 // Initialize the agent with configuration

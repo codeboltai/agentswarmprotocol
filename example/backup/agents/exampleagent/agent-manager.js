@@ -3,7 +3,7 @@
  * This agent can discover other agents and delegate tasks to them
  */
 
-const { SwarmAgentSDK } = require('../../sdk/agentsdk');
+const { SwarmAgentSDK } = require('../../../sdk/agentsdk/dist');
 
 // Create the manager agent instance
 const managerAgent = new SwarmAgentSDK({

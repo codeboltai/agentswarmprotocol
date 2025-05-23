@@ -141,12 +141,16 @@ class ServiceServer {
         this.eventBus.emit('service.status.update', message, connectionId);
         break;
         
-      case 'service.task.result':
-        this.eventBus.emit('service.task.result.received', message, connectionId);
+      case 'service.status':
+        this.eventBus.emit('service.status.update', message, connectionId);
         break;
         
-      case 'service.task.notification':
+      case 'service.notification':
         this.eventBus.emit('service.task.notification', message, connectionId);
+        break;
+        
+      case 'service.task.result':
+        this.eventBus.emit('service.task.result.received', message, connectionId);
         break;
         
       case 'service.error':
