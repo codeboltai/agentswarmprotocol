@@ -6,6 +6,9 @@
   "type": "commonjs",
   "private": true,
   "scripts": {
+    "prebuild": "npm run build --prefix ../../sdk/clientsdk",
+    "predev": "npm run build --prefix ../../sdk/clientsdk",
+    "prestart": "npm run build --prefix ../../sdk/clientsdk",
     "start": "node dist/index.js",
     "build": "tsc",
     "dev": "ts-node index.ts"
