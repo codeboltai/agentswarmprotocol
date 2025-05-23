@@ -1,6 +1,16 @@
 import { EventEmitter } from 'events';
 import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 /**
+ * Pending response entry type
+ */
+interface PendingResponse {
+    resolve: (value: any) => void;
+    reject: (reason?: any) => void;
+    timeout: NodeJS.Timeout;
+    customEvent?: string;
+    anyMessageId?: boolean;
+}
+/**
  * WebSocketClient - Handles WebSocket connection to the orchestrator
  * Works in both browser and Node.js environments
  */
@@ -59,15 +69,31 @@ export declare class WebSocketClient extends EventEmitter {
      * Send a request message and wait for a response
      * @param message - The message to send
      * @param options - Additional options
+     * @param options.timeout - Timeout in milliseconds
+     * @param options.customEvent - Custom event type to wait for (if specified, only messages with this event type will resolve)
+     * @param options.anyMessageId - If true, resolve for any message with the custom event type, regardless of message ID
      * @returns The response message
      */
     sendRequestWaitForResponse(message: any, options?: {
         timeout?: number;
-        event?: string;
-        noTimeout?: boolean;
+        customEvent?: string;
+        anyMessageId?: boolean;
     }): Promise<any>;
     /**
      * Clear all pending responses
      */
     clearPendingResponses(): void;
+    /**
+     * Handle response for a pending request
+     * @param requestId - The request ID to handle
+     * @param message - The response message
+     * @param isError - Whether this is an error response
+     * @returns Whether a pending response was found and handled
+     */
+    handleResponse(requestId: string, message: any, isError?: boolean): boolean;
+    /**
+     * Get the map of pending responses (for debugging purposes)
+     */
+    getPendingResponses(): Map<string, PendingResponse>;
 }
+export {};

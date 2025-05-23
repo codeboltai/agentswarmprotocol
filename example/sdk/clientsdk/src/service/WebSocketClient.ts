@@ -331,7 +331,7 @@ export class WebSocketClient extends EventEmitter {
         // Only resolve if the message type matches the custom event
         if (message.type === pendingResponse.customEvent) {
           const isError = message.type === 'error' || (message.content && message.content.error);
-          if (this.handleResponse(message.id, message, isError)) {
+          if (this.handleResponse(message.requestId, message, isError)) {
             console.log(`Resolved pending response for message ID: ${message.id} with custom event: ${pendingResponse.customEvent}`);
             return;
           }
@@ -340,7 +340,7 @@ export class WebSocketClient extends EventEmitter {
       } else {
         // No custom event specified, resolve for any message with this ID
         const isError = message.type === 'error' || (message.content && message.content.error);
-        if (this.handleResponse(message.id, message, isError)) {
+        if (this.handleResponse(message.requestId, message, isError)) {
           console.log(`Resolved pending response for message ID: ${message.id}`);
           return;
         }
