@@ -12,7 +12,7 @@ import { WebSocketClientConfig } from '@agentswarmprotocol/types/sdk/clientsdk';
 interface PendingResponse {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
-  timeout: NodeJS.Timeout;
+  timeout?: NodeJS.Timeout;
   customEvent?: string;
   anyMessageId?: boolean;
 }
@@ -142,7 +142,9 @@ export class WebSocketClient extends EventEmitter {
             
             // Reject any pending responses with connection closed error
             for (const [id, pendingResponse] of this.pendingResponses.entries()) {
-              clearTimeout(pendingResponse.timeout);
+              if (pendingResponse.timeout) {
+                clearTimeout(pendingResponse.timeout);
+              }
               pendingResponse.reject(new Error('Connection closed'));
               this.pendingResponses.delete(id);
             }
@@ -190,7 +192,9 @@ export class WebSocketClient extends EventEmitter {
             
             // Reject any pending responses with connection closed error
             for (const [id, pendingResponse] of this.pendingResponses.entries()) {
-              clearTimeout(pendingResponse.timeout);
+              if (pendingResponse.timeout) {
+                clearTimeout(pendingResponse.timeout);
+              }
               pendingResponse.reject(new Error('Connection closed'));
               this.pendingResponses.delete(id);
             }
@@ -270,7 +274,9 @@ export class WebSocketClient extends EventEmitter {
       
       // Reject any pending responses with connection closed error
       for (const [id, pendingResponse] of this.pendingResponses.entries()) {
-        clearTimeout(pendingResponse.timeout);
+        if (pendingResponse.timeout) {
+          clearTimeout(pendingResponse.timeout);
+        }
         pendingResponse.reject(new Error('Connection closed'));
         this.pendingResponses.delete(id);
       }
@@ -435,14 +441,18 @@ export class WebSocketClient extends EventEmitter {
     console.log(`Sending request with ID ${messageId} (${message.type})${customEvent ? ` waiting for custom event: ${customEvent}` : ''}${anyMessageId ? ' (any message ID)' : ''}`);
     
     return new Promise((resolve, reject) => {
-      // Set up timeout
-      const timeoutId = setTimeout(() => {
-        if (this.pendingResponses.has(messageId)) {
-          this.pendingResponses.delete(messageId);
-          console.log(`Request ${messageId} (${message.type}) timed out after ${timeout}ms`);
-          reject(new Error(`Request timed out after ${timeout}ms. Type: ${message.type}`));
-        }
-      }, timeout);
+      let timeoutId: NodeJS.Timeout | undefined;
+      
+      // Set up timeout only if explicitly provided
+      if (options.timeout !== undefined) {
+        timeoutId = setTimeout(() => {
+          if (this.pendingResponses.has(messageId)) {
+            this.pendingResponses.delete(messageId);
+            console.log(`Request ${messageId} (${message.type}) timed out after ${options.timeout}ms`);
+            reject(new Error(`Request timed out after ${options.timeout}ms. Type: ${message.type}`));
+          }
+        }, options.timeout);
+      }
 
       // Store the pending response handlers
       this.pendingResponses.set(messageId, {
@@ -456,7 +466,9 @@ export class WebSocketClient extends EventEmitter {
       // Send the message
       this.send(message).catch(error => {
         // Clean up on send error
-        clearTimeout(timeoutId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
         this.pendingResponses.delete(messageId);
         
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -474,7 +486,9 @@ export class WebSocketClient extends EventEmitter {
    */
   clearPendingResponses(): void {
     for (const [_, { timeout }] of this.pendingResponses.entries()) {
-      clearTimeout(timeout);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     }
     this.pendingResponses.clear();
   }
@@ -489,7 +503,9 @@ export class WebSocketClient extends EventEmitter {
   handleResponse(requestId: string, message: any, isError: boolean = false): boolean {
     if (this.pendingResponses.has(requestId)) {
       const { resolve, reject, timeout, customEvent, anyMessageId } = this.pendingResponses.get(requestId)!;
-      clearTimeout(timeout);
+      if (timeout) {
+        clearTimeout(timeout);
+      }
       this.pendingResponses.delete(requestId);
       
       if (isError) {

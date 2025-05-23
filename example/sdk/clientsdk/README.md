@@ -212,7 +212,7 @@ const response = await client.sendRequestWaitForResponse({
 
 #### Options
 
-- `timeout`: Maximum time to wait for response (default: 30000ms)
+- `timeout`: Maximum time to wait for response in milliseconds. If not provided, no timeout will be set and the request will wait indefinitely
 - `customEvent`: Specific event type to wait for. If specified, only messages with this event type will resolve the promise
 - `anyMessageId`: If true, resolve for any message with the custom event type, regardless of message ID. Requires `customEvent` to be specified
 
