@@ -101,6 +101,8 @@ class SwarmAgentSDK extends events_1.EventEmitter {
                 break;
             case 'orchestrator.welcome':
                 this.emit('welcome', message.content);
+            case 'agent.service.list.response':
+                this.emit('agent.service.list.response ', message.content);
                 break;
             case 'task.execute':
                 this.taskHandler.handleTask(message);

@@ -75,7 +75,7 @@ export class ServiceManager {
     try {
       this.logger.debug(`Getting service list with filters:`, filters);
       
-      const response = await this.webSocketManager.sendAndWaitForResponse({
+      const response = await this.webSocketManager.sendRequestWaitForResponse({
         id: uuidv4(),
         type: 'agent.service.list.request',
         content: { filters }
