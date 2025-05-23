@@ -254,19 +254,6 @@ class ClientServer {
   }
   
   /**
-   * Send a message to a client by ID - wrapper around send for external use
-   * @param clientId - ID of the client to send the message to
-   * @param message - The message to send
-   */
-  sendMessageToClient(clientId: string, message: any): void {
-    try {
-      this.send(clientId, message);
-    } catch (error) {
-      console.error(`Error sending message to client ${clientId}:`, error);
-    }
-  }
-  
-  /**
    * Helper to get client connection by ID
    * @param clientId - The client ID to look up
    * @returns The WebSocket connection or undefined if not found
@@ -290,6 +277,92 @@ class ClientServer {
   // Check if client is connected
   hasClientConnection(clientId: string): boolean {
     return this.getClientConnection(clientId) !== undefined;
+  }
+  
+  /**
+   * Send a message to all connected clients
+   * @param message - The message to send to all clients
+   * @param options - Optional parameters for filtering clients
+   * @returns Array of client IDs that received the message
+   */
+  sendToAllClients(message: BaseMessage, options: { 
+    excludeClientIds?: string[],
+    onlyOnlineClients?: boolean 
+  } = {onlyOnlineClients: true}): string[] {
+    const { excludeClientIds = [], onlyOnlineClients = true } = options;
+    const sentToClients: string[] = [];
+    
+    if (!message.id) {
+      message.id = uuidv4();
+    }
+    
+    message.timestamp = Date.now().toString();
+    
+    // Iterate through all client connections
+    this.clientConnections.forEach((connection, clientId) => {
+      // Skip excluded clients
+      if (excludeClientIds.includes(clientId)) {
+        return;
+      }
+      
+      // Check if we should only send to online clients
+      if (onlyOnlineClients) {
+        const client = this.clientRegistry.getClientById(clientId);
+        if (!client || client.status !== 'online') {
+          return;
+        }
+      }
+      
+      try {
+        // Send the message to this client
+        connection.send(JSON.stringify(message));
+        sentToClients.push(clientId);
+        
+        // Update client's lastActiveAt timestamp
+        const client = this.clientRegistry.getClientById(clientId);
+        if (client) {
+          this.clientRegistry.updateClient({
+            ...client,
+            lastActiveAt: new Date().toISOString()
+          });
+        }
+        
+        console.log(`Broadcast message sent to client: ${clientId}`);
+      } catch (error) {
+        console.error(`Error sending broadcast message to client ${clientId}:`, error);
+      }
+    });
+    
+    console.log(`Broadcast message sent to ${sentToClients.length} clients`);
+    return sentToClients;
+  }
+  
+  /**
+   * Send a notification to all connected clients
+   * @param notificationType - Type of notification (e.g., 'system', 'agent', 'service')
+   * @param notificationMessage - The notification message
+   * @param data - Additional data to include in the notification
+   * @param options - Optional parameters for filtering clients
+   * @returns Array of client IDs that received the notification
+   */
+  broadcastNotification(
+    notificationType: string, 
+    notificationMessage: string, 
+    data: any = {}, 
+    options: { excludeClientIds?: string[], onlyOnlineClients?: boolean } = {}
+  ): string[] {
+    const message: BaseMessage = {
+      id: uuidv4(),
+      type: 'system.notification',
+      content: {
+        notificationType,
+        message: notificationMessage,
+        data,
+        timestamp: new Date().toISOString()
+      }
+    };
+    
+    return this.sendToAllClients(message, options);
   }
   
   // Forward task results to clients - called by the Orchestrator
