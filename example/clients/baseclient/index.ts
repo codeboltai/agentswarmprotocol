@@ -62,36 +62,36 @@ async function main() {
     const agents = await sdk.getAgentsList();
     console.log('Available agents:', agents.length);
 
-    // if (agents.length === 0) {
-    //   console.log('No agents available to send a task.');
-    //   return;
-    // }
+    if (agents.length === 0) {
+      console.log('No agents available to send a task.');
+      return;
+    }
 
-    // // Choose the first agent
-    // const agent = agents[0];
-    // console.log(`Selected agent: ${agent.name} (${agent.id})`);
+    // Choose the first agent
+    const agent = agents[0];
+    console.log(`Selected agent: ${agent.name} (${agent.id})`);
     
-    // // Send a sample task to the agent
-    // const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };
+    // Send a sample task to the agent
+    const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };
     
-    // console.log(`Sending task to agent ${agent.name} (${agent.id})...`);
+    console.log(`Sending task to agent ${agent.name} (${agent.id})...`);
     
-    // try {
-    //   // Try with a longer timeout
-    //   const task = await sdk.sendTask(agent.id, agent.name, taskData, {
-    //     timeout: 60000 // 60 second timeout
-    //   });
+    try {
+      // Try with a longer timeout
+      const task = await sdk.sendTask(agent.id, agent.name, taskData, {
+        timeout: 60000 // 60 second timeout
+      });
       
-    //   console.log(chalk.green.bold('Task completed via SDK:'), task);
-    // } catch (taskError) {
-    //   console.error(chalk.red('Error executing task:'), taskError);
+      console.log(chalk.green.bold('Task completed via SDK:'), task);
+    } catch (taskError) {
+      console.error(chalk.red('Error executing task:'), taskError);
       
-    //   // If we received a result via events but still got a timeout,
-    //   // we can use the result we received
-    //   if (taskCompleted && taskResult) {
-    //     console.log(chalk.yellow('Got task result via events:'), taskResult);
-    //   }
-    // }
+      // If we received a result via events but still got a timeout,
+      // we can use the result we received
+      if (taskCompleted && taskResult) {
+        console.log(chalk.yellow('Got task result via events:'), taskResult);
+      }
+    }
     
     // Wait for a moment before disconnecting
     console.log('Waiting a moment before disconnecting...');

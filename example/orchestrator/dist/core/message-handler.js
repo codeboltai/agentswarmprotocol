@@ -14,18 +14,6 @@ class MessageHandler {
         this.clients = config.clients;
         this.eventBus = config.eventBus;
         this.mcp = config.mcp;
-        // No longer setting up event listeners here - will be set up in index.ts
-    }
-    /**
-     * Handle agent registered event
-     * @param agentId The ID of the registered agent
-     * @param connectionId The connection ID of the agent
-     */
-    handleAgentRegistered(agentId, connectionId) {
-        // Perform any additional business logic needed when an agent is registered
-        console.log(`MessageHandler: Agent ${agentId} registered with connection ${connectionId}`);
-        // For example, initialize any tasks or settings for the agent
-        // Or notify other components about the new agent
     }
     /**
      * Handle client registered event
@@ -104,61 +92,6 @@ class MessageHandler {
             // Emit event for client disconnection
             this.eventBus.emit('client.disconnected', client);
         }
-    }
-    /**
-     * Handle a client task creation request
-     * @param {BaseMessage} message - The task creation message
-     * @param {string} clientId - The client's connection ID
-     * @returns {Object} Task creation result
-     */
-    async handleTaskCreation(message, clientId) {
-        const { agentName, agentId, taskData } = message.content;
-        console.log(`Task creation request received: ${JSON.stringify({
-            agentName,
-            agentId,
-            hasTaskData: !!taskData,
-            taskDataType: taskData ? typeof taskData : 'undefined',
-            taskDataKeys: taskData && typeof taskData === 'object' ? Object.keys(taskData) : []
-        })}`);
-        if (!taskData) {
-            throw new Error('Invalid task creation request: taskData is required');
-        }
-        // Allow direct targeting by ID or lookup by name
-        let agent;
-        if (agentId) {
-            // Find agent directly by ID
-            agent = this.agents.getAgentById(agentId);
-            if (!agent) {
-                throw new Error(`Agent not found: No agent found with ID '${agentId}'`);
-            }
-        }
-        else if (agentName) {
-            // Find the agent by name
-            agent = this.agents.getAgentByName(agentName);
-            if (!agent) {
-                throw new Error(`Agent not found: No agent found with name '${agentName}'`);
-            }
-        }
-        else {
-            throw new Error('Invalid task creation request: Either agentName or agentId is required');
-        }
-        // Create a task
-        const taskId = (0, uuid_1.v4)();
-        // Register task in task registry
-        this.tasks.registerTask(taskId, {
-            agentId: agent.id,
-            clientId: clientId,
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-            taskData
-        });
-        // Emit event for task creation
-        this.eventBus.emit('task.created', taskId, agent.id, clientId, taskData);
-        return {
-            taskId,
-            agentId: agent.id,
-            status: 'pending'
-        };
     }
     /**
      * Get information about a specific task
@@ -318,7 +251,7 @@ class MessageHandler {
      * @returns List of MCP servers
      */
     async handleMCPServersListRequest(agent) {
-        const servers = this.mcp.getServerList();
+        const servers = this.mcp.listMCPServers();
         return {
             servers
         };
@@ -331,7 +264,7 @@ class MessageHandler {
      */
     async handleMCPToolsListRequest(serverId, agent) {
         const tools = await this.mcp.getToolList(serverId);
-        const servers = this.mcp.getServerList();
+        const servers = this.mcp.listMCPServers();
         const serverInfo = servers.find(server => server.id === serverId);
         return {
             serverId,
@@ -367,298 +300,6 @@ class MessageHandler {
         }
     }
     /**
-     * Handle service disconnection
-     * @param connectionId - ID of the disconnected service
-     */
-    handleServiceDisconnected(connectionId) {
-        const service = this.services.getServiceByConnectionId(connectionId);
-        if (service) {
-            console.log(`Service disconnected: ${service.name}`);
-            this.services.updateServiceStatus(service.id, 'offline', { disconnectedAt: new Date().toISOString() });
-        }
-    }
-    /**
-     * Handle agent disconnection
-     * @param connectionId - The connection ID of the disconnected agent
-     */
-    handleAgentDisconnected(connectionId) {
-        // Get the agent before removing the connection
-        const agent = this.agents.getAgentByConnectionId(connectionId);
-        if (agent) {
-            console.log(`Agent disconnected: ${agent.name} (${agent.id})`);
-            // Update agent status to offline
-            this.agents.updateAgentStatus(agent.id, 'offline', {
-                disconnectedAt: new Date().toISOString(),
-                lastConnectionId: connectionId
-            });
-            // Emit event for agent disconnection
-            this.eventBus.emit('agent.status.changed', agent.id, 'offline');
-            // Cancel any pending tasks for this agent
-            this.handleAgentTasksOnDisconnect(agent.id);
-        }
-        else {
-            console.log(`Unknown agent disconnected with connection ID: ${connectionId}`);
-        }
-    }
-    /**
-     * Handle pending tasks when an agent disconnects
-     * @param agentId - The ID of the disconnected agent
-     */
-    handleAgentTasksOnDisconnect(agentId) {
-        // Find all tasks assigned to this agent that are still pending or in_progress
-        const agentTasks = this.tasks.getTasks({
-            agentId,
-            status: ['pending', 'in_progress']
-        });
-        if (agentTasks.length > 0) {
-            console.log(`Handling ${agentTasks.length} pending tasks for disconnected agent ${agentId}`);
-            // Update status for all tasks
-            for (const task of agentTasks) {
-                this.tasks.updateTaskStatus(task.id, 'failed', {
-                    error: 'Agent disconnected before task completion',
-                    disconnectedAt: new Date().toISOString()
-                });
-                // If there's a client waiting for this task, notify them
-                if (task.clientId) {
-                    this.eventBus.emit('task.error', task.clientId, task.id, {
-                        message: 'Agent disconnected before task completion',
-                        taskId: task.id,
-                        agentId
-                    });
-                }
-            }
-        }
-    }
-    /**
-     * Handle an incoming message
-     * @param message The message to handle
-     * @param connectionId ID of the connection that sent the message
-     * @returns Response message if needed
-     */
-    handleMessage(message, connectionId) {
-        const { type } = message;
-        switch (type) {
-            case 'agent.register':
-                // Agent registration is now handled by the AgentServer
-                this.eventBus.emit('agent.register.delegated', message, connectionId);
-                return;
-            case 'service.register':
-                return this.handleServiceRegistration(message, connectionId);
-            case 'service.task.execute':
-                return this.handleServiceTaskExecuteRequest(message, connectionId);
-            case 'task.result':
-                this.eventBus.emit('task.result', message);
-                return;
-            case 'task.status':
-                // Update task status in registry
-                if (message.content && message.content.taskId) {
-                    const { taskId, status } = message.content;
-                    console.log(`Handling task status update: ${taskId} status: ${status}`);
-                    this.tasks.updateTaskStatus(taskId, status, message.content);
-                    // Emit event for status update
-                    this.eventBus.emit('task.status', message);
-                }
-                return;
-            case 'task.notification':
-                this.eventBus.emit('task.notification', message);
-                return;
-            case 'service.task.result':
-                this.eventBus.emit('service.task.result', message);
-                return;
-            case 'service.notification':
-                this.eventBus.emit('service.notification', message);
-                return;
-            case 'agent.status.update':
-                // Get agent by connection ID
-                const statusUpdateAgent = this.agents.getAgentByConnectionId(connectionId);
-                if (!statusUpdateAgent) {
-                    return {
-                        type: 'error',
-                        content: { error: 'Agent not registered' }
-                    };
-                }
-                // Update agent status
-                const { status, message: statusMessage } = message.content;
-                if (!status) {
-                    return {
-                        type: 'error',
-                        content: { error: 'Status is required for status update' }
-                    };
-                }
-                this.agents.updateAgentStatus(statusUpdateAgent.id, status, {
-                    message: statusMessage,
-                    updatedAt: new Date().toISOString()
-                });
-                return {
-                    type: 'agent.status.updated',
-                    content: {
-                        agentId: statusUpdateAgent.id,
-                        status,
-                        message: `Agent status updated to ${status}`
-                    }
-                };
-            case 'agent.list.request':
-                // Get agent by connection ID for attribution
-                const requestingAgent = this.agents.getAgentByConnectionId(connectionId);
-                if (!requestingAgent) {
-                    return {
-                        type: 'error',
-                        content: { error: 'Agent not registered' }
-                    };
-                }
-                try {
-                    const filters = message.content?.filters || {};
-                    const agents = this.getAgentList(filters);
-                    return {
-                        type: 'agent.list.response',
-                        content: { agents }
-                    };
-                }
-                catch (error) {
-                    return {
-                        type: 'error',
-                        content: { error: error instanceof Error ? error.message : String(error) }
-                    };
-                }
-            case 'mcp.servers.list':
-                try {
-                    const agent = this.agents.getAgentByConnectionId(connectionId);
-                    if (!agent) {
-                        return {
-                            type: 'error',
-                            content: { error: 'Agent not registered' }
-                        };
-                    }
-                    const servers = this.handleMCPServersListRequest(agent);
-                    return {
-                        type: 'mcp.servers.list',
-                        content: servers
-                    };
-                }
-                catch (error) {
-                    return {
-                        type: 'error',
-                        content: { error: error instanceof Error ? error.message : String(error) }
-                    };
-                }
-            case 'mcp.tools.list':
-                try {
-                    const agent = this.agents.getAgentByConnectionId(connectionId);
-                    if (!agent) {
-                        return {
-                            type: 'error',
-                            content: { error: 'Agent not registered' }
-                        };
-                    }
-                    const { serverId } = message.content || {};
-                    if (!serverId) {
-                        return {
-                            type: 'error',
-                            content: { error: 'Server ID is required' }
-                        };
-                    }
-                    const tools = this.handleMCPToolsListRequest(serverId, agent);
-                    return {
-                        type: 'mcp.tools.list',
-                        content: tools
-                    };
-                }
-                catch (error) {
-                    return {
-                        type: 'error',
-                        content: { error: error instanceof Error ? error.message : String(error) }
-                    };
-                }
-            case 'mcp.tool.execute':
-                try {
-                    const agent = this.agents.getAgentByConnectionId(connectionId);
-                    if (!agent) {
-                        return {
-                            type: 'error',
-                            content: { error: 'Agent not registered' }
-                        };
-                    }
-                    const { serverId, toolName, parameters } = message.content || {};
-                    if (!serverId || !toolName) {
-                        return {
-                            type: 'error',
-                            content: { error: 'Server ID and tool name are required' }
-                        };
-                    }
-                    const result = this.handleMCPToolExecuteRequest(serverId, toolName, parameters || {}, agent);
-                    return {
-                        type: 'mcp.tool.execution.result',
-                        content: result
-                    };
-                }
-                catch (error) {
-                    return {
-                        type: 'error',
-                        content: { error: error instanceof Error ? error.message : String(error) }
-                    };
-                }
-            default:
-                throw new Error(`Unsupported message type: ${type}`);
-        }
-    }
-    /**
-     * Handle service registration
-     * @param message Registration message
-     * @param connectionId Connection ID
-     * @returns Registration response
-     */
-    handleServiceRegistration(message, connectionId) {
-        const { content } = message;
-        const { name, capabilities = [], manifest = {} } = content;
-        if (!name) {
-            throw new Error('Service registration missing required field: name');
-        }
-        const now = new Date().toISOString();
-        // Register the service
-        const service = this.services.registerService({
-            id: (0, uuid_1.v4)(),
-            name,
-            capabilities,
-            manifest,
-            connectionId,
-            status: 'online',
-            registeredAt: now
-        });
-        return {
-            type: 'service.registered',
-            content: {
-                serviceId: service.id,
-                name: service.name,
-                capabilities: service.capabilities,
-                manifest: service.manifest
-            }
-        };
-    }
-    /**
-     * Handle service list request
-     * @param filters Optional filters for the service list
-     * @param requestId Optional request ID for tracking the response
-     */
-    handleServiceListRequest(filters, requestId) {
-        try {
-            // Get all services matching the filters
-            const serviceList = this.services.getAllServices(filters).map(service => ({
-                id: service.id,
-                name: service.name,
-                status: service.status,
-                capabilities: service.capabilities
-            }));
-            // Emit result event with the request ID
-            this.eventBus.emit(`client.service.list.result.${requestId || 'default'}`, serviceList);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`client.service.list.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
      * Handle client agent list request
      * @param filters Optional filters for the agent list
      * @param requestId Optional request ID for tracking the response
@@ -677,25 +318,6 @@ class MessageHandler {
         }
     }
     /**
-     * Handle client task create request
-     * @param message The task creation message
-     * @param clientId The client ID
-     * @param requestId Optional request ID for tracking the response
-     */
-    async handleClientTaskCreateRequest(message, clientId, requestId) {
-        try {
-            const result = await this.handleTaskCreation(message, clientId);
-            // Emit result event with the request ID
-            this.eventBus.emit(`client.task.create.result.${requestId || 'default'}`, result);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`client.task.create.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
      * Handle client task status request
      * @param taskId The task ID to get status for
      * @param requestId Optional request ID for tracking the response
@@ -709,24 +331,6 @@ class MessageHandler {
         catch (error) {
             // Emit error event with the request ID
             this.eventBus.emit(`client.task.status.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
-     * Handle client MCP server list request
-     * @param filters Optional filters for the MCP server list
-     * @param requestId Optional request ID for tracking the response
-     */
-    handleClientMCPServerListRequest(filters, requestId) {
-        try {
-            const servers = this.mcp.getServerList(filters);
-            // Emit result event with the request ID
-            this.eventBus.emit(`client.mcp.server.list.result.${requestId || 'default'}`, servers);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`client.mcp.server.list.error.${requestId || 'default'}`, {
                 error: error instanceof Error ? error.message : String(error)
             });
         }
@@ -768,60 +372,6 @@ class MessageHandler {
         catch (error) {
             // Emit error event with the request ID
             this.eventBus.emit(`client.mcp.tool.execute.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
-     * Handle service registration event
-     * @param message The service registration message
-     * @param connectionId The service connection ID
-     * @param requestId Optional request ID for tracking the response
-     */
-    handleServiceRegisterEvent(message, connectionId, requestId) {
-        try {
-            const result = this.handleServiceRegistration(message, connectionId);
-            // Emit result event with the request ID
-            this.eventBus.emit(`service.register.result.${requestId || 'default'}`, result);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`service.register.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
-     * Handle service status update event
-     * @param message The service status update message
-     * @param connectionId The service connection ID
-     * @param requestId Optional request ID for tracking the response
-     */
-    handleServiceStatusUpdateEvent(message, connectionId, requestId) {
-        try {
-            // Get the service by connection ID
-            const service = this.services.getServiceByConnectionId(connectionId);
-            if (!service) {
-                throw new Error('Service not registered');
-            }
-            // Update service status
-            const { status, message: statusMessage } = message.content;
-            this.services.updateServiceStatus(service.id, status, {
-                message: statusMessage,
-                updatedAt: new Date().toISOString()
-            });
-            // Prepare response
-            const result = {
-                serviceId: service.id,
-                status,
-                message: `Service status updated to ${status}`
-            };
-            // Emit result event with the request ID
-            this.eventBus.emit(`service.status.update.result.${requestId || 'default'}`, result);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`service.status.update.error.${requestId || 'default'}`, {
                 error: error instanceof Error ? error.message : String(error)
             });
         }

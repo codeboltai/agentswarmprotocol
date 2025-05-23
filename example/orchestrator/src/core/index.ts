@@ -295,8 +295,8 @@ class Orchestrator {
           }
         };
         
-        // Send the task to the agent
-        this.agentServer.send(connection, taskMessage);
+        // Send the task to the agent - use connectionId instead of connection object
+        this.agentServer.send(connection.id, taskMessage);
         console.log(`Task ${taskId} sent to agent ${agent.id}`);
         
         // Update task status to running
@@ -503,7 +503,7 @@ class Orchestrator {
         };
         
         // Send the task to the target agent
-        this.agentServer.send(targetConnection, taskMessage);
+        this.agentServer.send(targetConnection.id, taskMessage);
         console.log(`Child task ${childTaskId} sent from agent ${requestingAgent.id} to agent ${targetAgent.id}`);
         
         // Update task status to running

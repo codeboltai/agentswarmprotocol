@@ -73,7 +73,7 @@ class SwarmClientSDK extends events_1.EventEmitter {
                     });
                 }
                 break;
-            case 'task.created':
+            case 'client.agent.task.create.response':
                 this.emit('task.created', message.content);
                 break;
             case 'task.notification':
@@ -97,7 +97,7 @@ class SwarmClientSDK extends events_1.EventEmitter {
             case 'service.completed':
                 this.emit('service.completed', message.content);
                 break;
-            case 'mcp.server.list':
+            case 'client.mcp.server.list.response':
                 this.emit('mcp.server.list', message.content.servers);
                 break;
             case 'mcp.task.execution':

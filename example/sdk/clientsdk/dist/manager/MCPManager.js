@@ -19,7 +19,7 @@ class MCPManager {
      */
     async listMCPServers(filters = {}) {
         const response = await this.wsClient.sendRequestWaitForResponse({
-            type: 'mcp.server.list',
+            type: 'client.mcp.server.list.request',
             content: { filters }
         });
         return response.content.servers;

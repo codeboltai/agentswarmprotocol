@@ -129,8 +129,8 @@ class AgentServer {
             case 'agent.list.request':
                 this.eventBus.emit('agent.list.request', message, connectionId);
                 break;
-            case 'service.list':
-                this.eventBus.emit('service.list', message, connectionId);
+            case 'agent.service.list.request':
+                this.eventBus.emit('agent.service.list.request', message, connectionId);
                 break;
             case 'service.task.execute':
                 this.eventBus.emit('service.task.execute', message, connectionId);
@@ -269,7 +269,7 @@ class AgentServer {
             // Log the registration event
             console.log(`Agent ${name} (${actualId}) registered successfully with connection ${connectionId}`);
             // Emit event for agent registration
-            this.eventBus.emit('agent.registered', actualId, connectionId);
+            // this.eventBus.emit('agent.registered', actualId, connectionId);
             return {
                 id: actualId,
                 agentId: actualId, // Include both formats for compatibility

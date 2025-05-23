@@ -26,7 +26,7 @@ class TaskManager {
         const timeout = options.timeout || 60000; // Default 60 second timeout
         // Create task
         const response = await this.wsClient.sendRequestWaitForResponse({
-            type: 'task.create',
+            type: 'client.agent.task.create.request',
             content: {
                 event: 'task.completed',
                 agentId,
