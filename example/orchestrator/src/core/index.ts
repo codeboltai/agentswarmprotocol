@@ -137,6 +137,21 @@ class Orchestrator {
           content: result,
           requestId: message.id
         });
+        
+        // Send notification to all clients about the new agent
+        this.clientServer.broadcastNotification(
+          'agent',
+          `New agent "${result.name}" has joined the swarm`,
+          {
+            agentId: result.agentId,
+            agentName: result.name,
+            capabilities: result.capabilities,
+            status: 'online',
+            registeredAt: new Date().toISOString()
+          }
+        );
+        
+        console.log(`Agent registration notification sent to all clients for agent: ${result.name} (${result.agentId})`);
       } catch (error) {
         this.agentServer.sendError(
           connectionId, 
@@ -795,7 +810,7 @@ class Orchestrator {
         
         // Notify client if one is specified
         if (clientId) {
-          this.clientServer.sendMessageToClient(clientId, {
+          this.clientServer.send(clientId, {
             id: uuidv4(),
             type: 'task.error',
             content: {
@@ -833,7 +848,7 @@ class Orchestrator {
         
         // Notify client if one is specified
         if (clientId) {
-          this.clientServer.sendMessageToClient(clientId, {
+          this.clientServer.send(clientId, {
             id: uuidv4(),
             type: 'task.status',
             content: {
@@ -855,7 +870,7 @@ class Orchestrator {
         
         // Notify client if one is specified
         if (clientId) {
-          this.clientServer.sendMessageToClient(clientId, {
+          this.clientServer.send(clientId, {
             id: uuidv4(),
             type: 'task.error',
             content: {
