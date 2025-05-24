@@ -151,8 +151,8 @@ class AgentServer {
         this.eventBus.emit('service.task.execute', message, connectionId);
         break;
         
-      case 'task.result':
-        this.eventBus.emit('task.result', message, connectionId);
+      case 'agent.task.result':
+        this.eventBus.emit('agent.task.result.received', message, connectionId);
         break;
         
       case 'task.error':

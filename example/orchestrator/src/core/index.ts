@@ -320,11 +320,48 @@ class Orchestrator {
       }
     });
     
-    // Listen for client task status requests
-    this.eventBus.on('client.task.status', (message: any, clientId: string, clientServer: any) => {
-      const taskId = message?.content?.taskId;
-      if (taskId) {
-        this.messageHandler.handleClientTaskStatusRequest(taskId, message?.id);
+    
+    // Listen for client agent task status requests
+    this.eventBus.on('client.agent.task.status.request', (message: any, clientId: string) => {
+      try {
+        const { taskId } = message.content;
+        
+        if (!taskId) {
+          this.clientServer.sendError(clientId, 'Task ID is required', message.id);
+          return;
+        }
+        
+        // Get the task from the task registry
+        const task = this.tasks.getTask(taskId);
+        if (!task) {
+          this.clientServer.sendError(clientId, `Task ${taskId} not found`, message.id);
+          return;
+        }
+        
+        // Send task status response to client
+        this.clientServer.send(clientId, {
+          id: uuidv4(),
+          type: 'client.agent.task.status.response',
+          content: {
+            taskId: task.taskId || taskId,
+            status: task.status,
+            agentId: task.agentId,
+            type: task.type,
+            name: task.name,
+            severity: task.severity,
+            createdAt: task.createdAt,
+            completedAt: task.completedAt,
+            result: task.result,
+            error: task.error,
+            metadata: task.metadata
+          },
+          requestId: message.id
+        });
+        
+        console.log(`Task status sent to client ${clientId} for task ${taskId}: ${task.status}`);
+      } catch (error) {
+        this.clientServer.sendError(clientId, 'Error getting task status', message.id,
+          error instanceof Error ? error.message : String(error));
       }
     });
     
@@ -934,7 +971,7 @@ class Orchestrator {
     });
     
     // NEW: Handle task completion events
-    this.eventBus.on('task.result', (message: any, connectionId: string) => {
+    this.eventBus.on('agent.task.result.received', (message: any, connectionId: string) => {
       try {
         const { taskId, result } = message.content;
         
@@ -962,7 +999,7 @@ class Orchestrator {
         if (task.clientId) {
           this.clientServer.send(task.clientId, {
             id: uuidv4(),
-            type: 'task.result',
+            type: 'client.agent.task.result',
             content: {
               taskId,
               result,
