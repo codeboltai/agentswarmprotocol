@@ -60,16 +60,20 @@ async function main() {
 
     // Fetch the list of available agents
     const agents = await sdk.getAgentsList();
-    console.log('Available agents:', agents.length);
+    console.log('Available agents total:', agents.length);
 
-    if (agents.length === 0) {
-      console.log('No agents available to send a task.');
+    // Filter only online agents
+    const onlineAgents = agents.filter(agent => agent.status === 'online');
+    console.log('Online agents:', onlineAgents.length);
+
+    if (onlineAgents.length === 0) {
+      console.log(chalk.red('No online agents available to send a task.'));
       return;
     }
 
-    // Choose the first agent
-    const agent = agents[0];
-    console.log(`Selected agent: ${agent.name} (${agent.id})`);
+    // Choose the first online agent
+    const agent = onlineAgents[0];
+    console.log(`Selected agent: ${agent.name} (${agent.id}) - Status: ${agent.status}`);
     
     // Send a sample task to the agent
     const taskData = { query: 'Hello from baseclient!', taskType: 'execute' };

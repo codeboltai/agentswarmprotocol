@@ -1,113 +1,71 @@
 import { SwarmAgentSDK } from '@agent-swarm/agent-sdk';
 import { TaskExecuteMessage } from '@agent-swarm/agent-sdk/dist/core/types';
+import { v4 as uuidv4 } from 'uuid';
 
 // Create a new agent
 const agent = new SwarmAgentSDK({
   name: 'TwoMessageAgent',
-  description: 'An agent that responds to two messages before finishing the task',
+  description: 'An agent that sends two messages before returning a task result',
   capabilities: ['execute'],
   orchestratorUrl: 'ws://localhost:3000',
   autoReconnect: true
 });
 
-// Keep track of message count
-const messageCounters = new Map<string, number>();
-
-// Register a task handler for message responses
+// Register a task handler
 agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
-  console.log('Received message task:', taskData);
+  console.log('Received task:', taskData);
   const taskId = message.content?.taskId || '';
   
-
-  
-  // Initialize counter for this task if it doesn't exist
-  if (!messageCounters.has(taskId)) {
-    messageCounters.set(taskId, 0);
+  if (!taskId) {
+    console.error('No taskId found in message');
+    return { error: 'No taskId found in message' };
   }
   
-  // Get current count and increment
-  const currentCount = messageCounters.get(taskId) || 0;
-  messageCounters.set(taskId, currentCount + 1);
-  
-  // Send first notification
-  agent.sendTaskMessage(taskId, {
-    type: 'progress',
-    message: `Processing message ${currentCount + 1}/2...`,
-    data: { progress: 50 * currentCount }
-  });
-  
-  // Simulate processing time
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  
-  // Generate response based on current message count
-  let response: string;
-  let shouldFinish: boolean = false;
-  
-  if (currentCount === 0) {
-    response = `This is my first response to: "${taskData.query}"`;
-  } else {
-    response = `This is my second and final response to: "${taskData.query}"`;
-    shouldFinish = true;
-  }
-  
-  // Send final notification
-  agent.sendTaskMessage(taskId, {
-    type: 'progress',
-    message: `Completed message ${currentCount + 1}/2`,
-    data: { progress: 50 + 50 * currentCount }
-  });
-  
-  // If this is the second message, clean up the counter
-  if (shouldFinish) {
-    messageCounters.delete(taskId);
-  }
-  
-  // Return the result
-  return {
-    response: response,
-    messageNumber: currentCount + 1,
-    isComplete: shouldFinish
-  };
-});
-
-
-// Function to get the list of agents
-async function getAgentsList() {
-  const agents = await agent.getAgentList();
-  console.log('Agents:', agents);
-}
-
-// Function to get the list of agents
-async function getMCPServerList() {
-  const mcpServers = await agent.getMCPServers();
-  console.log('MCPServers:', mcpServers);
-}
-
-
-// Function to get and display available services
-async function getAvailableServices() {
   try {
-    console.log('Fetching available services...');
-    const services = await agent.getServiceList();
-    console.log('Available services:', services.length);
+    // Send first message
+    console.log(`Sending first message for task ${taskId}`);
+    agent.sendTaskMessage(taskId, {
+      type: 'progress',
+      message: 'This is message 1 of 2',
+      data: { progress: 50 }
+    });
     
-    if (services && services.length > 0) {
-      console.log('Available services:');
-      services.forEach((service, index) => {
-        console.log(`  ${index + 1}. ${service.name} (ID: ${service.id})`);
-        console.log(`     Status: ${service.status}`);
-        if (service.capabilities && service.capabilities.length > 0) {
-          console.log(`     Capabilities: ${service.capabilities.join(', ')}`);
-        }
-        console.log('');
-      });
-    } else {
-      console.log('No services are currently available.');
-    }
+    // Simulate processing time
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Send second message
+    console.log(`Sending second message for task ${taskId}`);
+    agent.sendTaskMessage(taskId, {
+      type: 'progress',
+      message: 'This is message 2 of 2',
+      data: { progress: 100 }
+    });
+    
+    // Simulate more processing time
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Send the task result after the two messages
+    // console.log(`Sending task result for task ${taskId}`);
+    agent.sendTaskResult(taskId, {
+      type: 'agent.task.result',
+      message: 'Task completed after sending 2 messages',
+      timestamp: new Date().toISOString()
+    });
+    
+    // The return value becomes the final result that gets wrapped in a message
+    // but the explicit sendTaskResult above will be sent separately
+    return {
+      response: "Task completed after sending 2 messages",
+      messageCount: 2,
+      isComplete: true
+    };
   } catch (error) {
-    console.error('Error fetching services:', error instanceof Error ? error.message : String(error));
+    console.error(`Error processing task ${taskId}:`, error);
+    return { 
+      error: `Error processing task: ${error instanceof Error ? error.message : String(error)}`
+    };
   }
-}
+});
 
 // Listen for events
 agent.on('connected', () => {
@@ -116,10 +74,6 @@ agent.on('connected', () => {
 
 agent.on('registered', async () => {
   console.log('Agent registered with orchestrator');
-  
-  // Get the list of available services after registration
-  // await getAvailableServices();
-  // await getMCPServerList();
 });
 
 agent.on('error', (error) => {
@@ -132,13 +86,8 @@ agent.on('disconnected', () => {
 
 // Connect to the orchestrator
 agent.connect()
-  .then(async () => {
+  .then(() => {
     console.log('Agent started and connected to orchestrator');
-    
-    // Also get services after connection (in case registration event doesn't fire)
-    setTimeout(async () => {
-      // await getMCPServerList();
-    }, 2000);
   })
   .catch(error => {
     console.error('Connection error:', error.message);
@@ -149,4 +98,4 @@ process.on('SIGINT', async () => {
   console.log('Shutting down...');
   await agent.disconnect();
   process.exit(0);
-});
+}); 

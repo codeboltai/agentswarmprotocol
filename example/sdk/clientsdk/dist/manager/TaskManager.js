@@ -28,7 +28,6 @@ class TaskManager {
         const response = await this.wsClient.sendRequestWaitForResponse({
             type: 'client.agent.task.create.request',
             content: {
-                event: 'task.completed',
                 agentId,
                 agentName,
                 taskData
@@ -36,7 +35,7 @@ class TaskManager {
             // Set noTimeout to true to prevent the WebSocketClient from timing out
             // We'll handle timeout ourselves with our specific event listeners
             noTimeout: true,
-        }, { customEvent: 'task.result' });
+        }, { customEvent: 'agent.task.result.received' });
         // If we don't need to wait for the result, return immediately
         if (!waitForResult) {
             return response.content;

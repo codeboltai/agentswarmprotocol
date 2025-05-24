@@ -72,15 +72,15 @@ export class WebSocketManager extends EventEmitter {
     this.emit('message', message);
     
     // Also emit specific event types
-    if (message.type === 'task.result' && message.content) {
-      this.emit('task.result', message.content);
+    if (message.type === 'agent.task.result' && message.content) {
+      this.emit('agent.task.result', message.content);
     } else if (message.type === 'task.status' && message.content) {
       this.emit('task.status', message.content);
       
-      // If the status is completed, also emit a task.result event
+      // If the status is completed, also emit a agent.task.result event
       if (message.content.status === 'completed') {
-        this.logger.debug('Task completed status received, emitting task.result event');
-        this.emit('task.result', {
+        this.logger.debug('Task completed status received, emitting agent.task.result event');
+        this.emit('agent.task.result', {
           ...message.content,
           result: message.content.result || {}
         });

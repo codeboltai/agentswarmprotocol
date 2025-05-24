@@ -53,28 +53,28 @@ class Orchestrator {
     this.configLoader = new ConfigLoader({
       configPath: config.configPath
     });
-    
+
     // Get the fully resolved configuration
     const resolvedConfig = this.configLoader.getResolvedConfig(config);
-    
+
     // Set instance properties from resolved config
     this.port = resolvedConfig.port;
     this.clientPort = resolvedConfig.clientPort;
     this.servicePort = resolvedConfig.servicePort;
     this.logLevel = resolvedConfig.logLevel;
-    
+
     this.agents = new AgentRegistry();
     this.tasks = new AgentTaskRegistry();
     this.services = new ServiceRegistry();
     this.clients = new ClientRegistry();
     this.serviceTasks = new ServiceTaskRegistry();
-    
+
     // Create event bus for communication between components
     this.eventBus = new EventEmitter();
-    
+
     // Set up MCP support
     this.mcpAdapter = mcp.setup(this.eventBus);
-    
+
     // Create message handler to centralize business logic
     this.messageHandler = new MessageHandler({
       agents: this.agents,
@@ -85,29 +85,29 @@ class Orchestrator {
       eventBus: this.eventBus,
       mcp: this.mcpAdapter
     });
-    
+
     // Create servers with specific dependencies rather than passing the entire orchestrator
     this.agentServer = new AgentServer(
-      { agents: this.agents }, 
-      this.eventBus, 
+      { agents: this.agents },
+      this.eventBus,
       { port: this.port },
       this.messageHandler
     );
-    
+
     this.clientServer = new ClientServer(
-      this.eventBus, 
-      { 
+      this.eventBus,
+      {
         clientPort: this.clientPort,
         clientRegistry: this.clients
       }
     );
-    
+
     this.serviceServer = new ServiceServer(
       { services: this.services },
       this.eventBus,
       { port: this.servicePort }
     );
-    
+
     // Set up event listeners
     this.setupEventListeners();
   }
@@ -118,7 +118,7 @@ class Orchestrator {
     // 1. Event names are unique and specific
     // 2. Parameter counts match between emitter and listener
     // 3. All emitters include proper error handling
-    
+
     // Handle agent registration - add new event handler for agent.register
     this.eventBus.on('agent.register', (message: any, connectionId: string) => {
       try {
@@ -127,7 +127,7 @@ class Orchestrator {
           this.agentServer.sendError(connectionId, result.error, message.id);
           return;
         }
-        
+
         // Send registration confirmation to the agent
         this.agentServer.send(connectionId, {
           id: uuidv4(),
@@ -135,7 +135,7 @@ class Orchestrator {
           content: result,
           requestId: message.id
         });
-        
+
         // Send notification to all clients about the new agent
         this.clientServer.broadcastNotification(
           'agent',
@@ -148,36 +148,36 @@ class Orchestrator {
             registeredAt: new Date().toISOString()
           }
         );
-        
+
         console.log(`Agent registration notification sent to all clients for agent: ${result.name} (${result.agentId})`);
       } catch (error) {
         this.agentServer.sendError(
-          connectionId, 
+          connectionId,
           'Error during agent registration: ' + (error instanceof Error ? error.message : String(error)),
           message.id
         );
       }
     });
-  
-    
+
+
     // Listen for client registration events
     this.eventBus.on('client.registered', (client: any) => {
       this.messageHandler.handleClientRegistered(client);
     });
-    
+
     // Listen for client list requests
     this.eventBus.on('client.list.request', (filters: any, requestId?: string) => {
       this.messageHandler.handleClientListRequest(filters, requestId);
     });
-    
+
     // Listen for agent list requests
     this.eventBus.on('agent.list.request', (filters: any, requestId?: string) => {
       this.messageHandler.handleAgentListRequest(filters, requestId);
     });
-    
-  
-     // Listen for service list requests
-     this.eventBus.on('agent.service.list.request', (message: any, connectionId: string) => {
+
+
+    // Listen for service list requests
+    this.eventBus.on('agent.service.list.request', (message: any, connectionId: string) => {
       try {
         const filters = message.content?.filters || {};
         const serviceList = this.services.getAllServices(filters).map(service => ({
@@ -186,7 +186,7 @@ class Orchestrator {
           status: service.status,
           capabilities: service.capabilities
         }));
-        
+
         // Send response back to the agent
         this.agentServer.send(connectionId, {
           id: uuidv4(),
@@ -196,7 +196,7 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
         console.log(`Service list sent to agent (${serviceList.length} services)`);
       } catch (error) {
         this.agentServer.sendError(
@@ -206,18 +206,18 @@ class Orchestrator {
         );
       }
     });
-    
+
     // Listen for service task execution requests
     this.eventBus.on('service.task.execute', (message: any, connectionId: string, requestId?: string) => {
       this.messageHandler.handleServiceTaskExecuteEvent(message, connectionId, requestId);
     });
-    
+
     // Listen for client agent list requests
     this.eventBus.on('client.agent.list', (message: any, clientId: string, clientServer: any) => {
       const filters = message?.content?.filters || {};
       this.messageHandler.handleClientAgentListRequest(filters, message?.id);
     });
-    
+
     // Listen for client task creation requests
     this.eventBus.on('client.agent.task.create.request', async (message: any, clientId: string) => {
       try {
@@ -273,11 +273,11 @@ class Orchestrator {
         const connection = this.agents.getConnectionByAgentId(agent.id);
         if (!connection) {
           // Update task status to failed
-          this.tasks.updateTaskStatus(taskId, 'failed', { 
+          this.tasks.updateTaskStatus(taskId, 'failed', {
             error: 'Agent connection not found',
             metadata: { failedAt: new Date().toISOString() }
           });
-          
+
           throw new Error('Cannot deliver task to agent: not connected');
         }
 
@@ -291,11 +291,11 @@ class Orchestrator {
             data: taskData
           }
         };
-        
+
         // Send the task to the agent - use connectionId instead of connection object
         this.agentServer.send(connection.id, taskMessage);
         console.log(`Task ${taskId} sent to agent ${agent.id}`);
-        
+
         // Update task status to running
         this.tasks.updateTaskStatus(taskId, 'running', {
           metadata: { startedAt: new Date().toISOString() }
@@ -313,31 +313,31 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error creating task', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });
-    
-    
+
+
     // Listen for client agent task status requests
     this.eventBus.on('client.agent.task.status.request', (message: any, clientId: string) => {
       try {
         const { taskId } = message.content;
-        
+
         if (!taskId) {
           this.clientServer.sendError(clientId, 'Task ID is required', message.id);
           return;
         }
-        
+
         // Get the task from the task registry
         const task = this.tasks.getTask(taskId);
         if (!task) {
           this.clientServer.sendError(clientId, `Task ${taskId} not found`, message.id);
           return;
         }
-        
+
         // Send task status response to client
         this.clientServer.send(clientId, {
           id: uuidv4(),
@@ -357,24 +357,24 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
         console.log(`Task status sent to client ${clientId} for task ${taskId}: ${task.status}`);
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error getting task status', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });
-    
+
     // // Listen for client MCP server list requests
     // this.eventBus.on('client.mcp.server.list', (filters: any, requestId?: string) => {
     //   this.messageHandler.handleClientMCPServerListRequest(filters, requestId);
     // });
-    
+
     // Listen for client MCP server tools requests
     this.eventBus.on('client.mcp.server.tools', (serverId: string, requestId?: string) => {
       this.messageHandler.handleClientMCPServerToolsRequest(serverId, requestId);
     });
-    
+
     // Listen for client MCP tool execution requests
     this.eventBus.on('client.mcp.tool.execute', (params: any, requestId?: string) => {
       this.messageHandler.handleClientMCPToolExecuteRequest(params, requestId);
@@ -384,26 +384,26 @@ class Orchestrator {
     this.eventBus.on('task.message', (message: any, clientId: string) => {
       try {
         const { taskId, messageType, message: taskMessage } = message.content;
-        
+
         if (!taskId) {
           this.clientServer.sendError(clientId, 'Task ID is required for task message', message.id);
           return;
         }
-        
+
         // Get the task to find the agent
         const task = this.tasks.getTask(taskId);
         if (!task) {
           this.clientServer.sendError(clientId, `Task ${taskId} not found`, message.id);
           return;
         }
-        
+
         // Get the agent connection
         const agent = this.agents.getAgentById(task.agentId);
         if (!agent || !agent.connectionId) {
           this.clientServer.sendError(clientId, `Agent for task ${taskId} not connected`, message.id);
           return;
         }
-        
+
         // Forward the message to the agent
         this.agentServer.send(agent.connectionId, {
           id: uuidv4(),
@@ -415,9 +415,9 @@ class Orchestrator {
             clientId
           }
         });
-        
+
         // Send confirmation to client
-        this.clientServer.send(clientId, {
+        const sendResult = this.clientServer.send(clientId, {
           id: uuidv4(),
           type: 'task.message.sent',
           content: {
@@ -426,6 +426,10 @@ class Orchestrator {
           },
           requestId: message.id
         });
+
+        if (sendResult === false) {
+          console.log(`Could not send confirmation to client ${clientId}: Client not connected`);
+        }
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error sending task message', message.id,
           error instanceof Error ? error.message : String(error));
@@ -436,29 +440,29 @@ class Orchestrator {
     this.eventBus.on('agent.task.request', (message: any, connectionId: string) => {
       try {
         const { targetAgentName, taskType, taskData, timeout } = message.content;
-        
+
         if (!targetAgentName || !taskData) {
           this.agentServer.sendError(connectionId, 'Target agent name and task data are required', message.id);
           return;
         }
-        
+
         // Find the target agent
         const targetAgent = this.agents.getAgentByName(targetAgentName);
         if (!targetAgent) {
           this.agentServer.sendError(connectionId, `Agent ${targetAgentName} not found`, message.id);
           return;
         }
-        
+
         // Get the requesting agent
         const requestingAgent = this.agents.getAgentByConnectionId(connectionId);
         if (!requestingAgent) {
           this.agentServer.sendError(connectionId, 'Requesting agent not found', message.id);
           return;
         }
-        
+
         // Create a child task
         const childTaskId = uuidv4();
-        
+
         // Register the child task
         this.tasks.registerTask(childTaskId, {
           type: 'agent.child.task',
@@ -481,7 +485,7 @@ class Orchestrator {
             }
           }
         });
-        
+
         // Send acceptance response to requesting agent
         this.agentServer.send(connectionId, {
           id: uuidv4(),
@@ -493,16 +497,16 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
         // Get target agent connection and send task directly
         const targetConnection = this.agents.getConnectionByAgentId(targetAgent.id);
         if (!targetConnection) {
           // Update task status to failed
-          this.tasks.updateTaskStatus(childTaskId, 'failed', { 
+          this.tasks.updateTaskStatus(childTaskId, 'failed', {
             error: 'Target agent connection not found',
             metadata: { failedAt: new Date().toISOString() }
           });
-          
+
           // Notify requesting agent of failure
           this.agentServer.send(connectionId, {
             id: uuidv4(),
@@ -535,16 +539,16 @@ class Orchestrator {
             }
           }
         };
-        
+
         // Send the task to the target agent
         this.agentServer.send(targetConnection.id, taskMessage);
         console.log(`Child task ${childTaskId} sent from agent ${requestingAgent.id} to agent ${targetAgent.id}`);
-        
+
         // Update task status to running
         this.tasks.updateTaskStatus(childTaskId, 'running', {
           metadata: { startedAt: new Date().toISOString() }
         });
-        
+
       } catch (error) {
         this.agentServer.sendError(connectionId, `Error processing agent task request: ${error instanceof Error ? error.message : String(error)}`, message.id);
       }
@@ -554,19 +558,19 @@ class Orchestrator {
     this.eventBus.on('service.tools.list', (message: any, connectionId: string) => {
       try {
         const { serviceId } = message.content;
-        
+
         if (!serviceId) {
           this.agentServer.sendError(connectionId, 'Service ID is required', message.id);
           return;
         }
-        
+
         // Get the service
         const service = this.services.getServiceById(serviceId);
         if (!service) {
           this.agentServer.sendError(connectionId, `Service ${serviceId} not found`, message.id);
           return;
         }
-        
+
         // For now, return empty tools list - services should implement their own tool discovery
         // This can be enhanced later when services register their available tools
         this.agentServer.send(connectionId, {
@@ -578,7 +582,7 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.agentServer.sendError(connectionId, `Error getting service tools: ${error instanceof Error ? error.message : String(error)}`, message.id);
       }
@@ -588,25 +592,25 @@ class Orchestrator {
     this.eventBus.on('service.task.execute', (message: any, connectionId: string) => {
       try {
         const { serviceId, toolName, params, clientId } = message.content;
-        
+
         if (!serviceId || !toolName) {
           this.agentServer.sendError(connectionId, 'Service ID and tool name are required', message.id);
           return;
         }
-        
+
         // Get the service
         const service = this.services.getServiceById(serviceId);
         if (!service || !service.connectionId) {
           this.agentServer.sendError(connectionId, `Service ${serviceId} not found or not connected`, message.id);
           return;
         }
-        
+
         // Get the requesting agent
         const requestingAgent = this.agents.getAgentByConnectionId(connectionId);
-        
+
         // Create a service task
         const serviceTaskId = uuidv4();
-        
+
         // Register the service task
         this.serviceTasks.registerTask(serviceTaskId, {
           type: 'service.task',
@@ -627,7 +631,7 @@ class Orchestrator {
             }
           }
         });
-        
+
         // Send service started notification to client if clientId is provided
         if (clientId && this.clientServer.hasClientConnection(clientId)) {
           this.clientServer.send(clientId, {
@@ -644,7 +648,7 @@ class Orchestrator {
             }
           });
         }
-        
+
         // Send the task to the service
         this.serviceServer.send(service.connectionId, {
           id: serviceTaskId,
@@ -659,7 +663,7 @@ class Orchestrator {
             }
           }
         });
-        
+
         // Send acceptance response to agent
         this.agentServer.send(connectionId, {
           id: uuidv4(),
@@ -672,21 +676,21 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.agentServer.sendError(connectionId, `Error executing service task: ${error instanceof Error ? error.message : String(error)}`, message.id);
       }
     });
-    
+
     // Listen for service registration events
     this.eventBus.on('service.register', (message: any, connectionId: string) => {
       try {
         const content = message.content || {};
-        
+
         if (!content.name) {
           return this.serviceServer.sendError(connectionId, 'Service name is required', message.id);
         }
-        
+
         // Register the service
         const serviceId = content.id || uuidv4();
         const service = {
@@ -699,10 +703,10 @@ class Orchestrator {
           registeredAt: new Date().toISOString(),
           metadata: content.metadata || {}
         };
-        
+
         // Register in registry - passing only the service object
         this.services.registerService(service);
-        
+
         // Respond with confirmation
         this.serviceServer.send(connectionId, {
           id: uuidv4(),
@@ -715,36 +719,36 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
         console.log(`Service ${service.name} (${serviceId}) registered successfully`);
       } catch (error) {
         this.serviceServer.sendError(
-          connectionId, 
+          connectionId,
           'Error during service registration: ' + (error instanceof Error ? error.message : String(error)),
           message.id
         );
       }
     });
-    
+
     this.eventBus.on('service.status.update', (message: any, connectionId: string, serviceServer: any) => {
       try {
         const content = message.content || {};
         const { status } = content;
-        
+
         if (!status) {
           return this.serviceServer.sendError(connectionId, 'Status is required', message.id);
         }
-        
+
         // Get service ID from connection
         const service = this.services.getServiceByConnectionId(connectionId);
-        
+
         if (!service) {
           return this.serviceServer.sendError(connectionId, 'Service not found or not registered', message.id);
         }
-        
+
         // Update service status
         this.services.updateServiceStatus(service.id, status, content);
-        
+
         // Respond with confirmation
         this.serviceServer.send(connectionId, {
           id: uuidv4(),
@@ -756,33 +760,33 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
         console.log(`Service ${service.name} (${service.id}) status updated to ${status}`);
       } catch (error) {
         this.serviceServer.sendError(
-          connectionId, 
-          'Error updating service status', 
+          connectionId,
+          'Error updating service status',
           message.id,
           error instanceof Error ? error.message : String(error)
         );
       }
     });
-    
+
     this.eventBus.on('service.task.notification', (message: any, connectionId: string, serviceServer: any) => {
       try {
         // Get service info
         const serviceId = this.services.getServiceByConnectionId(connectionId)?.id;
-        
+
         if (!serviceId) {
           return this.serviceServer.sendError(connectionId, 'Service not registered or unknown', message.id);
         }
-        
+
         const service = this.services.getServiceById(serviceId);
-        
+
         if (!service) {
           return this.serviceServer.sendError(connectionId, 'Service not found', message.id);
         }
-        
+
         // Enhance the notification with service information
         const enhancedNotification = {
           ...message,
@@ -792,10 +796,10 @@ class Orchestrator {
             serviceName: service.name
           }
         };
-        
+
         // Process the notification internally
         console.log(`Processing service notification from ${service.name} (${serviceId})`);
-        
+
         // Forward the notification to clients if needed based on metadata
         if (enhancedNotification.content.metadata && enhancedNotification.content.metadata.clientId) {
           const { clientId } = enhancedNotification.content.metadata;
@@ -803,7 +807,7 @@ class Orchestrator {
             this.clientServer.forwardServiceNotificationToClient(clientId, enhancedNotification.content);
           }
         }
-        
+
         // Send confirmation
         this.serviceServer.send(connectionId, {
           id: uuidv4(),
@@ -816,8 +820,8 @@ class Orchestrator {
         });
       } catch (error) {
         this.serviceServer.sendError(
-          connectionId, 
-          'Error processing notification', 
+          connectionId,
+          'Error processing notification',
           message.id,
           error instanceof Error ? error.message : String(error)
         );
@@ -924,7 +928,7 @@ class Orchestrator {
     this.eventBus.on('agent.mcp.servers.list', (message: any, clientId: string) => {
       try {
         const servers = this.mcpAdapter.listMCPServers();
-        
+
         this.agentServer.send(clientId, {
           id: uuidv4(),
           type: 'agent.mcp.servers.list.result',
@@ -938,7 +942,7 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error getting MCP server list', message.id,
           error instanceof Error ? error.message : String(error));
@@ -992,24 +996,24 @@ class Orchestrator {
         }, requestId);
       }
     });
-    
+
     // NEW: Handle task completion events
     this.eventBus.on('agent.task.result.received', (message: any, connectionId: string) => {
       try {
         const { taskId, result } = message.content;
-        
+
         if (!taskId) {
           console.error('Task result received without task ID');
           return;
         }
-        
+
         // Get the task
         const task = this.tasks.getTask(taskId);
         if (!task) {
           console.error(`Task ${taskId} not found for result`);
           return;
         }
-        
+
         // Update task status
         this.tasks.updateTaskStatus(taskId, 'completed', {
           result,
@@ -1017,11 +1021,12 @@ class Orchestrator {
             completedAt: new Date().toISOString()
           }
         });
-        
+
         // Notify client if one is specified
         if (task.clientId) {
           this.clientServer.send(task.clientId, {
             id: uuidv4(),
+            requestId: task.id,
             type: 'client.agent.task.result',
             content: {
               taskId,
@@ -1032,7 +1037,7 @@ class Orchestrator {
             }
           });
         }
-        
+
         // If this is a child task, notify the requesting agent
         if (task.requestingAgentId) {
           const requestingAgent = this.agents.getAgentById(task.requestingAgentId);
@@ -1048,7 +1053,7 @@ class Orchestrator {
             });
           }
         }
-        
+
       } catch (error) {
         console.error('Error handling task result:', error);
       }
@@ -1058,19 +1063,19 @@ class Orchestrator {
     this.eventBus.on('task.error', (message: any, connectionId: string) => {
       try {
         const { taskId, error } = message.content;
-        
+
         if (!taskId) {
           console.error('Task error received without task ID');
           return;
         }
-        
+
         // Get the task
         const task = this.tasks.getTask(taskId);
         if (!task) {
           console.error(`Task ${taskId} not found for error`);
           return;
         }
-        
+
         // Update task status
         this.tasks.updateTaskStatus(taskId, 'failed', {
           error: error || 'Unknown error',
@@ -1078,7 +1083,7 @@ class Orchestrator {
             failedAt: new Date().toISOString()
           }
         });
-        
+
         // Notify client if one is specified
         if (task.clientId) {
           this.clientServer.send(task.clientId, {
@@ -1093,7 +1098,7 @@ class Orchestrator {
             }
           });
         }
-        
+
         // If this is a child task, notify the requesting agent
         if (task.requestingAgentId) {
           const requestingAgent = this.agents.getAgentById(task.requestingAgentId);
@@ -1109,7 +1114,7 @@ class Orchestrator {
             });
           }
         }
-        
+
       } catch (error) {
         console.error('Error handling task error:', error);
       }
@@ -1119,14 +1124,14 @@ class Orchestrator {
     this.eventBus.on('service.task.notification', (message: any, connectionId: string) => {
       try {
         const { serviceId, taskId, notification } = message.content;
-        
+
         // Get the service task
         const serviceTask = this.serviceTasks.getTask(taskId);
         if (!serviceTask) {
           console.error(`Service task ${taskId} not found for notification`);
           return;
         }
-        
+
         // Notify client if one is specified
         if (serviceTask.clientId) {
           this.clientServer.send(serviceTask.clientId, {
@@ -1140,7 +1145,7 @@ class Orchestrator {
             }
           });
         }
-        
+
         // Notify the requesting agent if one exists
         if (serviceTask.agentId) {
           const agent = this.agents.getAgentById(serviceTask.agentId);
@@ -1157,7 +1162,7 @@ class Orchestrator {
             });
           }
         }
-        
+
       } catch (error) {
         console.error('Error handling service task notification:', error);
       }
@@ -1167,24 +1172,24 @@ class Orchestrator {
     this.eventBus.on('service.task.result.received', (message: any, connectionId: string) => {
       try {
         const { taskId, result } = message.content;
-        
+
         if (!taskId) {
           console.error('Service task result received without task ID');
           return;
         }
-        
+
         // Get the service task
         const serviceTask = this.serviceTasks.getTask(taskId);
         if (!serviceTask) {
           console.error(`Service task ${taskId} not found for result`);
           return;
         }
-        
+
         // Update service task status
         this.serviceTasks.updateTaskStatus(taskId, 'completed', {
           result
         });
-        
+
         // Send service completed notification to client if one is specified
         if (serviceTask.clientId) {
           this.clientServer.send(serviceTask.clientId, {
@@ -1198,7 +1203,7 @@ class Orchestrator {
             }
           });
         }
-        
+
         // Notify the requesting agent if one exists
         if (serviceTask.agentId) {
           const agent = this.agents.getAgentById(serviceTask.agentId);
@@ -1215,20 +1220,20 @@ class Orchestrator {
             });
           }
         }
-        
+
       } catch (error) {
         console.error('Error handling service task result:', error);
       }
     });
 
     // NEW: Handle missing client events that are emitted but not handled
-    
+
     // Handle client agent list requests
     this.eventBus.on('client.agent.list.request', (message: any, clientId: string, clientServer: any) => {
       try {
         const filters = message.content?.filters || {};
         const agents = this.agents.getAllAgents();
-        
+
         this.clientServer.send(clientId, {
           id: uuidv4(),
           type: 'client.agent.list.response',
@@ -1243,45 +1248,45 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error getting agent list', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });
 
-       // Handle agent agent list requests
-       this.eventBus.on('agent.agent.list.request', (message: any, clientId: string, clientServer: any) => {
-        try {
-          const filters = message.content?.filters || {};
-          const agents = this.agents.getAllAgents();
-          
-          this.agentServer.send(clientId, {
-            id: uuidv4(),
-            type: 'agent.agent.list.response',
-            content: {
-              agents: agents.map((agent: any) => ({
-                id: agent.id,
-                name: agent.name,
-                capabilities: agent.capabilities,
-                status: agent.status,
-                registeredAt: agent.registeredAt
-              }))
-            },
-            requestId: message.id
-          });
-          
-        } catch (error) {
-          this.clientServer.sendError(clientId, 'Error getting agent list', message.id,
-            error instanceof Error ? error.message : String(error));
-        }
-      });
-    
+    // Handle agent agent list requests
+    this.eventBus.on('agent.agent.list.request', (message: any, clientId: string, clientServer: any) => {
+      try {
+        const filters = message.content?.filters || {};
+        const agents = this.agents.getAllAgents();
+
+        this.agentServer.send(clientId, {
+          id: uuidv4(),
+          type: 'agent.agent.list.response',
+          content: {
+            agents: agents.map((agent: any) => ({
+              id: agent.id,
+              name: agent.name,
+              capabilities: agent.capabilities,
+              status: agent.status,
+              registeredAt: agent.registeredAt
+            }))
+          },
+          requestId: message.id
+        });
+
+      } catch (error) {
+        this.clientServer.sendError(clientId, 'Error getting agent list', message.id,
+          error instanceof Error ? error.message : String(error));
+      }
+    });
+
     // Handle client MCP server list requests
     this.eventBus.on('client.mcp.server.list.request', (message: any, clientId: string) => {
       try {
         const servers = this.mcpAdapter.listMCPServers();
-        
+
         this.clientServer.send(clientId, {
           id: uuidv4(),
           type: 'client.mcp.server.list.response',
@@ -1295,25 +1300,25 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error getting MCP server list', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });
-    
+
     // Handle client MCP server tools requests
     this.eventBus.on('client.mcp.server.tools.request', async (message: any, clientId: string) => {
       try {
         const { serverId } = message.content;
-        
+
         if (!serverId) {
           this.clientServer.sendError(clientId, 'Server ID is required', message.id);
           return;
         }
-        
+
         const tools = await this.mcpAdapter.listMCPTools(serverId);
-        
+
         this.clientServer.send(clientId, {
           id: uuidv4(),
           type: 'mcp.server.tools',
@@ -1323,23 +1328,23 @@ class Orchestrator {
           },
           requestId: message.id
         });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error getting MCP server tools', message.id,
           error instanceof Error ? error.message : String(error));
       }
     });
-    
+
     // Handle client MCP tool execution requests
     this.eventBus.on('client.mcp.tool.execute.request', (message: any, clientId: string) => {
       try {
         const { serverId, toolName, parameters } = message.content;
-        
+
         if (!serverId || !toolName) {
           this.clientServer.sendError(clientId, 'Server ID and tool name are required', message.id);
           return;
         }
-        
+
         // Execute the MCP tool
         this.mcpAdapter.executeMCPTool(serverId, toolName, parameters || {})
           .then((result: any) => {
@@ -1358,7 +1363,7 @@ class Orchestrator {
             this.clientServer.sendError(clientId, 'Error executing MCP tool', message.id,
               error instanceof Error ? error.message : String(error));
           });
-        
+
       } catch (error) {
         this.clientServer.sendError(clientId, 'Error executing MCP tool', message.id,
           error instanceof Error ? error.message : String(error));
@@ -1373,22 +1378,22 @@ class Orchestrator {
   async start(): Promise<void> {
     try {
       console.log(`Starting Agent Swarm Protocol Orchestrator (${this.logLevel} mode)`);
-      
+
       // Start the WebSocket servers
       await this.agentServer.start();
       console.log(`Agent server started on port ${this.port}`);
-      
+
       await this.clientServer.start();
       console.log(`Client server started on port ${this.clientPort}`);
-      
+
       await this.serviceServer.start();
       console.log(`Service server started on port ${this.servicePort}`);
-      
+
       // Initialize components from config if available
       await this.initMCPServersFromConfig();
       await this.initAgentsFromConfig();
       await this.initServicesFromConfig();
-      
+
       console.log('Orchestrator ready!');
     } catch (error) {
       console.error('Failed to start orchestrator:', error);
@@ -1402,7 +1407,7 @@ class Orchestrator {
    */
   private async initMCPServersFromConfig(): Promise<void> {
     const mcpServers = this.configLoader.getMCPServers();
-    
+
     if (mcpServers && mcpServers.length > 0) {
       for (const serverConfig of mcpServers) {
         try {
@@ -1417,7 +1422,7 @@ class Orchestrator {
             args: serverConfig.args,
             metadata: serverConfig.metadata || {}
           });
-          
+
           console.log(`Registered MCP server: ${serverConfig.name}`);
         } catch (error) {
           console.error(`Failed to register MCP server ${serverConfig.name}:`, error);
@@ -1432,10 +1437,10 @@ class Orchestrator {
    */
   private async initAgentsFromConfig(): Promise<void> {
     const agentConfigs = this.configLoader.getAgentConfigurations();
-    
+
     if (agentConfigs && Object.keys(agentConfigs).length > 0) {
       console.log(`Loaded ${Object.keys(agentConfigs).length} agent configurations`);
-      
+
       for (const [agentName, config] of Object.entries(agentConfigs)) {
         // This just preloads the configurations, agents still need to connect
         this.agents.addAgentConfiguration(agentName, config);
@@ -1449,10 +1454,10 @@ class Orchestrator {
    */
   private async initServicesFromConfig(): Promise<void> {
     const serviceConfigs = this.configLoader.getServiceConfigurations();
-    
+
     if (serviceConfigs && Object.keys(serviceConfigs).length > 0) {
       console.log(`Loaded ${Object.keys(serviceConfigs).length} service configurations`);
-      
+
       for (const [serviceName, config] of Object.entries(serviceConfigs)) {
         // This just preloads the configurations, services still need to connect
         this.services.setServiceConfiguration(serviceName, config);
@@ -1466,12 +1471,12 @@ class Orchestrator {
   async stop(): Promise<void> {
     try {
       console.log('Stopping Orchestrator...');
-      
+
       // Stop all servers
       await this.agentServer.stop();
       await this.clientServer.stop();
       await this.serviceServer.stop();
-      
+
       console.log('Orchestrator stopped.');
     } catch (error) {
       console.error('Error stopping orchestrator:', error);
