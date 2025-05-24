@@ -60,18 +60,18 @@ export declare class SwarmClientSDK extends EventEmitter {
      */
     sendTask(agentId: string, agentName: string, taskData: any, options?: TaskRequestOptions): Promise<any>;
     /**
-     * Get the status of a task
-     * @param taskId - ID of the task to get status for
-     * @returns Task status
-     */
-    getTaskStatus(taskId: string): Promise<any>;
-    /**
      * Get a list of all registered agents
      * @param filters - Optional filters to apply to the agent list
      * @returns Array of agent objects
      */
     getAgentsList(filters?: AgentFilters): Promise<any[]>;
     sendMessageDuringTask(taskId: string, message: any): Promise<any>;
+    /**
+     * Get the status of a task
+     * @param taskId - ID of the task to get status for
+     * @returns Task status information including status, result, timestamps, etc.
+     */
+    getTaskStatus(taskId: string): Promise<any>;
     /**
      * List available MCP servers
      * @param filters - Optional filters

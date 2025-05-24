@@ -1,4 +1,3 @@
-import { TaskStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketClient } from '../service/WebSocketClient';
 import { TaskRequestOptions } from '../types';
 /**
@@ -33,10 +32,7 @@ export declare class TaskManager {
     /**
      * Get the status of a task
      * @param taskId - ID of the task to get status for
-     * @returns Task status
+     * @returns Task status information
      */
-    getTaskStatus(taskId: string): Promise<{
-        status: TaskStatus;
-        result?: any;
-    }>;
+    getTaskStatus(taskId: string): Promise<any>;
 }

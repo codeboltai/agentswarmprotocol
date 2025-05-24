@@ -54,49 +54,31 @@ class TaskManager {
                     reject(new Error(`Task timeout after ${timeout}ms: ${taskId}`));
                 }
             }, timeout);
-            // Handler for task.result events
-            const resultHandler = (result) => {
-                if (result.taskId === taskId) {
-                    console.log(`Received task.result for task ${taskId}`, result);
+            // Handler for raw messages from WebSocketClient
+            const messageHandler = (message) => {
+                // Handle task result messages
+                if (message.type === 'client.agent.task.result' && message.content && message.content.taskId === taskId) {
+                    console.log(`Received task result for task ${taskId}`, message.content);
                     taskResolved = true;
                     cleanup();
-                    resolve(result);
+                    resolve(message.content);
                 }
-            };
-            // Handler for task.status events
-            const statusHandler = (status) => {
-                var _a, _b;
-                if (status.taskId === taskId) {
-                    console.log(`Received task.status for task ${taskId}: ${status.status}`);
-                    // Handle completed status
-                    if (status.status === 'completed') {
-                        console.log(`Task ${taskId} completed via status update`);
-                        taskResolved = true;
-                        cleanup();
-                        resolve({
-                            ...status,
-                            result: status.result || {}
-                        });
-                    }
-                    // Handle failed status
-                    if (status.status === 'failed') {
-                        console.log(`Task ${taskId} failed: ${((_a = status.error) === null || _a === void 0 ? void 0 : _a.message) || 'Unknown error'}`);
-                        taskResolved = true;
-                        cleanup();
-                        reject(new Error(`Task failed: ${((_b = status.error) === null || _b === void 0 ? void 0 : _b.message) || 'Unknown error'}`));
-                    }
+                // Handle task error messages
+                if (message.type === 'task.error' && message.content && message.content.taskId === taskId) {
+                    console.log(`Task ${taskId} failed: ${message.content.error || 'Unknown error'}`);
+                    taskResolved = true;
+                    cleanup();
+                    reject(new Error(`Task failed: ${message.content.error || 'Unknown error'}`));
                 }
             };
             // Function to clean up event listeners
             const cleanup = () => {
                 console.log(`Cleaning up event listeners for task ${taskId}`);
                 clearTimeout(timeoutId);
-                this.wsClient.removeListener('task.result', resultHandler);
-                this.wsClient.removeListener('task.status', statusHandler);
+                this.wsClient.removeListener('message', messageHandler);
             };
-            // Set up specific event listeners
-            this.wsClient.on('task.result', resultHandler);
-            this.wsClient.on('task.status', statusHandler);
+            // Set up message listener
+            this.wsClient.on('message', messageHandler);
         });
     }
     /**
@@ -127,11 +109,12 @@ class TaskManager {
     /**
      * Get the status of a task
      * @param taskId - ID of the task to get status for
-     * @returns Task status
+     * @returns Task status information
      */
     async getTaskStatus(taskId) {
+        console.log(`Getting status for task ${taskId}`);
         const response = await this.wsClient.sendRequestWaitForResponse({
-            type: 'task.status',
+            type: 'client.agent.task.status',
             content: {
                 taskId
             }

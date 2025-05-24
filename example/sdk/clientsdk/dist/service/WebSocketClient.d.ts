@@ -88,7 +88,6 @@ export declare class WebSocketClient extends EventEmitter {
      * @param requestId - The request ID to handle
      * @param message - The response message
      * @param isError - Whether this is an error response
-     * @returns Whether a pending response was found and handled
      */
     handleResponse(requestId: string, message: any, isError?: boolean): void;
     /**

@@ -318,7 +318,6 @@ class WebSocketClient extends events_1.EventEmitter {
                     const isError = message.type === 'error' || (message.content && message.content.error);
                     this.handleResponse(messageId, message, isError);
                     console.log(`Resolved pending response for message ID: ${messageId} with custom event: ${pendingResponse.customEvent}`);
-                    // return;
                 }
                 // If custom event doesn't match, don't resolve and continue processing
             }
@@ -327,7 +326,6 @@ class WebSocketClient extends events_1.EventEmitter {
                 const isError = message.type === 'error' || (message.content && message.content.error);
                 this.handleResponse(messageId, message, isError);
                 console.log(`Resolved pending response for message ID: ${messageId}`);
-                // return;
             }
         }
         // Check for anyMessageId responses (custom event with any message ID)
@@ -336,7 +334,6 @@ class WebSocketClient extends events_1.EventEmitter {
                 const isError = message.type === 'error' || (message.content && message.content.error);
                 this.handleResponse(pendingId, message, isError);
                 console.log(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
-                // return;
             }
         }
         // Special handling for task.created messages to help pending requests
@@ -350,22 +347,6 @@ class WebSocketClient extends events_1.EventEmitter {
         }
         // Emit the full message for central handling
         this.emit('message', message);
-        // Also emit specific event types to maintain backward compatibility
-        if (message.type === 'task.result' && message.content) {
-            this.emit('task.result', message.content);
-        }
-        else if (message.type === 'task.status' && message.content) {
-            this.emit('task.status', message.content);
-            // If the status is completed, also emit a task.result event
-            // This ensures tasks complete even when only a status message is received
-            if (message.content.status === 'completed') {
-                console.log('Task completed status received in WebSocketClient, emitting task.result event');
-                this.emit('task.result', {
-                    ...message.content,
-                    result: message.content.result || {}
-                });
-            }
-        }
         // Only handle clientId for welcome messages here
         if (message.type === 'orchestrator.welcome' && message.content && message.content.clientId) {
             this.clientId = message.content.clientId;
@@ -450,11 +431,10 @@ class WebSocketClient extends events_1.EventEmitter {
      * @param requestId - The request ID to handle
      * @param message - The response message
      * @param isError - Whether this is an error response
-     * @returns Whether a pending response was found and handled
      */
     handleResponse(requestId, message, isError = false) {
         if (this.pendingResponses.has(requestId)) {
-            const { resolve, reject, timeout, customEvent, anyMessageId } = this.pendingResponses.get(requestId);
+            const { resolve, reject, timeout } = this.pendingResponses.get(requestId);
             if (timeout) {
                 clearTimeout(timeout);
             }
@@ -465,9 +445,7 @@ class WebSocketClient extends events_1.EventEmitter {
             else {
                 resolve(message);
             }
-            // return true;
         }
-        // return false;
     }
     /**
      * Get the map of pending responses (for debugging purposes)

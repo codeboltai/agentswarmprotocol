@@ -56,25 +56,18 @@ class SwarmClientSDK extends events_1.EventEmitter {
             case 'client.agent.list.response':
                 this.emit('agent.list', message.content.agents);
                 break;
-            case 'task.result':
+            case 'client.agent.task.result':
                 // Emit the event for others to listen
                 this.emit('task.result', message.content);
                 break;
-            case 'task.status':
-                this.emit('task.status', message.content);
-                // If the status is completed, also emit a task.result event
-                // This is necessary because sometimes a task may be marked as completed
-                // in a status message without a separate result message being sent
-                if (message.content.status === 'completed') {
-                    console.log('Task completed status received, emitting task.result event');
-                    this.emit('task.result', {
-                        ...message.content,
-                        result: message.content.result || {} // Ensure there's always a result object
-                    });
-                }
+            case 'task.error':
+                this.emit('task.error', message.content);
                 break;
             case 'client.agent.task.create.response':
                 this.emit('task.created', message.content);
+                break;
+            case 'client.agent.task.status.response':
+                this.emit('task.status', message.content);
                 break;
             case 'task.notification':
                 this.emit('task.notification', message.content);
@@ -159,14 +152,6 @@ class SwarmClientSDK extends events_1.EventEmitter {
         return this.taskManager.sendTask(agentId, agentName, taskData, options);
     }
     /**
-     * Get the status of a task
-     * @param taskId - ID of the task to get status for
-     * @returns Task status
-     */
-    async getTaskStatus(taskId) {
-        return this.taskManager.getTaskStatus(taskId);
-    }
-    /**
      * Get a list of all registered agents
      * @param filters - Optional filters to apply to the agent list
      * @returns Array of agent objects
@@ -176,6 +161,14 @@ class SwarmClientSDK extends events_1.EventEmitter {
     }
     async sendMessageDuringTask(taskId, message) {
         return this.taskManager.sendMessageDuringTask(taskId, message);
+    }
+    /**
+     * Get the status of a task
+     * @param taskId - ID of the task to get status for
+     * @returns Task status information including status, result, timestamps, etc.
+     */
+    async getTaskStatus(taskId) {
+        return this.taskManager.getTaskStatus(taskId);
     }
     /**
      * List available MCP servers

@@ -137,7 +137,7 @@ agent.connect()
     
     // Also get services after connection (in case registration event doesn't fire)
     setTimeout(async () => {
-      await getMCPServerList();
+      // await getMCPServerList();
     }, 2000);
   })
   .catch(error => {
