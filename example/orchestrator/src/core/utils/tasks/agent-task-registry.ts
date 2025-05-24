@@ -21,6 +21,7 @@ interface TaskData {
   clientId?: string;
   status?: TaskStatus;
   result?: any;
+  requestId?: string;
   [key: string]: any;
 }
 

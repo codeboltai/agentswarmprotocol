@@ -44,7 +44,7 @@ export class TaskManager {
       // We'll handle timeout ourselves with our specific event listeners
       noTimeout: true,
     
-    },{  customEvent: 'agent.task.result.received'});
+    },{  customEvent: 'client.agent.task.result'});
     
     // If we don't need to wait for the result, return immediately
     if (!waitForResult) {

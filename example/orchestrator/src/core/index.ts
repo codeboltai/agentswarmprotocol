@@ -266,7 +266,8 @@ class Orchestrator {
           clientId: clientId,
           status: 'pending',
           createdAt: new Date().toISOString(),
-          taskData
+          taskData,
+          requestId: message.id
         });
 
         // Get the agent connection and send task directly
@@ -483,7 +484,8 @@ class Orchestrator {
               },
               timeout: timeout || 30000
             }
-          }
+          },
+          requestId: message.id
         });
 
         // Send acceptance response to requesting agent
@@ -629,7 +631,8 @@ class Orchestrator {
               clientId: clientId,
               timestamp: new Date().toISOString()
             }
-          }
+          },
+          requestId: message.id
         });
 
         // Send service started notification to client if clientId is provided
@@ -1026,7 +1029,7 @@ class Orchestrator {
         if (task.clientId) {
           this.clientServer.send(task.clientId, {
             id: uuidv4(),
-            requestId: task.id,
+           requestId: task.requestId,
             type: 'client.agent.task.result',
             content: {
               taskId,

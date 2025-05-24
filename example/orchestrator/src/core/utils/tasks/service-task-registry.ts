@@ -12,6 +12,7 @@ interface ServiceTask {
   taskData: Record<string, any>;
   result: any;
   error: null | { message: string; code?: string; details?: any };
+  requestId?: string;
 }
 
 interface TaskInfo {
@@ -20,6 +21,7 @@ interface TaskInfo {
   agentId?: string;
   clientId?: string;
   taskData?: Record<string, any>;
+  requestId?: string;
 }
 
 interface TaskStatusData {
@@ -61,7 +63,8 @@ export class ServiceTaskRegistry implements IServiceTaskRegistry {
       createdAt: now,
       taskData: taskInfo.taskData || {},
       result: null,
-      error: null
+      error: null,
+      requestId: taskInfo.requestId
     };
     
     // Store the task
@@ -276,7 +279,8 @@ export class ServiceTaskRegistry implements IServiceTaskRegistry {
       serviceId: taskData.serviceId,
       agentId: taskData.agentId,
       clientId: taskData.clientId,
-      taskData: taskData
+      taskData: taskData,
+      requestId: taskData.requestId
     });
   }
 } 
