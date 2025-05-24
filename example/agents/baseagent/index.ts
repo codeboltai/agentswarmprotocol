@@ -18,10 +18,7 @@ agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   console.log('Received message task:', taskData);
   const taskId = message.content?.taskId || '';
   
-  // Handle 'execute' tasks
-  if (message.content?.taskType !== 'execute') {
-    return { error: 'Unsupported task type' };
-  }
+
   
   // Initialize counter for this task if it doesn't exist
   if (!messageCounters.has(taskId)) {
