@@ -16,7 +16,6 @@ import ConfigLoader from './utils/config-loader';
 import dotenv from 'dotenv';
 import {
   OrchestratorConfig,
-  PendingResponse,
   WebSocketWithId,
   SendOptions,
   TaskStatus,
@@ -41,7 +40,6 @@ class Orchestrator {
   private services: ServiceRegistry;
   private clients: ClientRegistry;
   private serviceTasks: ServiceTaskRegistry;
-  private pendingResponses: Record<string, PendingResponse>;
   private eventBus: EventEmitter;
   private mcpAdapter: MCPAdapter;
   private configLoader: ConfigLoader;
@@ -70,7 +68,6 @@ class Orchestrator {
     this.services = new ServiceRegistry();
     this.clients = new ClientRegistry();
     this.serviceTasks = new ServiceTaskRegistry();
-    this.pendingResponses = {}; // Track pending responses
     
     // Create event bus for communication between components
     this.eventBus = new EventEmitter();
@@ -1376,105 +1373,12 @@ class Orchestrator {
     }
   }
 
-  //LOW LEVEL FUNCTION
-  /**
-   * Send a message to a WebSocket connection or to a connection ID and wait for a response
-   * @param wsOrConnectionId - WebSocket object or connection ID
-   * @param message - Message to send
-   * @param options - Send options
-   * @returns Promise resolving with the response
-   */
-  async sendAndWaitForResponse(
-    wsOrConnectionId: WebSocketWithId | string, 
-    message: any, 
-    options: SendOptions = {}
-  ): Promise<any> {
-    const messageId = message.id || uuidv4();
-    const timeout = options.timeout || 30000;
-    
-    // Ensure the message has an ID
-    if (!message.id) {
-      message.id = messageId;
-    }
-    
-    // Create a promise that will be resolved with the response
-    const responsePromise = new Promise((resolve, reject) => {
-      // Set a timeout to reject the promise
-      const timeoutId = setTimeout(() => {
-        delete this.pendingResponses[messageId];
-        reject(new Error(`Request timed out after ${timeout}ms`));
-      }, timeout);
-      
-      // Store the pending response information
-      this.pendingResponses[messageId] = {
-        resolve,
-        reject,
-        timer: timeoutId
-      };
-    });
-    
-    // Determine if we need to get a WebSocket from a connection ID
-    let ws: WebSocketWithId;
-    
-    if (typeof wsOrConnectionId === 'string') {
-      // Get the WebSocket from the connection ID
-      const connection = this.agents.getConnection(wsOrConnectionId);
-      
-      if (!connection) {
-        delete this.pendingResponses[messageId];
-        throw new Error(`Connection with ID ${wsOrConnectionId} not found`);
-      }
-      
-      ws = connection as WebSocketWithId;
-    } else {
-      // Use the provided WebSocket
-      ws = wsOrConnectionId;
-    }
-    
-    // Add timestamp to the message if not already present
-    if (!message.timestamp) {
-      message.timestamp = Date.now().toString();
-    }
-    
-    // Send the message to the client
-    ws.send(JSON.stringify(message));
-    
-    // Wait for the response
-    return responsePromise;
-  }
-
-  // This should be removed and replaced with specific handlers for each message type
-  /**
-   * Handle response messages for outstanding requests
-   */
-  private handleResponseMessage(message: any): void {
-    const requestId = message.requestId;
-    
-    if (requestId && this.pendingResponses[requestId]) {
-      const { resolve, timer } = this.pendingResponses[requestId];
-      
-      // Clear the timeout and delete the pending response
-      clearTimeout(timer);
-      delete this.pendingResponses[requestId];
-      
-      // Resolve the promise with the response message
-      resolve(message);
-    }
-  }
-
   /**
    * Stop the orchestrator and all its servers
    */
   async stop(): Promise<void> {
     try {
       console.log('Stopping Orchestrator...');
-      
-      // Close all pending responses
-      for (const [messageId, pendingResponse] of Object.entries(this.pendingResponses)) {
-        clearTimeout(pendingResponse.timer);
-        pendingResponse.reject(new Error('Orchestrator is shutting down'));
-        delete this.pendingResponses[messageId];
-      }
       
       // Stop all servers
       await this.agentServer.stop();
