@@ -161,8 +161,8 @@ class ClientServer {
         this.eventBus.emit('client.agent.task.create.request', message, clientId);
         break;
         
-      case 'task.status':
-        this.eventBus.emit('client.task.status.request', message, clientId);
+      case 'client.agent.task.status.request':
+        this.eventBus.emit('client.agent.task.status.request', message, clientId);
         break;
         
       // Agent operations
@@ -370,7 +370,7 @@ class ClientServer {
     try {
       this.send(clientId, {
         id: uuidv4(),
-        type: 'task.result',
+        type: 'client.agent.task.result',
         content: {
           taskId,
           ...content

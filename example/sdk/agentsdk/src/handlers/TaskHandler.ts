@@ -89,7 +89,7 @@ export class TaskHandler extends EventEmitter {
   sendTaskResult(taskId: string, result: any): void {
     this.webSocketManager.send({
       id: uuidv4(),
-      type: 'task.result',
+      type: 'agent.task.result',
       content: {
         agentId: this.agentId,
         taskId,
