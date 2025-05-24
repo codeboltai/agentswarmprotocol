@@ -13,6 +13,11 @@ export declare class WebSocketManager extends EventEmitter {
     private defaultTimeout;
     constructor(orchestratorUrl: string, autoReconnect?: boolean, reconnectInterval?: number, logger?: Console);
     /**
+     * Handle incoming messages from the orchestrator
+     * @param message - The received message
+     */
+    private handleMessage;
+    /**
      * Connect to the orchestrator
      * @returns {Promise} Resolves when connected
      */

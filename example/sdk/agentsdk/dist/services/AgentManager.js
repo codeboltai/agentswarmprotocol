@@ -13,12 +13,13 @@ class AgentManager {
      * @param filters Filter criteria
      */
     async getAgentList(filters = {}) {
-        const response = await this.webSocketManager.sendAndWaitForResponse({
-            id: (0, uuid_1.v4)(),
-            type: 'agent.list',
+        const response = await this.webSocketManager.sendRequestWaitForResponse({
+            type: 'agent.agent.list.request',
             content: { filters }
+        }, {
+            customEvent: 'agent.agent.list.response'
         });
-        return response.content.agents || [];
+        return response.content.agents;
     }
     /**
      * Set agent status

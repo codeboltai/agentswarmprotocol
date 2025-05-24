@@ -14,14 +14,17 @@ export class AgentManager {
    * Get list of agents
    * @param filters Filter criteria
    */
+
+
   async getAgentList(filters: Record<string, any> = {}): Promise<any[]> {
-    const response = await this.webSocketManager.sendAndWaitForResponse({
-      id: uuidv4(),
-      type: 'agent.list',
+    const response = await this.webSocketManager.sendRequestWaitForResponse({
+      type: 'agent.agent.list.request',
       content: { filters }
-    } as BaseMessage);
+    }, {
+      customEvent: 'agent.agent.list.response'
+    });
     
-    return response.content.agents || [];
+    return response.content.agents;
   }
 
   /**

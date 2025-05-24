@@ -70,6 +70,20 @@ agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   };
 });
 
+
+// Function to get the list of agents
+async function getAgentsList() {
+  const agents = await agent.getAgentList();
+  console.log('Agents:', agents);
+}
+
+// Function to get the list of agents
+async function getMCPServerList() {
+  const mcpServers = await agent.getMCPServers();
+  console.log('MCPServers:', mcpServers);
+}
+
+
 // Function to get and display available services
 async function getAvailableServices() {
   try {
@@ -104,7 +118,8 @@ agent.on('registered', async () => {
   console.log('Agent registered with orchestrator');
   
   // Get the list of available services after registration
-  await getAvailableServices();
+  // await getAvailableServices();
+  // await getMCPServerList();
 });
 
 agent.on('error', (error) => {
@@ -122,7 +137,7 @@ agent.connect()
     
     // Also get services after connection (in case registration event doesn't fire)
     setTimeout(async () => {
-      await getAvailableServices();
+      await getMCPServerList();
     }, 2000);
   })
   .catch(error => {

@@ -2,9 +2,9 @@ import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { AgentMessages } from '@agentswarmprotocol/types/messages';
 export type TaskExecuteMessage = AgentMessages.TaskExecuteMessage;
 export interface PendingResponse {
-    resolve: (value: any) => void;
+    resolve: (value: BaseMessage) => void;
     reject: (reason?: any) => void;
-    timer: NodeJS.Timeout;
+    timer?: NodeJS.Timeout;
     customEvent?: string;
     anyMessageId?: boolean;
 }

@@ -21,6 +21,74 @@ export class WebSocketManager extends EventEmitter {
   }
 
   /**
+   * Handle incoming messages from the orchestrator
+   * @param message - The received message
+   */
+  private async handleMessage(message: BaseMessage): Promise<void> {
+    // Ensure message ID is properly extracted for consistent use
+    const messageId = message.requestId || message.id;
+    
+    // Check for pending responses
+    if (messageId && this.pendingResponses.has(messageId)) {
+      const pendingResponse = this.pendingResponses.get(messageId)!;
+      
+      // Check if we need to match a custom event
+      if (pendingResponse.customEvent) {
+        // Only resolve if the message type matches the custom event
+        if (message.type === pendingResponse.customEvent) {
+          const isError = message.type === 'error' || (message.content && message.content.error);
+          this.handleResponse(messageId, message, isError);
+          this.logger.debug(`Resolved pending response for message ID: ${messageId} with custom event: ${pendingResponse.customEvent}`);
+        }
+        // If custom event doesn't match, don't resolve and continue processing
+      } else {
+        // No custom event specified, resolve for any message with this ID
+        const isError = message.type === 'error' || (message.content && message.content.error);
+        this.handleResponse(messageId, message, isError);
+        this.logger.debug(`Resolved pending response for message ID: ${messageId}`);
+      }
+    }
+    
+    // Check for anyMessageId responses (custom event with any message ID)
+    for (const [pendingId, pendingResponse] of this.pendingResponses.entries()) {
+      if (pendingResponse.anyMessageId && pendingResponse.customEvent && message.type === pendingResponse.customEvent) {
+        const isError = message.type === 'error' || (message.content && message.content.error);
+        this.handleResponse(pendingId, message, isError);
+        this.logger.debug(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
+      }
+    }
+    
+    // Special handling for task.created messages
+    if (message.type === 'task.created' && message.content && message.content.taskId) {
+      // Store the relationship between the original request ID and the taskId
+      this.logger.debug(`Storing taskId ${message.content.taskId} for message ID: ${messageId}`);
+      this.emit('task.created.mapping', {
+        messageId: messageId,
+        taskId: message.content.taskId
+      });
+    }
+    
+    // Emit the message for handling
+    this.emit('message', message);
+    
+    // Also emit specific event types
+    if (message.type === 'task.result' && message.content) {
+      this.emit('task.result', message.content);
+    } else if (message.type === 'task.status' && message.content) {
+      this.emit('task.status', message.content);
+      
+      // If the status is completed, also emit a task.result event
+      if (message.content.status === 'completed') {
+        this.logger.debug('Task completed status received, emitting task.result event');
+        this.emit('task.result', {
+          ...message.content,
+          result: message.content.result || {}
+        });
+      }
+    }
+  }
+
+  /**
    * Connect to the orchestrator
    * @returns {Promise} Resolves when connected
    */
@@ -55,34 +123,7 @@ export class WebSocketManager extends EventEmitter {
           try {
             const message = JSON.parse(data.toString()) as BaseMessage;
             
-            // Check if this is a response to a pending request
-            if (message.requestId && this.pendingResponses.has(message.requestId)) {
-              const pendingResponse = this.pendingResponses.get(message.requestId);
-              if (pendingResponse) {
-                if (pendingResponse.customEvent) {
-                  // Only resolve if the message type matches the custom event
-                  if (message.type === pendingResponse.customEvent) {
-                    const isError = message.type === 'error' || (message.content && message.content.error);
-                    this.handleResponse(message.requestId, message, isError);
-                  }
-                  // If custom event doesn't match, don't resolve and continue processing
-                } else {
-                  // No custom event specified, resolve for any message with this ID
-                  const isError = message.type === 'error' || (message.content && message.content.error);
-                  this.handleResponse(message.requestId, message, isError);
-                }
-              }
-            }
-            
-            // Check for anyMessageId responses (custom event with any message ID)
-            for (const [pendingId, pendingResponse] of this.pendingResponses.entries()) {
-              if (pendingResponse.anyMessageId && pendingResponse.customEvent && message.type === pendingResponse.customEvent) {
-                const isError = message.type === 'error' || (message.content && message.content.error);
-                this.handleResponse(pendingId, message, isError);
-              }
-            }
-            
-            this.emit('message', message);
+            this.handleMessage(message);
           } catch (err) {
             const error = err as Error;
             this.logger.error(`Failed to parse message: ${error.message}`);
@@ -325,6 +366,8 @@ export class WebSocketManager extends EventEmitter {
       } else {
         pendingResponse.resolve(message);
       }
+      
+      this.logger.debug(`Resolved pending response for message ID: ${requestId}${pendingResponse.customEvent ? ` with custom event: ${pendingResponse.customEvent}` : ''}`);
       return true;
     }
     return false;

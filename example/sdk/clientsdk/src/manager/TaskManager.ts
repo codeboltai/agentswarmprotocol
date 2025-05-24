@@ -43,8 +43,9 @@ export class TaskManager {
       },
       // Set noTimeout to true to prevent the WebSocketClient from timing out
       // We'll handle timeout ourselves with our specific event listeners
-      noTimeout: true
-    });
+      noTimeout: true,
+    
+    },{  customEvent: 'task.result'});
     
     // If we don't need to wait for the result, return immediately
     if (!waitForResult) {

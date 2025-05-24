@@ -15,11 +15,13 @@ class MCPManager {
     async getMCPServers(filters = {}, timeout = 30000) {
         try {
             this.logger.debug(`Getting MCP servers list with filters:`, filters);
-            const response = await this.webSocketManager.sendAndWaitForResponse({
+            const response = await this.webSocketManager.sendRequestWaitForResponse({
                 id: (0, uuid_1.v4)(),
-                type: 'mcp.servers.list',
+                type: 'agent.mcp.servers.list',
                 content: { filters }
-            }, timeout);
+            }, {
+                customEvent: 'agent.mcp.servers.list.result'
+            });
             if (response.content && response.content.error) {
                 throw new Error(response.content.error);
             }

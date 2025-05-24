@@ -59,7 +59,7 @@ class ServiceManager {
     async getServiceList(filters = {}) {
         try {
             this.logger.debug(`Getting service list with filters:`, filters);
-            const response = await this.webSocketManager.sendAndWaitForResponse({
+            const response = await this.webSocketManager.sendRequestWaitForResponse({
                 id: (0, uuid_1.v4)(),
                 type: 'agent.service.list.request',
                 content: { filters }

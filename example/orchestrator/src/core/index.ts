@@ -884,16 +884,39 @@ class Orchestrator {
     });
 
     // Agent MCP Servers List Request
-    this.eventBus.on('agent.mcp.servers.list', (message: { filters?: MCPServerFilters }, requestId?: string) => {
+    this.eventBus.on('agent.mcp.servers.list', (message: any, clientId: string) => {
       try {
-        const servers = this.mcpAdapter.listMCPServers(message.filters || {});
-        this.eventBus.emit('agent.mcp.servers.list.result', {
-          servers
-        }, requestId);
+        const servers = this.mcpAdapter.listMCPServers();
+        
+        this.agentServer.send(clientId, {
+          id: uuidv4(),
+          type: 'agent.mcp.servers.list.result',
+          content: {
+            servers: servers.map((server: any) => ({
+              id: server.id,
+              name: server.name,
+              status: server.status,
+              capabilities: server.capabilities
+            }))
+          },
+          requestId: message.id
+        });
+        
       } catch (error) {
-        this.eventBus.emit('agent.mcp.servers.list.error', { error: (error as Error).message }, requestId);
+        this.clientServer.sendError(clientId, 'Error getting MCP server list', message.id,
+          error instanceof Error ? error.message : String(error));
       }
     });
+    // this.eventBus.on('agent.mcp.servers.list', (message: { filters?: MCPServerFilters }, requestId?: string) => {
+    //   try {
+    //     const servers = this.mcpAdapter.listMCPServers(message.filters || {});
+    //     this.eventBus.emit('agent.mcp.servers.list.result', {
+    //       servers
+    //     }, requestId);
+    //   } catch (error) {
+    //     this.eventBus.emit('agent.mcp.servers.list.error', { error: (error as Error).message }, requestId);
+    //   }
+    // });
 
     // Agent MCP Tools List Request
     this.eventBus.on('agent.mcp.tools.list', async (message: { serverId: string }, requestId?: string) => {
@@ -1189,6 +1212,33 @@ class Orchestrator {
           error instanceof Error ? error.message : String(error));
       }
     });
+
+       // Handle agent agent list requests
+       this.eventBus.on('agent.agent.list.request', (message: any, clientId: string, clientServer: any) => {
+        try {
+          const filters = message.content?.filters || {};
+          const agents = this.agents.getAllAgents();
+          
+          this.agentServer.send(clientId, {
+            id: uuidv4(),
+            type: 'agent.agent.list.response',
+            content: {
+              agents: agents.map((agent: any) => ({
+                id: agent.id,
+                name: agent.name,
+                capabilities: agent.capabilities,
+                status: agent.status,
+                registeredAt: agent.registeredAt
+              }))
+            },
+            requestId: message.id
+          });
+          
+        } catch (error) {
+          this.clientServer.sendError(clientId, 'Error getting agent list', message.id,
+            error instanceof Error ? error.message : String(error));
+        }
+      });
     
     // Handle client MCP server list requests
     this.eventBus.on('client.mcp.server.list.request', (message: any, clientId: string) => {
