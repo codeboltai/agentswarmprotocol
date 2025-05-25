@@ -23,7 +23,7 @@ export class ServiceManager {
     params: Record<string, any> = {},
     options: ServiceTaskOptions = {}
   ): Promise<any> {
-    const { timeout = 30000, clientId } = options;
+    const { timeout = 30000 } = options;
     const requestId = uuidv4();
     
     this.logger.debug(`Executing service tool "${toolId}" on service "${serviceId}" with params:`, params);
@@ -37,7 +37,6 @@ export class ServiceManager {
           serviceId,
           toolId,
           params,
-          clientId,
           // Include timestamp for tracking
           timestamp: new Date().toISOString()
         }

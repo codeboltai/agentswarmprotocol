@@ -30,5 +30,4 @@ export type TaskHandler = (taskData: any, message: TaskExecuteMessage) => Promis
 
 export interface ServiceTaskOptions {
   timeout?: number;
-  clientId?: string;
 } 

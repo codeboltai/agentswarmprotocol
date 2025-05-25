@@ -108,7 +108,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     executeServiceTool(serviceId: string, toolId: string, params?: Record<string, any>, options?: {
         timeout: number;
-        clientId: string | undefined;
     }): Promise<any>;
     /**
      * Execute a service task (legacy method - now uses toolId)
@@ -119,7 +118,6 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     executeServiceTask(serviceId: string, toolName: string, params?: Record<string, any>, options?: {
         timeout: number;
-        clientId: string | undefined;
     }): Promise<any>;
     /**
      * Get a list of available services

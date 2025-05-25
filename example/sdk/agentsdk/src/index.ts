@@ -156,6 +156,18 @@ class SwarmAgentSDK extends EventEmitter {
       case 'service.response':
         this.emit('service-response', message.content);
         break;
+      case 'service.task.execute.response':
+        // This is handled by the pending response mechanism, but we can also emit it
+        this.emit('service-task-execute-response', message.content);
+        break;
+      case 'service.tools.list.response':
+        // This is handled by the pending response mechanism, but we can also emit it
+        this.emit('service-tools-list-response', message.content);
+        break;
+      case 'service.notification':
+        // Handle service notifications (progress, status updates, etc.)
+        this.emit('service-notification', message.content);
+        break;
       case 'ping':
         this.sendPong(message.id);
         break;
@@ -339,8 +351,7 @@ class SwarmAgentSDK extends EventEmitter {
     toolId: string,
     params: Record<string, any> = {},
     options = {
-      timeout: 30000,
-      clientId: undefined as string | undefined
+      timeout: 30000
     }
   ): Promise<any> {
     // First verify we have the serviceId
@@ -388,8 +399,7 @@ class SwarmAgentSDK extends EventEmitter {
     toolName: string,
     params: Record<string, any> = {},
     options = {
-      timeout: 30000,
-      clientId: undefined as string | undefined
+      timeout: 30000
     }
   ): Promise<any> {
     // Delegate to the new executeServiceTool method

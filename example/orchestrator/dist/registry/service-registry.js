@@ -84,6 +84,15 @@ class ServiceRegistry {
         return result;
     }
     /**
+     * Get tools for a specific service
+     * @param {string} serviceId - Service ID
+     * @returns {Array<ServiceTool>} Array of tools for the service
+     */
+    getServiceTools(serviceId) {
+        const service = this.getServiceById(serviceId);
+        return service?.tools || [];
+    }
+    /**
      * Get a WebSocket connection for a service by connection ID
      * @param connectionId - The connection ID
      * @returns The WebSocket connection object or undefined if not found
@@ -146,7 +155,8 @@ class ServiceRegistry {
             capabilities: serviceInfo.capabilities || (config ? config.capabilities : []),
             connectionId: serviceInfo.connectionId,
             registeredAt: now,
-            manifest: serviceInfo.manifest || {}
+            manifest: serviceInfo.manifest || {},
+            tools: serviceInfo.tools || []
         };
         // Store the service
         this.services.set(serviceId, service);

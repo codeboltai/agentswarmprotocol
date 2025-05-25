@@ -679,18 +679,8 @@ class Orchestrator {
           }
         });
 
-        // Send acceptance response to agent
-        this.agentServer.send(connectionId, {
-          id: uuidv4(),
-          type: 'service.request.accepted',
-          content: {
-            serviceTaskId,
-            serviceId,
-            serviceName: service.name,
-            status: 'accepted'
-          },
-          requestId: message.id
-        });
+        // Don't send immediate acceptance response - wait for the actual result
+        // The result will be sent when the service completes the task
 
       } catch (error) {
         this.agentServer.sendError(connectionId, `Error executing service task: ${error instanceof Error ? error.message : String(error)}`, message.id);
@@ -717,6 +707,7 @@ class Orchestrator {
           name: content.name,
           type: content.type || 'service',
           capabilities: content.capabilities || [],
+          tools: content.tools || [], // Include tools from registration
           status: 'online' as ServiceStatus,
           connectionId, // Include the connectionId in the service object
           registeredAt: existingService ? existingService.registeredAt : new Date().toISOString(),
@@ -1229,13 +1220,14 @@ class Orchestrator {
           if (agent && agent.connectionId) {
             this.agentServer.send(agent.connectionId, {
               id: uuidv4(),
-              type: 'service.response',
+              type: 'service.task.execute.response',
               content: {
                 serviceTaskId: taskId,
                 serviceId: serviceTask.serviceId,
                 result,
                 status: 'completed'
-              }
+              },
+              requestId: serviceTask.requestId // Include the original request ID for proper response handling
             });
           }
         }

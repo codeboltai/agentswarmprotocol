@@ -24,5 +24,4 @@ export type MessageHandler = (content: any, message: BaseMessage) => void;
 export type TaskHandler = (taskData: any, message: TaskExecuteMessage) => Promise<any>;
 export interface ServiceTaskOptions {
     timeout?: number;
-    clientId?: string;
 }

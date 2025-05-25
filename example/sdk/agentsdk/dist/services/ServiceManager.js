@@ -15,7 +15,7 @@ class ServiceManager {
      * @param options Additional options
      */
     async executeServiceTool(serviceId, toolId, params = {}, options = {}) {
-        const { timeout = 30000, clientId } = options;
+        const { timeout = 30000 } = options;
         const requestId = (0, uuid_1.v4)();
         this.logger.debug(`Executing service tool "${toolId}" on service "${serviceId}" with params:`, params);
         try {
@@ -27,7 +27,6 @@ class ServiceManager {
                     serviceId,
                     toolId,
                     params,
-                    clientId,
                     // Include timestamp for tracking
                     timestamp: new Date().toISOString()
                 }

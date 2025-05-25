@@ -34,6 +34,60 @@ async function getAndDisplayServiceList() {
   }
 }
 
+// Function to get and display tools from data-processing-service
+async function getAndDisplayDataProcessingTools() {
+  try {
+    console.log('Requesting tools from data-processing-service...');
+    const tools = await agent.getServiceToolList('data-processing-service');
+    console.log('\n=== DATA PROCESSING SERVICE TOOLS ===');
+    if (tools && tools.length > 0) {
+      tools.forEach((tool, index) => {
+        console.log(`${index + 1}. Tool: ${tool.name || tool.id}`);
+        console.log(`   ID: ${tool.id}`);
+        console.log(`   Description: ${tool.description || 'No description'}`);
+        if (tool.inputSchema) {
+          console.log(`   Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}`);
+        }
+        console.log('   ---');
+      });
+    } else {
+      console.log('No tools are currently available for data-processing-service.');
+    }
+    console.log('=====================================\n');
+  } catch (error) {
+    console.error('Error getting tool list from data-processing-service:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+// Function to run the textAnalyze tool
+async function runTextAnalyzeTool() {
+  try {
+    console.log('Running textAnalyze tool...');
+    const sampleText = "This is a sample text that will be analyzed by the data processing service. It contains multiple sentences and various words. The service will analyze this text and provide detailed metrics about word count, character count, and other useful information.";
+    
+    console.log(`Sample text: "${sampleText}"`);
+    console.log('Executing textAnalyze tool...');
+    
+    const result = await agent.executeServiceTool(
+      'data-processing-service',
+      'textAnalyze',
+      { text: sampleText },
+      { timeout: 30000 }
+    );
+    
+    console.log('\n=== TEXT ANALYSIS RESULT ===');
+    console.log('Full result:', JSON.stringify(result, null, 2));
+    if (result && result.analysis) {
+      console.log('Analysis:', JSON.stringify(result.analysis, null, 2));
+      console.log('Metadata:', JSON.stringify(result.metadata, null, 2));
+    }
+    console.log('============================\n');
+    
+  } catch (error) {
+    console.error('Error running textAnalyze tool:', error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Register a task handler
 agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   console.log('Received task:', taskData);
@@ -100,6 +154,12 @@ agent.on('registered', async () => {
   
   // Get and display the list of services after registration
   await getAndDisplayServiceList();
+  
+  // Get and display tools from data-processing-service
+  await getAndDisplayDataProcessingTools();
+  
+  // Run the textAnalyze tool with sample text
+  await runTextAnalyzeTool();
 });
 
 agent.on('error', (error) => {
