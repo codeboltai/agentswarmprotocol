@@ -1,5 +1,6 @@
 import { SwarmAgentSDK } from '@agent-swarm/agent-sdk';
 import { TaskExecuteMessage } from '@agent-swarm/agent-sdk/dist/core/types';
+import chalk from 'chalk';
 import { v4 as uuidv4 } from 'uuid';
 
 // Create a new agent
@@ -10,6 +11,9 @@ const agent = new SwarmAgentSDK({
   orchestratorUrl: 'ws://localhost:3000',
   autoReconnect: true
 });
+
+// Store MCP servers for later use
+let mcpServers: any[] = [];
 
 // Function to get and display service list
 async function getAndDisplayServiceList() {
@@ -88,6 +92,96 @@ async function runTextAnalyzeTool() {
   }
 }
 
+// Function to get and display MCP servers
+async function getAndDisplayMCPServers() {
+  try {
+    console.log(chalk.blue('Requesting list of MCP servers...'));
+    const servers = await agent.getMCPServers();
+    mcpServers = servers; // Store servers for later use
+    console.log('\n'+chalk.blue('=== AVAILABLE MCP SERVERS ==='));
+    if (servers && servers.length > 0) {
+      servers.forEach((server, index) => {
+        console.log(chalk.blue(`${index + 1}. Server: ${server.name || server.id}`));
+        console.log(chalk.blue(`   ID: ${server.id}`));
+        console.log(chalk.blue(`   Status: ${server.status || 'unknown'}`));
+        console.log(chalk.blue(`   Capabilities: ${server.capabilities ? server.capabilities.join(', ') : 'None'}`));
+        console.log(chalk.blue('   ---'));
+      });
+    } else {
+      console.log('No MCP servers are currently available.');
+    }
+    console.log(chalk.blue('==============================\n'));
+  } catch (error) {
+    console.error('Error getting MCP server list:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+// Function to find filesystem MCP server ID
+function getFilesystemServerId(): string | null {
+  const filesystemServer = mcpServers.find(server => 
+    server.name && server.name.toLowerCase().includes('filesystem')
+  );
+  return filesystemServer ? filesystemServer.id : null;
+}
+
+// Function to get and display tools from filesystem MCP server
+async function getAndDisplayFilesystemTools() {
+  try {
+    const serverId = getFilesystemServerId();
+    if (!serverId) {
+      console.log('No filesystem MCP server found.');
+      return;
+    }
+
+    console.log(chalk.gray(`Requesting tools from filesystem MCP server (ID: ${serverId})...`));
+    const tools = await agent.getMCPTools(serverId);
+    console.log('\n'+chalk.gray('=== FILESYSTEM MCP TOOLS ==='));
+    if (tools && tools.length > 0) {
+      tools.forEach((tool, index) => {
+        console.log(chalk.gray(`${index + 1}. Tool: ${tool.name || tool.id}`));
+        console.log(chalk.gray(`   Description: ${tool.description || 'No description'}`));
+        if (tool.inputSchema) {
+          console.log(chalk.gray(`   Input Schema: ${JSON.stringify(tool.inputSchema, null, 2)}`));
+        }
+        console.log(chalk.gray('   ---'));
+      });
+    } else {
+      console.log(chalk.gray('No tools are currently available for filesystem MCP server.'));
+    }
+    console.log(chalk.gray('=============================\n'));
+  } catch (error) {
+    console.error('Error getting filesystem MCP tools:', error instanceof Error ? error.message : String(error));
+  }
+}
+
+// Function to list files using filesystem MCP server
+async function listFilesWithMCP() {
+  try {
+    const serverId = getFilesystemServerId();
+    if (!serverId) {
+      console.log('No filesystem MCP server found.');
+      return;
+    }
+    console.log(chalk.green(`Listing files using filesystem MCP server (ID: ${serverId})...`));
+    
+    // Try to list files in the current directory
+    const result = await agent.executeMCPTool(
+      serverId,
+      'list_directory',
+      { path: '.' },
+      30000
+    );
+    
+    console.log(chalk.green('\n=== FILESYSTEM LISTING RESULT ==='));
+    console.log(chalk.green('Full result:'), chalk.green(JSON.stringify(result, null, 2)));
+    
+    console.log(chalk.green('==================================\n'));
+    
+  } catch (error) {
+    console.error('Error listing files with MCP:', error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Register a task handler
 agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   console.log('Received task:', taskData);
@@ -153,13 +247,22 @@ agent.on('registered', async () => {
   console.log('Agent registered with orchestrator');
   
   // Get and display the list of services after registration
-  await getAndDisplayServiceList();
+  // await getAndDisplayServiceList();
   
-  // Get and display tools from data-processing-service
-  await getAndDisplayDataProcessingTools();
+  // // Get and display tools from data-processing-service
+  // await getAndDisplayDataProcessingTools();
   
-  // Run the textAnalyze tool with sample text
-  await runTextAnalyzeTool();
+  // // Run the textAnalyze tool with sample text
+  // await runTextAnalyzeTool();
+  
+  // Get and display MCP servers
+  await getAndDisplayMCPServers();
+  
+  // Get and display filesystem tools
+  await getAndDisplayFilesystemTools();
+  
+  // List files using filesystem MCP server
+  await listFilesWithMCP();
 });
 
 agent.on('error', (error) => {

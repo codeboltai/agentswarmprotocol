@@ -1235,7 +1235,7 @@ class Orchestrator {
             for (const serverConfig of mcpServers) {
                 try {
                     // Include command and args from the config
-                    await this.mcpAdapter.registerMCPServer({
+                    const registrationResult = await this.mcpAdapter.registerMCPServer({
                         id: serverConfig.id || (0, uuid_1.v4)(),
                         name: serverConfig.name,
                         type: serverConfig.type || 'node',
@@ -1246,6 +1246,14 @@ class Orchestrator {
                         metadata: serverConfig.metadata || {}
                     });
                     console.log(`Registered MCP server: ${serverConfig.name}`);
+                    // Connect to the server after registration
+                    try {
+                        await this.mcpAdapter.connectToMCPServer(registrationResult.serverId);
+                        console.log(`Connected to MCP server: ${serverConfig.name}`);
+                    }
+                    catch (connectError) {
+                        console.error(`Failed to connect to MCP server ${serverConfig.name}:`, connectError);
+                    }
                 }
                 catch (error) {
                     console.error(`Failed to register MCP server ${serverConfig.name}:`, error);

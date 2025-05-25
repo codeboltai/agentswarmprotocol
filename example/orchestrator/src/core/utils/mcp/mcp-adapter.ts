@@ -168,6 +168,8 @@ class MCPAdapter implements MCPInterface {
     const client = new MCPClient({
       name: server.name,
       path: server.path,
+      command: server.command,
+      args: server.args,
       type: server.type
     });
     

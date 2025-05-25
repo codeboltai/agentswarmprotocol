@@ -875,26 +875,67 @@ class Orchestrator {
     });
 
     // Listen for MCP tool execution requests
-    this.eventBus.on('mcp.tool.execute', async (message: MCPExecuteToolMessage, requestId?: string) => {
+    this.eventBus.on('mcp.tool.execute', async (message: any, clientIdOrRequestId?: string) => {
       try {
-        const result = await this.mcpAdapter.executeMCPTool(
-          message.serverId,
-          message.toolName,
-          message.toolArgs || message.parameters || {}
-        );
-        this.eventBus.emit('mcp.tool.execute.result', {
-          serverId: message.serverId,
-          toolName: message.toolName,
-          result,
-          status: 'success'
-        }, requestId);
+        // Handle both old format (MCPExecuteToolMessage, requestId?: string) 
+        // and new format (message: any, clientId: string)
+        const serverId = message.serverId || message.content?.serverId;
+        const toolName = message.toolName || message.content?.toolName;
+        const parameters = message.toolArgs || message.parameters || message.content?.parameters || {};
+        
+        if (!serverId || !toolName) {
+          // If this is from an agent (has message.id), send error back to agent
+          if (message.id && clientIdOrRequestId) {
+            this.agentServer.sendError(clientIdOrRequestId, 'Server ID and tool name are required', message.id);
+            return;
+          }
+          // Otherwise emit error to event bus
+          this.eventBus.emit('mcp.tool.execute.error', { 
+            serverId, 
+            toolName, 
+            status: 'error', 
+            error: 'Server ID and tool name are required' 
+          }, clientIdOrRequestId);
+          return;
+        }
+
+        const result = await this.mcpAdapter.executeMCPTool(serverId, toolName, parameters);
+        
+        // If this is from an agent (has message.id), send response back to agent
+        if (message.id && clientIdOrRequestId) {
+          this.agentServer.send(clientIdOrRequestId, {
+            id: uuidv4(),
+            type: 'mcp.tool.execute.result',
+            content: {
+              serverId,
+              toolName,
+              result,
+              status: 'success'
+            },
+            requestId: message.id
+          });
+        } else {
+          // Otherwise emit result to event bus
+          this.eventBus.emit('mcp.tool.execute.result', {
+            serverId,
+            toolName,
+            result,
+            status: 'success'
+          }, clientIdOrRequestId);
+        }
       } catch (error) {
-        this.eventBus.emit('mcp.tool.execute.error', {
-          serverId: message.serverId,
-          toolName: message.toolName,
-          status: 'error',
-          error: (error as Error).message
-        }, requestId);
+        // If this is from an agent (has message.id), send error back to agent
+        if (message.id && clientIdOrRequestId) {
+          this.agentServer.sendError(clientIdOrRequestId, `Error executing MCP tool: ${error instanceof Error ? error.message : String(error)}`, message.id);
+        } else {
+          // Otherwise emit error to event bus
+          this.eventBus.emit('mcp.tool.execute.error', {
+            serverId: message.serverId || message.content?.serverId,
+            toolName: message.toolName || message.content?.toolName,
+            status: 'error',
+            error: (error as Error).message
+          }, clientIdOrRequestId);
+        }
       }
     });
 
@@ -912,15 +953,55 @@ class Orchestrator {
     });
 
     // Also listen for SDK-style 'mcp.tools.list' for compatibility
-    this.eventBus.on('mcp.tools.list', async (message: { serverId: string }, requestId?: string) => {
+    this.eventBus.on('mcp.tools.list', async (message: any, clientIdOrRequestId?: string) => {
       try {
-        const result = await this.mcpAdapter.listMCPTools(message.serverId);
-        this.eventBus.emit('mcp.tool.list.result', {
-          serverId: message.serverId,
-          tools: result
-        }, requestId);
+        // Handle both old format (message: { serverId: string }, requestId?: string) 
+        // and new format (message: any, clientId: string)
+        const serverId = message.serverId || message.content?.serverId;
+        
+        if (!serverId) {
+          // If this is from an agent (has message.id), send error back to agent
+          if (message.id && clientIdOrRequestId) {
+            this.agentServer.sendError(clientIdOrRequestId, 'Server ID is required', message.id);
+            return;
+          }
+          // Otherwise emit error to event bus
+          this.eventBus.emit('mcp.tool.list.error', { error: 'Server ID is required' }, clientIdOrRequestId);
+          return;
+        }
+
+        const result = await this.mcpAdapter.listMCPTools(serverId);
+        
+        // If this is from an agent (has message.id), send response back to agent
+        if (message.id && clientIdOrRequestId) {
+          const servers = this.mcpAdapter.listMCPServers();
+          const serverInfo = servers.find((server: any) => server.id === serverId);
+
+          this.agentServer.send(clientIdOrRequestId, {
+            id: uuidv4(),
+            type: 'mcp.tools.list.result',
+            content: {
+              serverId,
+              serverName: serverInfo?.name || 'unknown',
+              tools: result
+            },
+            requestId: message.id
+          });
+        } else {
+          // Otherwise emit result to event bus
+          this.eventBus.emit('mcp.tool.list.result', {
+            serverId,
+            tools: result
+          }, clientIdOrRequestId);
+        }
       } catch (error) {
-        this.eventBus.emit('mcp.tool.list.error', { error: (error as Error).message }, requestId);
+        // If this is from an agent (has message.id), send error back to agent
+        if (message.id && clientIdOrRequestId) {
+          this.agentServer.sendError(clientIdOrRequestId, `Error getting MCP tools list: ${error instanceof Error ? error.message : String(error)}`, message.id);
+        } else {
+          // Otherwise emit error to event bus
+          this.eventBus.emit('mcp.tool.list.error', { error: (error as Error).message }, clientIdOrRequestId);
+        }
       }
     });
 
@@ -983,6 +1064,8 @@ class Orchestrator {
       }
     });
 
+
+
     // Agent MCP Tool Execute Request
     this.eventBus.on('agent.mcp.tool.execute', async (message: { serverId: string, toolName: string, parameters: Record<string, any> }, requestId?: string) => {
       try {
@@ -1006,6 +1089,8 @@ class Orchestrator {
         }, requestId);
       }
     });
+
+
 
     // NEW: Handle task completion events
     this.eventBus.on('agent.task.result.received', (message: any, connectionId: string) => {
@@ -1423,7 +1508,7 @@ class Orchestrator {
       for (const serverConfig of mcpServers) {
         try {
           // Include command and args from the config
-          await this.mcpAdapter.registerMCPServer({
+          const registrationResult = await this.mcpAdapter.registerMCPServer({
             id: serverConfig.id || uuidv4(),
             name: serverConfig.name,
             type: serverConfig.type || 'node',
@@ -1435,6 +1520,14 @@ class Orchestrator {
           });
 
           console.log(`Registered MCP server: ${serverConfig.name}`);
+
+          // Connect to the server after registration
+          try {
+            await this.mcpAdapter.connectToMCPServer(registrationResult.serverId);
+            console.log(`Connected to MCP server: ${serverConfig.name}`);
+          } catch (connectError) {
+            console.error(`Failed to connect to MCP server ${serverConfig.name}:`, connectError);
+          }
         } catch (error) {
           console.error(`Failed to register MCP server ${serverConfig.name}:`, error);
         }

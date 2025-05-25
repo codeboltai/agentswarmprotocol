@@ -1,54 +1,18 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MCPClient = void 0;
-const child_process_1 = require("child_process");
+const index_js_1 = require("@modelcontextprotocol/sdk/client/index.js");
+const stdio_js_1 = require("@modelcontextprotocol/sdk/client/stdio.js");
 const uuid_1 = require("uuid");
-const path = __importStar(require("path"));
-const readline = __importStar(require("readline"));
 /**
- * MCPClient - Client implementation for Model Context Protocol
- * Handles communication with MCP servers using stdin/stdout transport
+ * MCPClient - Client implementation for Model Context Protocol using official SDK
+ * Handles communication with MCP servers using the official TypeScript SDK
  */
 class MCPClient {
     constructor(serverConfig) {
         this.config = serverConfig;
-        this.process = null;
-        this.stdin = null;
-        this.stdout = null;
-        this.requestCallbacks = new Map();
+        this.client = null;
+        this.transport = null;
         this.tools = [];
         this.initialized = false;
         this.connectionId = (0, uuid_1.v4)();
@@ -58,56 +22,54 @@ class MCPClient {
      * @returns {Promise<Array>} List of available tools
      */
     async connect() {
-        if (this.process) {
+        if (this.client) {
             console.log('MCP client already connected, disconnecting first');
             await this.disconnect();
         }
         try {
-            // Determine command based on server type
+            // Determine command based on server configuration
             let command;
             let args;
-            switch (this.config.type.toLowerCase()) {
-                case 'python':
-                    command = 'python';
-                    args = [this.config.path || ''];
-                    break;
-                case 'node':
-                    command = 'node';
-                    args = [this.config.path || ''];
-                    break;
-                default:
-                    throw new Error(`Unsupported server type: ${this.config.type}`);
+            if (this.config.command && this.config.args) {
+                // Use explicit command and args from configuration
+                command = this.config.command;
+                args = this.config.args;
+                console.log(`Starting MCP server with command: ${command} ${args.join(' ')}`);
             }
-            if (!this.config.path) {
-                throw new Error('Server path is required');
+            else if (this.config.path) {
+                // Use path-based configuration with type detection
+                switch (this.config.type.toLowerCase()) {
+                    case 'python':
+                        command = 'python';
+                        args = [this.config.path];
+                        break;
+                    case 'node':
+                        command = 'node';
+                        args = [this.config.path];
+                        break;
+                    default:
+                        throw new Error(`Unsupported server type: ${this.config.type}`);
+                }
+                console.log(`Starting MCP server with path: ${command} ${args.join(' ')}`);
             }
-            console.log(`Starting MCP server: ${command} ${args.join(' ')}`);
-            // Spawn the server process
-            this.process = (0, child_process_1.spawn)(command, args, {
-                stdio: ['pipe', 'pipe', 'pipe'],
-                cwd: path.dirname(this.config.path)
-            });
-            if (!this.process.stdin || !this.process.stdout) {
-                throw new Error('Failed to initialize process streams');
+            else {
+                throw new Error('Either command+args or path must be provided for MCP server');
             }
-            this.stdin = this.process.stdin;
-            this.stdout = this.process.stdout;
-            // Set up process event handlers
-            this.process.on('error', (error) => {
-                console.error(`MCP Server process error:`, error);
-                this.handleError(error);
+            // Create transport using official SDK
+            this.transport = new stdio_js_1.StdioClientTransport({
+                command,
+                args
             });
-            this.process.on('exit', (code, signal) => {
-                console.log(`MCP Server process exited: code=${code}, signal=${signal}`);
-                this.process = null;
-                this.stdin = null;
-                this.stdout = null;
-                this.initialized = false;
+            // Create client using official SDK
+            this.client = new index_js_1.Client({
+                name: 'orchestrator-mcp-client',
+                version: '1.0.0'
+            }, {
+                capabilities: {}
             });
-            // Set up message handling
-            this.setupMessageHandling();
-            // Initialize the MCP protocol session
-            await this.initialize();
+            // Connect to the server
+            await this.client.connect(this.transport);
+            this.initialized = true;
             // List available tools
             this.tools = await this.listTools();
             return this.tools;
@@ -118,136 +80,20 @@ class MCPClient {
         }
     }
     /**
-     * Set up message handling for MCP communication
-     */
-    setupMessageHandling() {
-        if (!this.stdout) {
-            throw new Error('Cannot setup message handling: stdout is null');
-        }
-        const rl = readline.createInterface({
-            input: this.stdout,
-            terminal: false
-        });
-        rl.on('line', (line) => {
-            try {
-                if (!line.trim())
-                    return;
-                const message = JSON.parse(line);
-                this.handleMessage(message);
-            }
-            catch (error) {
-                console.error('Error parsing message from MCP server:', error);
-                console.error('Raw message:', line);
-            }
-        });
-        if (this.process && this.process.stderr) {
-            this.process.stderr.on('data', (data) => {
-                console.error(`MCP Server stderr: ${data.toString()}`);
-            });
-        }
-    }
-    /**
-     * Handle an incoming message from the MCP server
-     * @param {MCPMessage} message - The received message
-     */
-    handleMessage(message) {
-        if (!message.id) {
-            console.warn('Received message without ID from MCP server:', message);
-            return;
-        }
-        const callback = this.requestCallbacks.get(message.id);
-        if (callback) {
-            callback(message);
-            this.requestCallbacks.delete(message.id);
-        }
-        else {
-            console.warn(`No callback found for message ID: ${message.id}`);
-        }
-    }
-    /**
-     * Handle an error in the MCP communication
-     * @param {Error} error - The error that occurred
-     */
-    handleError(error) {
-        // Notify all pending requests about the error
-        Array.from(this.requestCallbacks.entries()).forEach(([id, callback]) => {
-            callback({ error: error.message, id });
-            this.requestCallbacks.delete(id);
-        });
-    }
-    /**
-     * Send a message to the MCP server and wait for response
-     * @param {MCPMessage} message - The message to send
-     * @param {number} timeout - Timeout in milliseconds
-     * @returns {Promise<MCPMessage>} The server response
-     */
-    async sendMessage(message, timeout = 30000) {
-        if (!this.process || !this.stdin) {
-            throw new Error('MCP client not connected');
-        }
-        return new Promise((resolve, reject) => {
-            const messageId = message.id || (0, uuid_1.v4)();
-            const messageWithId = { ...message, id: messageId };
-            // Set up timeout
-            const timeoutId = setTimeout(() => {
-                this.requestCallbacks.delete(messageId);
-                reject(new Error(`Request timed out after ${timeout}ms: ${messageId}`));
-            }, timeout);
-            // Set up callback
-            this.requestCallbacks.set(messageId, (response) => {
-                clearTimeout(timeoutId);
-                if (response.error) {
-                    reject(new Error(response.error));
-                }
-                else {
-                    resolve(response);
-                }
-            });
-            // Send the message
-            try {
-                const messageStr = JSON.stringify(messageWithId) + '\n';
-                if (this.stdin) {
-                    this.stdin.write(messageStr, 'utf8');
-                }
-                else {
-                    throw new Error('stdin is null');
-                }
-            }
-            catch (error) {
-                clearTimeout(timeoutId);
-                this.requestCallbacks.delete(messageId);
-                reject(error);
-            }
-        });
-    }
-    /**
-     * Initialize the MCP protocol session
-     * @returns {Promise<MCPMessage>} Initialization result
-     */
-    async initialize() {
-        try {
-            const response = await this.sendMessage({
-                type: 'initialize',
-                version: '1.0'
-            });
-            this.initialized = true;
-            return response;
-        }
-        catch (error) {
-            console.error('Failed to initialize MCP session:', error);
-            throw error;
-        }
-    }
-    /**
      * List available tools from the MCP server
      * @returns {Promise<MCPTool[]>} List of available tools
      */
     async listTools() {
+        if (!this.client || !this.initialized) {
+            throw new Error('MCP client not connected');
+        }
         try {
-            const response = await this.sendMessage({
-                type: 'list_tools'
-            });
-            return response.tools || [];
+            const response = await this.client.listTools();
+            return response.tools.map(tool => ({
+                name: tool.name,
+                description: tool.description || '',
+                inputSchema: tool.inputSchema || {}
+            }));
         }
         catch (error) {
             console.error('Failed to list MCP tools:', error);
@@ -261,16 +107,16 @@ class MCPClient {
      * @returns {Promise<Object>} Tool execution result
      */
     async callTool(toolName, toolArgs) {
+        if (!this.client || !this.initialized) {
+            throw new Error('MCP client not connected');
+        }
         try {
-            const response = await this.sendMessage({
-                type: 'tool_call',
-                tool: {
-                    name: toolName,
-                    args: toolArgs
-                }
+            const response = await this.client.callTool({
+                name: toolName,
+                arguments: toolArgs
             });
             return {
-                result: response.result,
+                result: response.content || response,
                 metadata: response.metadata || {}
             };
         }
@@ -300,26 +146,16 @@ class MCPClient {
      * Disconnect from the MCP server
      */
     async disconnect() {
-        if (!this.process) {
+        if (!this.client) {
             console.log('MCP client already disconnected');
             return;
         }
         try {
-            // Try to send a clean shutdown message
-            if (this.stdin && this.initialized) {
-                try {
-                    await this.sendMessage({ type: 'shutdown' }, 2000);
-                }
-                catch (error) {
-                    console.warn('Error sending shutdown message:', error.message);
-                }
-            }
-            // Kill the process
-            this.process.kill();
+            // Close the client connection
+            await this.client.close();
             // Clean up
-            this.process = null;
-            this.stdin = null;
-            this.stdout = null;
+            this.client = null;
+            this.transport = null;
             this.initialized = false;
         }
         catch (error) {

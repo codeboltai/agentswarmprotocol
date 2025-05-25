@@ -131,7 +131,8 @@ class SwarmAgentSDK extends EventEmitter {
     // For standard message types
     switch (message.type) {
       case 'agent.registered':
-        this.emit('registered', message.content);
+        // This is already handled in setupEventForwarding() when the registration promise resolves
+        // Don't emit 'registered' again to avoid duplicate events
         break;
       case 'orchestrator.welcome':
         this.emit('welcome', message.content);
@@ -212,6 +213,46 @@ class SwarmAgentSDK extends EventEmitter {
         } catch (error) {
           this.logger.error('Error handling mcp.tool.execution.result message:', error);
           this.emit('mcp-tool-execution-result', null);
+        }
+        break;
+      case 'agent.mcp.servers.list.result':
+        try {
+          // Handle MCP servers list result
+          const servers = message.content.servers || message.content;
+          if (!Array.isArray(servers)) {
+            this.logger.warn('Received agent.mcp.servers.list.result without proper servers array', message.content);
+            this.emit('agent-mcp-servers-list-result', []);
+          } else {
+            this.emit('agent-mcp-servers-list-result', servers);
+          }
+        } catch (error) {
+          this.logger.error('Error handling agent.mcp.servers.list.result message:', error);
+          this.emit('agent-mcp-servers-list-result', []);
+        }
+        break;
+      case 'mcp.tools.list.result':
+        try {
+          // Handle MCP tools list result
+          const tools = message.content.tools || message.content;
+          if (!Array.isArray(tools)) {
+            this.logger.warn('Received mcp.tools.list.result without proper tools array', message.content);
+            this.emit('mcp-tools-list-result', []);
+          } else {
+            this.emit('mcp-tools-list-result', tools);
+          }
+        } catch (error) {
+          this.logger.error('Error handling mcp.tools.list.result message:', error);
+          this.emit('mcp-tools-list-result', []);
+        }
+        break;
+      case 'mcp.tool.execute.result':
+        try {
+          // Handle MCP tool execution result
+          const result = message.content.result !== undefined ? message.content.result : message.content;
+          this.emit('mcp-tool-execute-result', result);
+        } catch (error) {
+          this.logger.error('Error handling mcp.tool.execute.result message:', error);
+          this.emit('mcp-tool-execute-result', null);
         }
         break;
       default:

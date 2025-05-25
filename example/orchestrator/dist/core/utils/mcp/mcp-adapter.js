@@ -105,6 +105,8 @@ class MCPAdapter {
         const client = new mcp_client_1.MCPClient({
             name: server.name,
             path: server.path,
+            command: server.command,
+            args: server.args,
             type: server.type
         });
         const tools = await client.connect();

@@ -4,7 +4,7 @@
  */
 
 import { MCPManager, MCPServer, MCPServerConfig, MCPConnection, MCPTool } from './mcp-manager';
-import { MCPClient, MCPServerConfig as ClientServerConfig, MCPMessage } from './mcp-client';
+import { MCPClient, MCPServerConfig as ClientServerConfig } from './mcp-client';
 import { MCPAdapter, MCPServerFilters } from './mcp-adapter';
 import { EventEmitter } from 'events';
 
@@ -26,6 +26,5 @@ export {
   MCPConnection,
   MCPTool,
   ClientServerConfig,
-  MCPMessage,
   MCPServerFilters
 }; 
