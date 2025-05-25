@@ -1,10 +1,56 @@
 import { SwarmServiceSDK } from '@agent-swarm/service-sdk';
 
-// Create a new base service
+// Create a new base service with a consistent serviceId and tools
 const service = new SwarmServiceSDK({
+  serviceId: 'data-processing-service', // Fixed serviceId to prevent duplicates
   name: 'Data Processing Service',
   description: 'A simple service that processes data in various formats',
-  capabilities: ['textAnalyze', 'jsonTransform']
+  capabilities: ['textAnalyze', 'jsonTransform'],
+  tools: [
+    {
+      id: 'textAnalyze',
+      name: 'Text Analysis',
+      description: 'Analyzes text and provides metrics like word count, character count, etc.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'The text to analyze' }
+        },
+        required: ['text']
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          analysis: { type: 'object' },
+          metadata: { type: 'object' }
+        }
+      }
+    },
+    {
+      id: 'jsonTransform',
+      name: 'JSON Transformation',
+      description: 'Transforms JSON data using various transformation methods',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          data: { type: 'object', description: 'The JSON data to transform' },
+          transformation: { 
+            type: 'string', 
+            enum: ['flatten', 'keysToCamelCase', 'keysToSnakeCase'],
+            description: 'The transformation method to apply'
+          }
+        },
+        required: ['data', 'transformation']
+      },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          transformed: { type: 'object' },
+          metadata: { type: 'object' }
+        }
+      }
+    }
+  ]
 });
 
 // Connect to the orchestrator

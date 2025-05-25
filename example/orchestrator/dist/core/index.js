@@ -75,7 +75,6 @@ class Orchestrator {
         this.services = new service_registry_1.ServiceRegistry();
         this.clients = new client_registry_1.ClientRegistry();
         this.serviceTasks = new service_task_registry_1.ServiceTaskRegistry();
-        this.pendingResponses = {}; // Track pending responses
         // Create event bus for communication between components
         this.eventBus = new events_1.EventEmitter();
         // Set up MCP support
@@ -225,7 +224,8 @@ class Orchestrator {
                     clientId: clientId,
                     status: 'pending',
                     createdAt: new Date().toISOString(),
-                    taskData
+                    taskData,
+                    requestId: message.id
                 });
                 // Get the agent connection and send task directly
                 const connection = this.agents.getConnectionByAgentId(agent.id);
@@ -271,11 +271,43 @@ class Orchestrator {
                 this.clientServer.sendError(clientId, 'Error creating task', message.id, error instanceof Error ? error.message : String(error));
             }
         });
-        // Listen for client task status requests
-        this.eventBus.on('client.task.status', (message, clientId, clientServer) => {
-            const taskId = message?.content?.taskId;
-            if (taskId) {
-                this.messageHandler.handleClientTaskStatusRequest(taskId, message?.id);
+        // Listen for client agent task status requests
+        this.eventBus.on('client.agent.task.status.request', (message, clientId) => {
+            try {
+                const { taskId } = message.content;
+                if (!taskId) {
+                    this.clientServer.sendError(clientId, 'Task ID is required', message.id);
+                    return;
+                }
+                // Get the task from the task registry
+                const task = this.tasks.getTask(taskId);
+                if (!task) {
+                    this.clientServer.sendError(clientId, `Task ${taskId} not found`, message.id);
+                    return;
+                }
+                // Send task status response to client
+                this.clientServer.send(clientId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'client.agent.task.status.response',
+                    content: {
+                        taskId: task.taskId || taskId,
+                        status: task.status,
+                        agentId: task.agentId,
+                        type: task.type,
+                        name: task.name,
+                        severity: task.severity,
+                        createdAt: task.createdAt,
+                        completedAt: task.completedAt,
+                        result: task.result,
+                        error: task.error,
+                        metadata: task.metadata
+                    },
+                    requestId: message.id
+                });
+                console.log(`Task status sent to client ${clientId} for task ${taskId}: ${task.status}`);
+            }
+            catch (error) {
+                this.clientServer.sendError(clientId, 'Error getting task status', message.id, error instanceof Error ? error.message : String(error));
             }
         });
         // // Listen for client MCP server list requests
@@ -322,7 +354,7 @@ class Orchestrator {
                     }
                 });
                 // Send confirmation to client
-                this.clientServer.send(clientId, {
+                const sendResult = this.clientServer.send(clientId, {
                     id: (0, uuid_1.v4)(),
                     type: 'task.message.sent',
                     content: {
@@ -331,6 +363,9 @@ class Orchestrator {
                     },
                     requestId: message.id
                 });
+                if (sendResult === false) {
+                    console.log(`Could not send confirmation to client ${clientId}: Client not connected`);
+                }
             }
             catch (error) {
                 this.clientServer.sendError(clientId, 'Error sending task message', message.id, error instanceof Error ? error.message : String(error));
@@ -378,7 +413,8 @@ class Orchestrator {
                             },
                             timeout: timeout || 30000
                         }
-                    }
+                    },
+                    requestId: message.id
                 });
                 // Send acceptance response to requesting agent
                 this.agentServer.send(connectionId, {
@@ -508,7 +544,8 @@ class Orchestrator {
                             clientId: clientId,
                             timestamp: new Date().toISOString()
                         }
-                    }
+                    },
+                    requestId: message.id
                 });
                 // Send service started notification to client if clientId is provided
                 if (clientId && this.clientServer.hasClientConnection(clientId)) {
@@ -763,17 +800,37 @@ class Orchestrator {
             }
         });
         // Agent MCP Servers List Request
-        this.eventBus.on('agent.mcp.servers.list', (message, requestId) => {
+        this.eventBus.on('agent.mcp.servers.list', (message, clientId) => {
             try {
-                const servers = this.mcpAdapter.listMCPServers(message.filters || {});
-                this.eventBus.emit('agent.mcp.servers.list.result', {
-                    servers
-                }, requestId);
+                const servers = this.mcpAdapter.listMCPServers();
+                this.agentServer.send(clientId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'agent.mcp.servers.list.result',
+                    content: {
+                        servers: servers.map((server) => ({
+                            id: server.id,
+                            name: server.name,
+                            status: server.status,
+                            capabilities: server.capabilities
+                        }))
+                    },
+                    requestId: message.id
+                });
             }
             catch (error) {
-                this.eventBus.emit('agent.mcp.servers.list.error', { error: error.message }, requestId);
+                this.clientServer.sendError(clientId, 'Error getting MCP server list', message.id, error instanceof Error ? error.message : String(error));
             }
         });
+        // this.eventBus.on('agent.mcp.servers.list', (message: { filters?: MCPServerFilters }, requestId?: string) => {
+        //   try {
+        //     const servers = this.mcpAdapter.listMCPServers(message.filters || {});
+        //     this.eventBus.emit('agent.mcp.servers.list.result', {
+        //       servers
+        //     }, requestId);
+        //   } catch (error) {
+        //     this.eventBus.emit('agent.mcp.servers.list.error', { error: (error as Error).message }, requestId);
+        //   }
+        // });
         // Agent MCP Tools List Request
         this.eventBus.on('agent.mcp.tools.list', async (message, requestId) => {
             try {
@@ -809,7 +866,7 @@ class Orchestrator {
             }
         });
         // NEW: Handle task completion events
-        this.eventBus.on('task.result', (message, connectionId) => {
+        this.eventBus.on('agent.task.result.received', (message, connectionId) => {
             try {
                 const { taskId, result } = message.content;
                 if (!taskId) {
@@ -833,7 +890,8 @@ class Orchestrator {
                 if (task.clientId) {
                     this.clientServer.send(task.clientId, {
                         id: (0, uuid_1.v4)(),
-                        type: 'task.result',
+                        requestId: task.requestId,
+                        type: 'client.agent.task.result',
                         content: {
                             taskId,
                             result,
@@ -1039,6 +1097,30 @@ class Orchestrator {
                 this.clientServer.sendError(clientId, 'Error getting agent list', message.id, error instanceof Error ? error.message : String(error));
             }
         });
+        // Handle agent agent list requests
+        this.eventBus.on('agent.agent.list.request', (message, clientId, clientServer) => {
+            try {
+                const filters = message.content?.filters || {};
+                const agents = this.agents.getAllAgents();
+                this.agentServer.send(clientId, {
+                    id: (0, uuid_1.v4)(),
+                    type: 'agent.agent.list.response',
+                    content: {
+                        agents: agents.map((agent) => ({
+                            id: agent.id,
+                            name: agent.name,
+                            capabilities: agent.capabilities,
+                            status: agent.status,
+                            registeredAt: agent.registeredAt
+                        }))
+                    },
+                    requestId: message.id
+                });
+            }
+            catch (error) {
+                this.clientServer.sendError(clientId, 'Error getting agent list', message.id, error instanceof Error ? error.message : String(error));
+            }
+        });
         // Handle client MCP server list requests
         this.eventBus.on('client.mcp.server.list.request', (message, clientId) => {
             try {
@@ -1196,86 +1278,12 @@ class Orchestrator {
             }
         }
     }
-    //LOW LEVEL FUNCTION
-    /**
-     * Send a message to a WebSocket connection or to a connection ID and wait for a response
-     * @param wsOrConnectionId - WebSocket object or connection ID
-     * @param message - Message to send
-     * @param options - Send options
-     * @returns Promise resolving with the response
-     */
-    async sendAndWaitForResponse(wsOrConnectionId, message, options = {}) {
-        const messageId = message.id || (0, uuid_1.v4)();
-        const timeout = options.timeout || 30000;
-        // Ensure the message has an ID
-        if (!message.id) {
-            message.id = messageId;
-        }
-        // Create a promise that will be resolved with the response
-        const responsePromise = new Promise((resolve, reject) => {
-            // Set a timeout to reject the promise
-            const timeoutId = setTimeout(() => {
-                delete this.pendingResponses[messageId];
-                reject(new Error(`Request timed out after ${timeout}ms`));
-            }, timeout);
-            // Store the pending response information
-            this.pendingResponses[messageId] = {
-                resolve,
-                reject,
-                timer: timeoutId
-            };
-        });
-        // Determine if we need to get a WebSocket from a connection ID
-        let ws;
-        if (typeof wsOrConnectionId === 'string') {
-            // Get the WebSocket from the connection ID
-            const connection = this.agents.getConnection(wsOrConnectionId);
-            if (!connection) {
-                delete this.pendingResponses[messageId];
-                throw new Error(`Connection with ID ${wsOrConnectionId} not found`);
-            }
-            ws = connection;
-        }
-        else {
-            // Use the provided WebSocket
-            ws = wsOrConnectionId;
-        }
-        // Add timestamp to the message if not already present
-        if (!message.timestamp) {
-            message.timestamp = Date.now().toString();
-        }
-        // Send the message to the client
-        ws.send(JSON.stringify(message));
-        // Wait for the response
-        return responsePromise;
-    }
-    // This should be removed and replaced with specific handlers for each message type
-    /**
-     * Handle response messages for outstanding requests
-     */
-    handleResponseMessage(message) {
-        const requestId = message.requestId;
-        if (requestId && this.pendingResponses[requestId]) {
-            const { resolve, timer } = this.pendingResponses[requestId];
-            // Clear the timeout and delete the pending response
-            clearTimeout(timer);
-            delete this.pendingResponses[requestId];
-            // Resolve the promise with the response message
-            resolve(message);
-        }
-    }
     /**
      * Stop the orchestrator and all its servers
      */
     async stop() {
         try {
             console.log('Stopping Orchestrator...');
-            // Close all pending responses
-            for (const [messageId, pendingResponse] of Object.entries(this.pendingResponses)) {
-                clearTimeout(pendingResponse.timer);
-                pendingResponse.reject(new Error('Orchestrator is shutting down'));
-                delete this.pendingResponses[messageId];
-            }
             // Stop all servers
             await this.agentServer.stop();
             await this.clientServer.stop();

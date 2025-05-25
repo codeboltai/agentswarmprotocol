@@ -29,7 +29,8 @@ class ServiceTaskRegistry {
             createdAt: now,
             taskData: taskInfo.taskData || {},
             result: null,
-            error: null
+            error: null,
+            requestId: taskInfo.requestId
         };
         // Store the task
         this.tasks.set(taskId, task);
@@ -212,7 +213,8 @@ class ServiceTaskRegistry {
             serviceId: taskData.serviceId,
             agentId: taskData.agentId,
             clientId: taskData.clientId,
-            taskData: taskData
+            taskData: taskData,
+            requestId: taskData.requestId
         });
     }
 }

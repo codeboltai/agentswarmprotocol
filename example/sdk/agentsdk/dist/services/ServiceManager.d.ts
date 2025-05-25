@@ -5,9 +5,17 @@ export declare class ServiceManager {
     private logger;
     constructor(webSocketManager: WebSocketManager, logger?: Console);
     /**
-     * Execute a service task
+     * Execute a service tool
      * @param serviceId Service ID or name
-     * @param toolName Tool name
+     * @param toolId Tool ID
+     * @param params Parameters
+     * @param options Additional options
+     */
+    executeServiceTool(serviceId: string, toolId: string, params?: Record<string, any>, options?: ServiceTaskOptions): Promise<any>;
+    /**
+     * Execute a service task (legacy method - now uses toolId)
+     * @param serviceId Service ID or name
+     * @param toolName Tool name (used as toolId)
      * @param params Parameters
      * @param options Additional options
      */

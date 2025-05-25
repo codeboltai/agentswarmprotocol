@@ -1,10 +1,21 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Service as BaseService, ServiceStatus, ServiceRegistry as IServiceRegistry } from '@agentswarmprotocol/types/common';
 
+// Service tool interface
+interface ServiceTool {
+  id: string;
+  name: string;
+  description: string;
+  inputSchema?: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  metadata?: Record<string, any>;
+}
+
 // Extended Service interface that includes the connection
 interface Service extends BaseService {
   connection?: any; // WebSocket connection
   statusDetails?: any;
+  tools?: ServiceTool[];
 }
 
 interface ServiceConfiguration {
@@ -112,6 +123,16 @@ export class ServiceRegistry implements IServiceRegistry {
   }
 
   /**
+   * Get tools for a specific service
+   * @param {string} serviceId - Service ID
+   * @returns {Array<ServiceTool>} Array of tools for the service
+   */
+  getServiceTools(serviceId: string): ServiceTool[] {
+    const service = this.getServiceById(serviceId);
+    return service?.tools || [];
+  }
+
+  /**
    * Get a WebSocket connection for a service by connection ID
    * @param connectionId - The connection ID
    * @returns The WebSocket connection object or undefined if not found
@@ -182,7 +203,8 @@ export class ServiceRegistry implements IServiceRegistry {
       capabilities: serviceInfo.capabilities || (config ? config.capabilities : []),
       connectionId: serviceInfo.connectionId,
       registeredAt: now,
-      manifest: serviceInfo.manifest || {}
+      manifest: serviceInfo.manifest || {},
+      tools: serviceInfo.tools || []
     };
 
     // Store the service

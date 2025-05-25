@@ -129,6 +129,9 @@ class AgentServer {
             case 'agent.list.request':
                 this.eventBus.emit('agent.list.request', message, connectionId);
                 break;
+            case 'agent.agent.list.request':
+                this.eventBus.emit('agent.agent.list.request', message, connectionId);
+                break;
             case 'agent.service.list.request':
                 this.eventBus.emit('agent.service.list.request', message, connectionId);
                 break;
@@ -136,7 +139,8 @@ class AgentServer {
                 this.eventBus.emit('service.task.execute', message, connectionId);
                 break;
             case 'task.result':
-                this.eventBus.emit('task.result', message, connectionId);
+            case 'agent.task.result':
+                this.eventBus.emit('agent.task.result.received', message, connectionId);
                 break;
             case 'task.error':
                 this.eventBus.emit('task.error', message, connectionId);

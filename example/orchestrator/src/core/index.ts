@@ -573,14 +573,16 @@ class Orchestrator {
           return;
         }
 
-        // For now, return empty tools list - services should implement their own tool discovery
-        // This can be enhanced later when services register their available tools
+        // Get tools for the service
+        const tools = this.services.getServiceTools(serviceId);
+        
         this.agentServer.send(connectionId, {
           id: uuidv4(),
           type: 'service.tools.list.response',
           content: {
             serviceId,
-            tools: [] // Services can register their tools in the future
+            serviceName: service.name,
+            tools
           },
           requestId: message.id
         });
@@ -593,12 +595,15 @@ class Orchestrator {
     // NEW: Enhanced service task execution with client notifications
     this.eventBus.on('service.task.execute', (message: any, connectionId: string) => {
       try {
-        const { serviceId, toolName, params, clientId } = message.content;
+        const { serviceId, toolId, toolName, params, clientId } = message.content;
 
-        if (!serviceId || !toolName) {
-          this.agentServer.sendError(connectionId, 'Service ID and tool name are required', message.id);
+        if (!serviceId || (!toolId && !toolName)) {
+          this.agentServer.sendError(connectionId, 'Service ID and tool ID (or tool name) are required', message.id);
           return;
         }
+
+        // Use toolId if provided, otherwise fall back to toolName for backward compatibility
+        const actualToolId = toolId || toolName;
 
         // Get the service
         const service = this.services.getServiceById(serviceId);
@@ -613,10 +618,14 @@ class Orchestrator {
         // Create a service task
         const serviceTaskId = uuidv4();
 
+        // Get tool information for better naming
+        const tool = service.tools?.find(t => t.id === actualToolId);
+        const displayName = tool ? tool.name : actualToolId;
+
         // Register the service task
         this.serviceTasks.registerTask(serviceTaskId, {
           type: 'service.task',
-          name: `Service task: ${toolName}`,
+          name: `Service task: ${displayName}`,
           severity: 'normal',
           serviceId: service.id,
           agentId: requestingAgent?.id,
@@ -624,7 +633,8 @@ class Orchestrator {
           status: 'pending' as TaskStatus,
           createdAt: new Date().toISOString(),
           taskData: {
-            functionName: toolName,
+            toolId: actualToolId,
+            functionName: actualToolId, // Keep for backward compatibility
             params: params || {},
             metadata: {
               agentId: requestingAgent?.id,
@@ -644,7 +654,8 @@ class Orchestrator {
               serviceTaskId,
               serviceId,
               serviceName: service.name,
-              toolName,
+              toolId: actualToolId,
+              toolName: displayName,
               agentId: requestingAgent?.id,
               agentName: requestingAgent?.name,
               timestamp: new Date().toISOString()
@@ -657,7 +668,8 @@ class Orchestrator {
           id: serviceTaskId,
           type: 'service.task.execute',
           content: {
-            functionName: toolName,
+            toolId: actualToolId,
+            functionName: actualToolId, // Keep for backward compatibility
             params: params || {},
             metadata: {
               agentId: requestingAgent?.id,
@@ -694,8 +706,12 @@ class Orchestrator {
           return this.serviceServer.sendError(connectionId, 'Service name is required', message.id);
         }
 
-        // Register the service
+        // Use provided serviceId or generate one
         const serviceId = content.id || uuidv4();
+        
+        // Check if this is a reconnection of an existing service
+        const existingService = this.services.getServiceById(serviceId);
+        
         const service = {
           id: serviceId,
           name: content.name,
@@ -703,11 +719,11 @@ class Orchestrator {
           capabilities: content.capabilities || [],
           status: 'online' as ServiceStatus,
           connectionId, // Include the connectionId in the service object
-          registeredAt: new Date().toISOString(),
+          registeredAt: existingService ? existingService.registeredAt : new Date().toISOString(),
           metadata: content.metadata || {}
         };
 
-        // Register in registry - passing only the service object
+        // Register in registry - this will update existing service or create new one
         this.services.registerService(service);
 
         // Respond with confirmation
@@ -718,12 +734,12 @@ class Orchestrator {
             id: serviceId,
             name: service.name,
             status: service.status,
-            message: 'Service successfully registered'
+            message: existingService ? 'Service reconnected successfully' : 'Service successfully registered'
           },
           requestId: message.id
         });
 
-        console.log(`Service ${service.name} (${serviceId}) registered successfully`);
+        console.log(`Service ${service.name} (${serviceId}) ${existingService ? 'reconnected' : 'registered'} successfully`);
       } catch (error) {
         this.serviceServer.sendError(
           connectionId,

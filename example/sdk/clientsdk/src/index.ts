@@ -78,7 +78,6 @@ export class SwarmClientSDK extends EventEmitter {
         break;
         
       case 'client.agent.task.result':
-        // Emit the event for others to listen
         this.emit('task.result', message.content);
         break;
         

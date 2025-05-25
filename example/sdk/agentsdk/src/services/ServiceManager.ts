@@ -11,22 +11,22 @@ export class ServiceManager {
 
 
   /**
-   * Execute a service task
+   * Execute a service tool
    * @param serviceId Service ID or name
-   * @param toolName Tool name
+   * @param toolId Tool ID
    * @param params Parameters
    * @param options Additional options
    */
-  async executeServiceTask(
+  async executeServiceTool(
     serviceId: string,
-    toolName: string,
+    toolId: string,
     params: Record<string, any> = {},
     options: ServiceTaskOptions = {}
   ): Promise<any> {
     const { timeout = 30000, clientId } = options;
     const requestId = uuidv4();
     
-    this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}" with params:`, params);
+    this.logger.debug(`Executing service tool "${toolId}" on service "${serviceId}" with params:`, params);
     
     try {
       // Make the request
@@ -35,7 +35,7 @@ export class ServiceManager {
         type: 'service.task.execute',
         content: {
           serviceId,
-          toolName,
+          toolId,
           params,
           clientId,
           // Include timestamp for tracking
@@ -58,13 +58,30 @@ export class ServiceManager {
       }
       
       if (errorMessage.includes('timed out')) {
-        this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}" after ${timeout}ms`);
-        throw new Error(`Service task "${toolName}" timed out after ${timeout}ms. The service might be unresponsive.`);
+        this.logger.error(`Service tool timed out: "${toolId}" on service "${serviceId}" after ${timeout}ms`);
+        throw new Error(`Service tool "${toolId}" timed out after ${timeout}ms. The service might be unresponsive.`);
       }
       
-      this.logger.error(`Failed to execute service task "${toolName}" on service "${serviceId}": ${errorMessage}`);
+      this.logger.error(`Failed to execute service tool "${toolId}" on service "${serviceId}": ${errorMessage}`);
       throw error instanceof Error ? error : new Error(errorMessage);
     }
+  }
+
+  /**
+   * Execute a service task (legacy method - now uses toolId)
+   * @param serviceId Service ID or name
+   * @param toolName Tool name (used as toolId)
+   * @param params Parameters
+   * @param options Additional options
+   */
+  async executeServiceTask(
+    serviceId: string,
+    toolName: string,
+    params: Record<string, any> = {},
+    options: ServiceTaskOptions = {}
+  ): Promise<any> {
+    // Delegate to executeServiceTool for consistency
+    return this.executeServiceTool(serviceId, toolName, params, options);
   }
 
   /**

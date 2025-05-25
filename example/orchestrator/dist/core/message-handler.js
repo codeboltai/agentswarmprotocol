@@ -94,29 +94,6 @@ class MessageHandler {
         }
     }
     /**
-     * Get information about a specific task
-     * @param {string} taskId - The ID of the task
-     * @returns {Object} Task information
-     */
-    getTaskStatus(taskId) {
-        if (!taskId) {
-            throw new Error('Invalid task status request: Task ID is required');
-        }
-        try {
-            const task = this.tasks.getTask(taskId);
-            return {
-                taskId,
-                status: task.status,
-                result: task.result,
-                createdAt: task.createdAt,
-                completedAt: task.completedAt
-            };
-        }
-        catch (error) {
-            throw new Error(`Task not found: ${error instanceof Error ? error.message : String(error)}`);
-        }
-    }
-    /**
      * Get list of available agents
      * @param {Object} filters - Optional filters for the agent list
      * @returns {Array} List of agents
@@ -313,24 +290,6 @@ class MessageHandler {
         catch (error) {
             // Emit error event with the request ID
             this.eventBus.emit(`client.agent.list.error.${requestId || 'default'}`, {
-                error: error instanceof Error ? error.message : String(error)
-            });
-        }
-    }
-    /**
-     * Handle client task status request
-     * @param taskId The task ID to get status for
-     * @param requestId Optional request ID for tracking the response
-     */
-    handleClientTaskStatusRequest(taskId, requestId) {
-        try {
-            const taskStatus = this.getTaskStatus(taskId);
-            // Emit result event with the request ID
-            this.eventBus.emit(`client.task.status.result.${requestId || 'default'}`, taskStatus);
-        }
-        catch (error) {
-            // Emit error event with the request ID
-            this.eventBus.emit(`client.task.status.error.${requestId || 'default'}`, {
                 error: error instanceof Error ? error.message : String(error)
             });
         }

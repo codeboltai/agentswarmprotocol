@@ -124,11 +124,9 @@ class ClientServer {
         if (requestId) {
             message.requestId = requestId;
         }
-        try {
-            this.send(clientId, message);
-        }
-        catch (error) {
-            console.error('Error sending error message:', error);
+        const result = this.send(clientId, message);
+        if (result === false) {
+            console.log(`Error sending error message: Client ${clientId} not connected`);
         }
     }
     // Handle messages from clients - similar to AgentServer pattern
@@ -150,8 +148,8 @@ class ClientServer {
             case 'client.agent.task.create.request':
                 this.eventBus.emit('client.agent.task.create.request', message, clientId);
                 break;
-            case 'task.status':
-                this.eventBus.emit('client.task.status.request', message, clientId);
+            case 'client.agent.task.status.request':
+                this.eventBus.emit('client.agent.task.status.request', message, clientId);
                 break;
             // Agent operations
             case 'client.agent.list.request':
@@ -208,7 +206,8 @@ class ClientServer {
             // Find the client connection
             const connection = this.getClientConnection(clientId);
             if (!connection) {
-                throw new Error(`Connection not found for client ID: ${clientId}`);
+                console.log(`Connection not found for client ID: ${clientId}`);
+                return false;
             }
             connection.send(JSON.stringify(message));
             // Update client's lastActiveAt timestamp
@@ -223,7 +222,7 @@ class ClientServer {
         }
         catch (error) {
             console.error('Error sending message to client:', error);
-            throw error;
+            return false;
         }
     }
     /**
@@ -318,70 +317,60 @@ class ClientServer {
     }
     // Forward task results to clients - called by the Orchestrator
     forwardTaskResultToClient(clientId, taskId, content) {
-        try {
-            this.send(clientId, {
-                id: (0, uuid_1.v4)(),
-                type: 'task.result',
-                content: {
-                    taskId,
-                    ...content
-                }
-            });
-        }
-        catch (error) {
-            console.log(`Error forwarding task result to client ${clientId}: ${error}`);
+        const result = this.send(clientId, {
+            id: (0, uuid_1.v4)(),
+            type: 'client.agent.task.result',
+            content: {
+                taskId,
+                ...content
+            }
+        });
+        if (result === false) {
+            console.log(`Could not forward task result to client ${clientId}: Client not connected`);
         }
     }
     // Forward task errors to clients - called by the Orchestrator
     forwardTaskErrorToClient(clientId, message) {
-        try {
-            this.send(clientId, {
-                id: (0, uuid_1.v4)(),
-                type: 'task.error',
-                content: message
-            });
-        }
-        catch (error) {
-            console.log(`Error forwarding task error to client ${clientId}: ${error}`);
+        const result = this.send(clientId, {
+            id: (0, uuid_1.v4)(),
+            type: 'task.error',
+            content: message
+        });
+        if (result === false) {
+            console.log(`Could not forward task error to client ${clientId}: Client not connected`);
         }
     }
     // Forward task notifications to clients - called by the Orchestrator
     forwardTaskNotificationToClient(clientId, content) {
-        try {
-            this.send(clientId, {
-                id: (0, uuid_1.v4)(),
-                type: 'task.notification',
-                content: content
-            });
-        }
-        catch (error) {
-            console.log(`Error forwarding task notification to client ${clientId}: ${error}`);
+        const result = this.send(clientId, {
+            id: (0, uuid_1.v4)(),
+            type: 'task.notification',
+            content
+        });
+        if (result === false) {
+            console.log(`Could not forward task notification to client ${clientId}: Client not connected`);
         }
     }
-    // Forward service notifications to clients - called by the Orchestrator
+    // Forward service notifications to clients
     forwardServiceNotificationToClient(clientId, content) {
-        try {
-            this.send(clientId, {
-                id: (0, uuid_1.v4)(),
-                type: 'service.notification',
-                content: content
-            });
-        }
-        catch (error) {
-            console.log(`Error forwarding service notification to client ${clientId}: ${error}`);
+        const result = this.send(clientId, {
+            id: (0, uuid_1.v4)(),
+            type: 'service.notification',
+            content
+        });
+        if (result === false) {
+            console.log(`Could not forward service notification to client ${clientId}: Client not connected`);
         }
     }
-    // Forward MCP task executions to clients - called by the Orchestrator
+    // Forward MCP task execution to clients
     forwardMCPTaskExecutionToClient(clientId, content) {
-        try {
-            this.send(clientId, {
-                id: (0, uuid_1.v4)(),
-                type: 'mcp.task.execution',
-                content: content
-            });
-        }
-        catch (error) {
-            console.log(`Error forwarding MCP task execution to client ${clientId}: ${error}`);
+        const result = this.send(clientId, {
+            id: (0, uuid_1.v4)(),
+            type: 'mcp.task.execution',
+            content
+        });
+        if (result === false) {
+            console.log(`Could not forward MCP task execution to client ${clientId}: Client not connected`);
         }
     }
     // Helper method to send a message and wait for a response

@@ -11,6 +11,29 @@ const agent = new SwarmAgentSDK({
   autoReconnect: true
 });
 
+// Function to get and display service list
+async function getAndDisplayServiceList() {
+  try {
+    console.log('Requesting list of services...');
+    const services = await agent.getServiceList();
+    console.log('\n=== AVAILABLE SERVICES ===');
+    if (services && services.length > 0) {
+      services.forEach((service, index) => {
+        console.log(`${index + 1}. Service: ${service.name || service.id}`);
+        console.log(`   ID: ${service.id}`);
+        console.log(`   Status: ${service.status}`);
+        console.log(`   Capabilities: ${service.capabilities ? service.capabilities.join(', ') : 'None'}`);
+        console.log('   ---');
+      });
+    } else {
+      console.log('No services are currently available.');
+    }
+    console.log('=========================\n');
+  } catch (error) {
+    console.error('Error getting service list:', error instanceof Error ? error.message : String(error));
+  }
+}
+
 // Register a task handler
 agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   console.log('Received task:', taskData);
@@ -74,6 +97,9 @@ agent.on('connected', () => {
 
 agent.on('registered', async () => {
   console.log('Agent registered with orchestrator');
+  
+  // Get and display the list of services after registration
+  await getAndDisplayServiceList();
 });
 
 agent.on('error', (error) => {

@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, ServiceStatus } from '@agentswarmprotocol/types/common';
 import { 
   ServiceConfig, 
+  ServiceTool,
   TaskHandler as TaskHandlerType,
   ServiceTaskExecuteMessage,
   ServiceNotificationType,
@@ -20,6 +21,7 @@ class SwarmServiceSDK extends EventEmitter {
   protected serviceId: string;
   protected name: string;
   protected capabilities: string[];
+  protected tools: Map<string, ServiceTool>;
   protected description: string;
   protected manifest: Record<string, any>;
   protected logger: Console;
@@ -32,12 +34,21 @@ class SwarmServiceSDK extends EventEmitter {
     super();
     
     // Initialize properties
-    this.serviceId = config.serviceId || uuidv4();
+    // Use a consistent serviceId based on service name if not provided
+    this.serviceId = config.serviceId || this.generateConsistentServiceId(config.name || 'generic-service');
     this.name = config.name || 'Generic Service';
     this.capabilities = config.capabilities || [];
+    this.tools = new Map<string, ServiceTool>();
     this.description = config.description || 'Generic Service';
     this.manifest = config.manifest || {};
     this.logger = config.logger || console;
+    
+    // Initialize tools from config
+    if (config.tools) {
+      config.tools.forEach(tool => {
+        this.tools.set(tool.id, tool);
+      });
+    }
     
     // Initialize modules
     this.webSocketManager = new WebSocketManager(
@@ -54,6 +65,23 @@ class SwarmServiceSDK extends EventEmitter {
   }
 
   /**
+   * Generate a consistent serviceId based on service name
+   * @param serviceName The name of the service
+   * @returns A consistent serviceId without spaces
+   */
+  private generateConsistentServiceId(serviceName: string): string {
+    // Convert to lowercase, remove spaces and special characters, keep only alphanumeric and hyphens
+    const cleanName = serviceName
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+      .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    return cleanName || 'generic-service';
+  }
+
+  /**
    * Set up event forwarding from the modules to this SDK instance
    */
   private setupEventForwarding() {
@@ -63,8 +91,10 @@ class SwarmServiceSDK extends EventEmitter {
       this.webSocketManager.send({
         type: 'service.register',
         content: {
+          id: this.serviceId,
           name: this.name,
           capabilities: this.capabilities,
+          tools: Array.from(this.tools.values()),
           manifest: this.manifest
         }
       } as BaseMessage)
@@ -114,10 +144,14 @@ class SwarmServiceSDK extends EventEmitter {
         case 'service.task.execute':
           const taskMessage = message as ServiceTaskExecuteMessage;
           const taskId = taskMessage.id;
-          const functionName = taskMessage.content.functionName;
+          const toolId = taskMessage.content.toolId || taskMessage.content.functionName; // Support both for backward compatibility
+          
+          // Get tool information
+          const tool = this.tools.get(toolId);
+          const toolName = tool ? tool.name : toolId;
           
           // Emit 'started' notification
-          const startNotification = { taskId, message: `Starting task: ${functionName}`, type: 'started' as ServiceNotificationType, data: {} };
+          const startNotification = { taskId, message: `Starting tool: ${toolName}`, type: 'started' as ServiceNotificationType, data: { toolId, toolName } };
           this.emit('notification', startNotification);
           this.sendTaskNotification(taskId, startNotification.message, startNotification.type, startNotification.data);
           
@@ -125,13 +159,13 @@ class SwarmServiceSDK extends EventEmitter {
           this.taskHandler.handleServiceTask(taskMessage)
             .then(() => {
               // Emit 'completed' notification
-              const completeNotification = { taskId, message: `Task completed: ${functionName}`, type: 'completed' as ServiceNotificationType, data: {} };
+              const completeNotification = { taskId, message: `Tool completed: ${toolName}`, type: 'completed' as ServiceNotificationType, data: { toolId, toolName } };
               this.emit('notification', completeNotification);
               this.sendTaskNotification(taskId, completeNotification.message, completeNotification.type, completeNotification.data);
             })
             .catch((error) => {
               // Emit 'failed' notification
-              const failedNotification = { taskId, message: `Task failed: ${error.message}`, type: 'failed' as ServiceNotificationType, data: { error: error.message } };
+              const failedNotification = { taskId, message: `Tool failed: ${error.message}`, type: 'failed' as ServiceNotificationType, data: { toolId, toolName, error: error.message } };
               this.emit('notification', failedNotification);
               this.sendTaskNotification(taskId, failedNotification.message, failedNotification.type, failedNotification.data);
             });
@@ -160,13 +194,56 @@ class SwarmServiceSDK extends EventEmitter {
 
   //OK
   /**
-   * Register a task handler (new API style)
-   * @param {string} taskName Name of the task to handle
+   * Register a tool with its handler
+   * @param {string} toolId Unique identifier for the tool
+   * @param {ServiceTool} toolInfo Tool information
+   * @param {Function} handler Function to call when tool is executed
+   */
+  registerTool(toolId: string, toolInfo: Omit<ServiceTool, 'id'>, handler: TaskHandlerType): SwarmServiceSDK {
+    const tool: ServiceTool = {
+      id: toolId,
+      ...toolInfo
+    };
+    
+    this.tools.set(toolId, tool);
+    this.taskHandler.onTask(toolId, handler);
+    return this;
+  }
+
+  /**
+   * Register a task handler (legacy API - now registers as a tool)
+   * @param {string} toolId ID of the tool to handle
    * @param {Function} handler Function to call
    */
-  onTask(toolName: string, handler: TaskHandlerType): SwarmServiceSDK {
-    this.taskHandler.onTask(toolName, handler);
+  onTask(toolId: string, handler: TaskHandlerType): SwarmServiceSDK {
+    // Auto-register as a tool if not already registered
+    if (!this.tools.has(toolId)) {
+      this.tools.set(toolId, {
+        id: toolId,
+        name: toolId,
+        description: `Tool: ${toolId}`
+      });
+    }
+    
+    this.taskHandler.onTask(toolId, handler);
     return this;
+  }
+
+  /**
+   * Get all registered tools
+   * @returns Array of tools
+   */
+  getTools(): ServiceTool[] {
+    return Array.from(this.tools.values());
+  }
+
+  /**
+   * Get a specific tool by ID
+   * @param toolId Tool ID
+   * @returns Tool or undefined if not found
+   */
+  getTool(toolId: string): ServiceTool | undefined {
+    return this.tools.get(toolId);
   }
 
   //Ok

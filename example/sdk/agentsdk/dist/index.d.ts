@@ -100,9 +100,20 @@ declare class SwarmAgentSDK extends EventEmitter {
      */
     executeChildAgentTask(targetAgentName: string, taskData: any, timeout?: number): Promise<any>;
     /**
-     * Execute a service task
+     * Execute a service tool
      * @param serviceId Service ID or name
-     * @param functionName Function name
+     * @param toolId Tool ID
+     * @param params Parameters
+     * @param options Additional options
+     */
+    executeServiceTool(serviceId: string, toolId: string, params?: Record<string, any>, options?: {
+        timeout: number;
+        clientId: string | undefined;
+    }): Promise<any>;
+    /**
+     * Execute a service task (legacy method - now uses toolId)
+     * @param serviceId Service ID or name
+     * @param toolName Tool name (used as toolId)
      * @param params Parameters
      * @param options Additional options
      */

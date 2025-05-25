@@ -282,25 +282,25 @@ class SwarmAgentSDK extends events_1.EventEmitter {
     // Service Manager methods
     //OK  
     /**
-     * Execute a service task
+     * Execute a service tool
      * @param serviceId Service ID or name
-     * @param functionName Function name
+     * @param toolId Tool ID
      * @param params Parameters
      * @param options Additional options
      */
-    executeServiceTask(serviceId, toolName, params = {}, options = {
+    executeServiceTool(serviceId, toolId, params = {}, options = {
         timeout: 30000,
         clientId: undefined
     }) {
         // First verify we have the serviceId
         if (!serviceId) {
-            this.logger.error('executeServiceTask called with empty serviceId');
-            return Promise.reject(new Error('Service ID is required for executing a service task'));
+            this.logger.error('executeServiceTool called with empty serviceId');
+            return Promise.reject(new Error('Service ID is required for executing a service tool'));
         }
-        this.logger.debug(`Executing service task "${toolName}" on service "${serviceId}"`);
+        this.logger.debug(`Executing service tool "${toolId}" on service "${serviceId}"`);
         try {
-            return this.serviceManager.executeServiceTask(serviceId, toolName, params, options)
-                .catch(error => {
+            return this.serviceManager.executeServiceTool(serviceId, toolId, params, options)
+                .catch((error) => {
                 // Enhance error messages for better troubleshooting
                 if (error.message.includes('Connection not found')) {
                     this.logger.error(`Service connection error: Unable to find service "${serviceId}". Make sure the service is running and connected.`);
@@ -308,8 +308,8 @@ class SwarmAgentSDK extends events_1.EventEmitter {
                 }
                 // Handle other common errors
                 if (error.message.includes('timed out')) {
-                    this.logger.error(`Service task timed out: "${toolName}" on service "${serviceId}"`);
-                    throw new Error(`Service task "${toolName}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
+                    this.logger.error(`Service tool timed out: "${toolId}" on service "${serviceId}"`);
+                    throw new Error(`Service tool "${toolId}" timed out after ${options.timeout}ms. The service might be unresponsive.`);
                 }
                 // Pass through other errors
                 throw error;
@@ -317,9 +317,23 @@ class SwarmAgentSDK extends events_1.EventEmitter {
         }
         catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logger.error(`Failed to execute service task: ${errorMessage}`);
+            this.logger.error(`Failed to execute service tool: ${errorMessage}`);
             return Promise.reject(error instanceof Error ? error : new Error(errorMessage));
         }
+    }
+    /**
+     * Execute a service task (legacy method - now uses toolId)
+     * @param serviceId Service ID or name
+     * @param toolName Tool name (used as toolId)
+     * @param params Parameters
+     * @param options Additional options
+     */
+    executeServiceTask(serviceId, toolName, params = {}, options = {
+        timeout: 30000,
+        clientId: undefined
+    }) {
+        // Delegate to the new executeServiceTool method
+        return this.executeServiceTool(serviceId, toolName, params, options);
     }
     //OK
     /**
