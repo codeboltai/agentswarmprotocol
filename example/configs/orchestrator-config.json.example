@@ -1,0 +1,29 @@
+{
+    "mcpServers": {
+        "filesystem": {
+            "name": "Filesystem MCP Server",
+            "command": "npx",
+            "args": [
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "/Users/utkarshshukla/Codebolt/agentswarmprotocol"
+            ],
+            "metadata": {
+                "description": "File System MCP Server",
+                "version": "1.0.0"
+            }
+        }
+    },
+    "agents": {
+        
+    },
+    "services": {
+        
+    },
+    "orchestrator": {
+        "agentPort": 3000,
+        "clientPort": 3001,
+        "logLevel": "info",
+        "taskTimeout": 300000
+    }
+}
