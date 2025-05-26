@@ -464,6 +464,32 @@ class Orchestrator {
           });
         }
 
+        // If this is a child task, find the requesting agent's client and forward the message
+        if (task.requestingAgentId) {
+          const requestingAgent = this.agents.getAgentById(task.requestingAgentId);
+          if (requestingAgent) {
+            // Get the requesting agent's task to find its client
+            const parentTasks = this.tasks.getTasksByAgentId(requestingAgent.id);
+            const parentClientTasks = parentTasks.filter(parentTask => parentTask.clientId);
+            
+            // Forward the message to all clients of the requesting agent
+            for (const parentTask of parentClientTasks) {
+              if (parentTask.clientId) {
+                this.clientServer.forwardTaskNotificationToClient(parentTask.clientId, {
+                  taskId: parentTask.taskId, // Use parent task ID
+                  childTaskId: taskId, // Include child task ID
+                  agentId: agentId || task.agentId,
+                  childAgentName: this.agents.getAgentById(task.agentId)?.name || "Unknown",
+                  parentAgentName: requestingAgent.name,
+                  message: taskMessage,
+                  timestamp: new Date().toISOString(),
+                  isChildAgentMessage: true
+                });
+              }
+            }
+          }
+        }
+
         // Send confirmation back to the agent
         try {
           this.agentServer.send(connectionId, {
