@@ -363,11 +363,116 @@ class AgentTaskRegistry {
    * @param {string} agentId - ID of the agent
    * @returns {Task[]} Array of tasks assigned to the agent
    */
-  getTasksByAgentId(agentId: string): Task[] {
-    const taskIds = this.tasksByAgentId.get(agentId) || [];
-    return taskIds
-      .map(taskId => this.getTask(taskId))
+ /**
+   * Get tasks assigned to an agent
+   * @param {string} agentId - ID of the agent
+   * @returns {Task[]} Array of tasks assigned to the agent
+   */
+ getTasksByAgentId(agentId: string): Task[] {
+  // Get tasks directly indexed by agentId
+  const indexedTaskIds = this.tasksByAgentId.get(agentId) || [];
+  const indexedTasks = indexedTaskIds
+    .map(taskId => this.getTaskOrNull(taskId))
+    .filter((task): task is Task => task !== null);
+  
+  // Search through all tasks for any references to this agentId
+  // (For example in requestingAgentId, parentAgentId, or within taskData.metadata)
+  const allTasks = Array.from(this.tasks.values());
+  const relatedTasks = allTasks.filter(task => {
+    // Skip tasks already found via direct indexing
+    if (indexedTaskIds.includes(task.id)) {
+      return false;
+    }
+    
+    // Check common agent-related fields
+    if (task.requestingAgentId === agentId) {
+      return true;
+    }
+    
+    if (task.parentAgentId === agentId) {
+      return true;
+    }
+    
+    // Check if the agent is mentioned in metadata
+    if (task.taskData?.metadata?.requestingAgent?.id === agentId) {
+      return true;
+    }
+    
+    // Check if this is a parent of a task assigned to the agent
+    if (task.parentTaskId && this.getTaskOrNull(task.parentTaskId)?.agentId === agentId) {
+      return true;
+    }
+    
+    // Deep check in task data for agent ID (could be anywhere in the task data)
+    const taskDataStr = JSON.stringify(task.taskData);
+    if (taskDataStr.includes(agentId)) {
+      // Verify it's actually a proper reference and not just a substring match
+      // This regex looks for the agentId in a context where it's likely a proper ID reference
+      const properIdRegex = new RegExp(`["']?(id|agentId|requestingAgentId)["']?\\s*:\\s*["']?${agentId}["']?`);
+      return properIdRegex.test(taskDataStr);
+    }
+    
+    return false;
+  });
+  
+  // Combine both sets of tasks
+  return [...indexedTasks, ...relatedTasks];
+}
+
+   /**
+   * Get tasks assigned to an agent
+   * @param {string} agentId - ID of the agent
+   * @returns {Task[]} Array of tasks assigned to the agent
+   */
+   getTasksByAgentIdForChildTasks(agentId: string): Task[] {
+    // Get tasks directly indexed by agentId
+    const indexedTaskIds = this.tasksByAgentId.get(agentId) || [];
+    const indexedTasks = indexedTaskIds
+      .map(taskId => this.getTaskOrNull(taskId))
       .filter((task): task is Task => task !== null);
+    
+    // Search through all tasks for any references to this agentId
+    // (For example in requestingAgentId, parentAgentId, or within taskData.metadata)
+    const allTasks = Array.from(this.tasks.values());
+    const relatedTasks = allTasks.filter(task => {
+      // Skip tasks already found via direct indexing
+      if (indexedTaskIds.includes(task.id)) {
+        return false;
+      }
+      
+      // Check common agent-related fields
+      if (task.requestingAgentId === agentId) {
+        return true;
+      }
+      
+      if (task.parentAgentId === agentId) {
+        return true;
+      }
+      
+      // Check if the agent is mentioned in metadata
+      if (task.taskData?.metadata?.requestingAgent?.id === agentId) {
+        return true;
+      }
+      
+      // Check if this is a parent of a task assigned to the agent
+      if (task.parentTaskId && this.getTaskOrNull(task.parentTaskId)?.agentId === agentId) {
+        return true;
+      }
+      
+      // Deep check in task data for agent ID (could be anywhere in the task data)
+      const taskDataStr = JSON.stringify(task.taskData);
+      if (taskDataStr.includes(agentId)) {
+        // Verify it's actually a proper reference and not just a substring match
+        // This regex looks for the agentId in a context where it's likely a proper ID reference
+        const properIdRegex = new RegExp(`["']?(id|agentId|requestingAgentId)["']?\\s*:\\s*["']?${agentId}["']?`);
+        return properIdRegex.test(taskDataStr);
+      }
+      
+      return false;
+    });
+    
+    // Combine both sets of tasks
+    return [...indexedTasks, ...relatedTasks];
   }
 
   /**

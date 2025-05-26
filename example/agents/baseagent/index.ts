@@ -326,6 +326,7 @@ async function processTaskLocally(taskId: string, taskData: any, taskType: strin
 // Register a task handler
 agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   console.log(chalk.blue('📋 BaseAgent received task:'), taskData);
+  console.log(chalk.blue('📋 BaseAgent received message:'), message);
   const taskId = message.content?.taskId || '';
   const taskType = taskData?.taskType || taskData?.type || 'default';
   
