@@ -251,6 +251,7 @@ class AgentTaskRegistry {
         switch (status) {
             case 'assigned':
             case 'started':
+            case 'running':
                 return 'in_progress';
             case 'error':
                 return 'failed';
@@ -261,7 +262,7 @@ class AgentTaskRegistry {
             case 'new':
                 return 'pending';
             default:
-                console.warn(`Invalid task status '${status}', defaulting to 'pending'`);
+                console.warn(`[TaskRegistry] Invalid task status '${status}', defaulting to 'pending'. Valid statuses: pending, in_progress, completed, failed, cancelled`);
                 return 'pending';
         }
     }

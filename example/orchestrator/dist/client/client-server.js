@@ -132,7 +132,12 @@ class ClientServer {
     }
     // Handle messages from clients - similar to AgentServer pattern
     async handleMessage(message, clientId) {
-        logger_1.logger.clientToOrchestrator(`Received message: ${message.type}`, { messageId: message.id }, clientId);
+        logger_1.logger.clientToOrchestrator(`Received message: ${message.type}`, {
+            messageId: message.id,
+            type: message.type,
+            content: message.content,
+            requestId: message.requestId
+        }, clientId);
         if (!message.type) {
             return this.sendError(clientId, 'Invalid message format', message.id, 'Message type is required');
         }

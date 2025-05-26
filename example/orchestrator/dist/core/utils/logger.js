@@ -108,8 +108,32 @@ class Logger {
         }
         const logMessage = `${directionFormatted} ${levelFormatted} ${entityInfo} ${message}`;
         console.log(logMessage);
-        if (data && this.logLevel === LogLevel.DEBUG) {
-            console.log(chalk_1.default.dim('  Data:'), JSON.stringify(data, null, 2));
+        if (data) {
+            if (this.logLevel === LogLevel.DEBUG) {
+                // Full detailed data in debug mode with gray formatting and better structure
+                console.log(chalk_1.default.gray('  ┌─ Data:'));
+                const formattedData = JSON.stringify(data, null, 2)
+                    .split('\n')
+                    .map((line, index, array) => {
+                    const prefix = index === array.length - 1 ? '  └─ ' : '  │  ';
+                    return chalk_1.default.gray(`${prefix}${line}`);
+                })
+                    .join('\n');
+                console.log(formattedData);
+            }
+            else if (this.logLevel === LogLevel.INFO) {
+                // Compact data display for info mode with gray formatting and visual separator
+                const compactData = JSON.stringify(data);
+                if (compactData.length > 100) {
+                    // For longer data, format it nicely
+                    console.log(chalk_1.default.gray('  ┌─ Data:'));
+                    console.log(chalk_1.default.gray(`  └─ ${compactData}`));
+                }
+                else {
+                    // For shorter data, keep it inline
+                    console.log(chalk_1.default.gray(`  → ${compactData}`));
+                }
+            }
         }
     }
     // Convenience methods for different directions

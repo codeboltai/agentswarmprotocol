@@ -111,14 +111,11 @@ class AgentServer {
         return this;
     }
     async handleMessage(message, connectionId) {
-        logger_1.logger.agentToOrchestrator(`Received message: ${message.type}`, message, connectionId);
-        logger_1.logger.debug(logger_1.MessageDirection.AGENT_TO_ORCHESTRATOR, `Message content structure`, {
-            contentType: message.content ? typeof message.content : 'undefined',
-            hasTaskId: message.content?.taskId ? true : false,
-            hasType: message.content?.type ? true : false,
-            hasData: message.content?.data ? true : false,
-            dataType: message.content?.data ? typeof message.content.data : 'undefined',
-            dataIsEmpty: message.content?.data ? Object.keys(message.content.data).length === 0 : true
+        logger_1.logger.agentToOrchestrator(`Received message: ${message.type}`, {
+            messageId: message.id,
+            type: message.type,
+            content: message.content,
+            requestId: message.requestId
         }, connectionId);
         if (!message.type) {
             logger_1.logger.error(logger_1.MessageDirection.AGENT_TO_ORCHESTRATOR, 'Invalid message format: type is required', message, connectionId);

@@ -126,7 +126,12 @@ class ServiceServer {
   }
 
   async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
-    logger.serviceToOrchestrator(`Received message: ${message.type}`, { messageId: message.id }, connectionId);
+    logger.serviceToOrchestrator(`Received message: ${message.type}`, {
+      messageId: message.id,
+      type: message.type,
+      content: message.content,
+      requestId: message.requestId
+    }, connectionId);
     
     if (!message.type) {
       return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
