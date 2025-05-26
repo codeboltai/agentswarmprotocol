@@ -233,36 +233,36 @@ async function testChildAgentDelegation() {
     // Wait a bit between tests
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // // Test 2: Text processing task
-    // console.log(chalk.magenta('Test 2: Sending text processing task to ChildAgent...'));
-    // const textResult = await agent.executeChildAgentTask('ChildAgent', {
-    //   taskType: 'processText',
-    //   text: 'The Agent Swarm Protocol enables seamless communication between multiple agents in a distributed system.'
-    // });
-    // console.log(chalk.magenta('Text processing result:'), JSON.stringify(textResult, null, 2));
+    // Test 2: Text processing task
+    console.log(chalk.magenta('Test 2: Sending text processing task to ChildAgent...'));
+    const textResult = await agent.executeChildAgentTask('ChildAgent', {
+      taskType: 'processText',
+      text: 'The Agent Swarm Protocol enables seamless communication between multiple agents in a distributed system.'
+    });
+    console.log(chalk.magenta('Text processing result:'), JSON.stringify(textResult, null, 2));
     
-    // // Wait a bit between tests
-    // await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait a bit between tests
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // // Test 3: Calculation task
-    // console.log(chalk.magenta('Test 3: Sending calculation task to ChildAgent...'));
-    // const calcResult = await agent.executeChildAgentTask('ChildAgent', {
-    //   taskType: 'calculate',
-    //   operation: 'sum',
-    //   numbers: [10, 20, 30, 40, 50]
-    // });
-    // console.log(chalk.magenta('Calculation result:'), JSON.stringify(calcResult, null, 2));
+    // Test 3: Calculation task
+    console.log(chalk.magenta('Test 3: Sending calculation task to ChildAgent...'));
+    const calcResult = await agent.executeChildAgentTask('ChildAgent', {
+      taskType: 'calculate',
+      operation: 'sum',
+      numbers: [10, 20, 30, 40, 50]
+    });
+    console.log(chalk.magenta('Calculation result:'), JSON.stringify(calcResult, null, 2));
     
-    // // Wait a bit between tests
-    // await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait a bit between tests
+    await new Promise(resolve => setTimeout(resolve, 2000));
     
-    // // Test 4: Data analysis task
-    // console.log(chalk.magenta('Test 4: Sending data analysis task to ChildAgent...'));
-    // const dataResult = await agent.executeChildAgentTask('ChildAgent', {
-    //   taskType: 'analyzeData',
-    //   dataset: ['apple', 'banana', 'cherry', 42, true, null, 'grape']
-    // });
-    // console.log(chalk.magenta('Data analysis result:'), JSON.stringify(dataResult, null, 2));
+    // Test 4: Data analysis task
+    console.log(chalk.magenta('Test 4: Sending data analysis task to ChildAgent...'));
+    const dataResult = await agent.executeChildAgentTask('ChildAgent', {
+      taskType: 'analyzeData',
+      dataset: ['apple', 'banana', 'cherry', 42, true, null, 'grape']
+    });
+    console.log(chalk.magenta('Data analysis result:'), JSON.stringify(dataResult, null, 2));
     
     console.log(chalk.magenta('=== ALL CHILD AGENT TESTS COMPLETED ===\n'));
     
@@ -420,7 +420,7 @@ agent.on('registered', async () => {
   
   // Test child agent delegation after a short delay
   setTimeout(async () => {
-    await testChildAgentDelegation();
+    // await testChildAgentDelegation();
   }, 3000);
 });
 
