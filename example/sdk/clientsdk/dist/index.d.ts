@@ -25,7 +25,7 @@ export declare class SwarmClientSDK extends EventEmitter {
     private handleMessage;
     /**
      * Connect to the orchestrator
-     * @returns Promise that resolves when connected
+     * @returns Promise that resolves when connected and welcome message is received
      */
     connect(): Promise<void>;
     /**

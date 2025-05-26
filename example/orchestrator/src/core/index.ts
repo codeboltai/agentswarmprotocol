@@ -437,6 +437,52 @@ class Orchestrator {
       }
     });
 
+    // NEW: Handle task.message events from agents (not clients)
+    this.eventBus.on('agent.task.message', (message: any, connectionId: string) => {
+      try {
+        const { agentId, taskId, message: taskMessage } = message.content;
+
+        if (!taskId) {
+          this.agentServer.sendError(connectionId, 'Task ID is required for task message', message.id);
+          return;
+        }
+
+        // Get the task to find the client
+        const task = this.tasks.getTask(taskId);
+        if (!task) {
+          this.agentServer.sendError(connectionId, `Task ${taskId} not found`, message.id);
+          return;
+        }
+
+        // If this task has a client ID associated with it, forward the message to the client
+        if (task.clientId) {
+          this.clientServer.forwardTaskNotificationToClient(task.clientId, {
+            taskId,
+            agentId: agentId || task.agentId,
+            message: taskMessage,
+            timestamp: new Date().toISOString()
+          });
+        }
+
+        // Send confirmation back to the agent
+        try {
+          this.agentServer.send(connectionId, {
+            id: uuidv4(),
+            type: 'task.message.received',
+            content: {
+              taskId,
+              status: 'received'
+            },
+            requestId: message.id
+          });
+        } catch (sendError) {
+          console.log(`Could not send confirmation to agent ${connectionId}: Agent not connected`);
+        }
+      } catch (error) {
+        this.agentServer.sendError(connectionId, 'Error processing agent task message', message.id);
+      }
+    });
+
     // NEW: Handle agent task request messages (agent-to-agent communication)
     this.eventBus.on('agent.task.request', (message: any, connectionId: string) => {
       try {

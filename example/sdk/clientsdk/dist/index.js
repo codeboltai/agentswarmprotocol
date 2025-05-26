@@ -105,10 +105,33 @@ class SwarmClientSDK extends events_1.EventEmitter {
     }
     /**
      * Connect to the orchestrator
-     * @returns Promise that resolves when connected
+     * @returns Promise that resolves when connected and welcome message is received
      */
     async connect() {
-        return this.wsClient.connect();
+        // First establish the WebSocket connection
+        await this.wsClient.connect();
+        // Then wait for the welcome message from the orchestrator
+        return new Promise((resolve, reject) => {
+            // Set up a timeout for the welcome message
+            const welcomeTimeout = setTimeout(() => {
+                this.off('welcome', onWelcome);
+                this.off('error', onError);
+                reject(new Error('Timeout waiting for welcome message from orchestrator'));
+            }, 10000); // 10 second timeout
+            const onWelcome = (content) => {
+                clearTimeout(welcomeTimeout);
+                this.off('error', onError);
+                resolve();
+            };
+            const onError = (error) => {
+                clearTimeout(welcomeTimeout);
+                this.off('welcome', onWelcome);
+                reject(error);
+            };
+            // Listen for welcome message or error
+            this.once('welcome', onWelcome);
+            this.once('error', onError);
+        });
     }
     /**
      * Disconnect from the orchestrator

@@ -210,6 +210,11 @@ class AgentServer {
         this.eventBus.emit('ping', message, connectionId);
         break;
         
+      case 'task.message':
+        // Handle task.message from agents - emit with agent context
+        this.eventBus.emit('agent.task.message', message, connectionId);
+        break;
+        
       default:
         // For any unhandled message types, still emit the event but warn about it
         this.eventBus.emit(message.type, message, connectionId);
