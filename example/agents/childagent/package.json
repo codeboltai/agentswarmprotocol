@@ -1,0 +1,23 @@
+{
+  "name": "childagent",
+  "version": "1.0.0",
+  "description": "Child agent that receives and executes tasks from parent agents",
+  "main": "index.ts",
+  "scripts": {
+    "start": "ts-node index.ts",
+    "build": "tsc",
+    "dev": "nodemon --exec ts-node index.ts"
+  },
+  "dependencies": {
+    "@agent-swarm/agent-sdk": "file:../../sdk/agentsdk",
+    "chalk": "^4.1.2",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/uuid": "^9.0.7",
+    "nodemon": "^3.0.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+} 

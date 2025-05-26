@@ -53,6 +53,8 @@ class WebSocketManager extends events_1.EventEmitter {
                 const isError = message.type === 'error' || (message.content && message.content.error);
                 this.handleResponse(pendingId, message, isError);
                 this.logger.debug(`Resolved pending response for ID: ${pendingId} with anyMessageId for custom event: ${pendingResponse.customEvent} (actual message ID: ${messageId})`);
+                // Break after handling the first matching response to avoid duplicates
+                break;
             }
         }
         // Special handling for task.created messages

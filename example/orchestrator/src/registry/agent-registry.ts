@@ -96,23 +96,15 @@ export class AgentRegistry implements IAgentRegistry {
       throw new Error('Agent name is required');
     }
     
-    // Check if an agent with the same name already exists but with a different ID
-    const existingAgentWithSameName = this.findAgentByName(agent.name);
-    if (existingAgentWithSameName && existingAgentWithSameName.id !== agent.id) {
-      // If an agent with the same name exists but with a different ID, update its status to offline
-      existingAgentWithSameName.status = 'offline';
-      
-      // Remove any connected agent entry with the same name if it exists
-      for (const [connId, connectedAgent] of this.connectedAgents.entries()) {
-        if (connectedAgent.agent.id === existingAgentWithSameName.id) {
-          // Update agent status
-          connectedAgent.agent.status = 'offline';
-          connectedAgent.agent.statusDetails = {
-            disconnectedAt: new Date().toISOString(),
-            disconnectedReason: 'Replaced by agent with same name'
-          };
-          break;
-        }
+    // Check if an agent with the same ID already exists (reconnection scenario)
+    let existingAgentEntry: ConnectedAgent | undefined;
+    let existingConnectionId: string | undefined;
+    
+    for (const [connId, connectedAgent] of this.connectedAgents.entries()) {
+      if (connectedAgent.agent.id === agent.id) {
+        existingAgentEntry = connectedAgent;
+        existingConnectionId = connId;
+        break;
       }
     }
     
@@ -121,51 +113,80 @@ export class AgentRegistry implements IAgentRegistry {
       // Get the connection from pending connections
       const pendingConnection = this.pendingConnections.get(connectionId);
       if (pendingConnection) {
-        // If the agent already exists with another connection, update it
-        let existingEntry: ConnectedAgent | undefined;
-        
-        // Search for existing agent by ID
-        for (const [existingConnId, connectedAgent] of this.connectedAgents.entries()) {
-          if (connectedAgent.agent.id === agent.id) {
-            existingEntry = connectedAgent;
-            
-            // If an agent is found with a different connection, mark it as inactive
-            if (existingConnId !== connectionId) {
-              this.connectedAgents.delete(existingConnId);
-            }
-            
-            break;
+        // If the agent already exists, this is a reconnection
+        if (existingAgentEntry && existingConnectionId) {
+          console.log(`Agent ${agent.name} (${agent.id}) reconnecting with new connection ${connectionId}`);
+          
+          // Remove the old connection entry
+          this.connectedAgents.delete(existingConnectionId);
+          
+          // Update the existing agent with new connection info
+          const reconnectedAgent: ConnectedAgent = {
+            agent: {
+              ...existingAgentEntry.agent,
+              ...agent, // Merge any updated agent properties
+              status: 'online',
+              connectionId,
+              statusDetails: {
+                reconnectedAt: new Date().toISOString(),
+                previousConnectionId: existingConnectionId
+              }
+            },
+            connection: pendingConnection.connection
+          };
+          
+          this.connectedAgents.set(connectionId, reconnectedAgent);
+        } else {
+          // This is a new agent registration
+          console.log(`New agent ${agent.name} (${agent.id}) registering with connection ${connectionId}`);
+          
+          // Check if an agent with the same name already exists but with a different ID
+          const existingAgentWithSameName = this.findAgentByName(agent.name);
+          if (existingAgentWithSameName && existingAgentWithSameName.id !== agent.id) {
+            // Mark the old agent as offline
+            this.updateAgentStatus(existingAgentWithSameName.id, 'offline', {
+              disconnectedAt: new Date().toISOString(),
+              disconnectedReason: 'Replaced by agent with same name but different ID'
+            });
           }
+          
+          // Create a new connected agent entry
+          const connectedAgent: ConnectedAgent = {
+            agent: {
+              ...agent,
+              status: 'online',
+              connectionId
+            },
+            connection: pendingConnection.connection
+          };
+          
+          this.connectedAgents.set(connectionId, connectedAgent);
         }
-        
-        // Create a connected agent entry (new or updated)
-        const connectedAgent: ConnectedAgent = {
-          agent: {
-            ...agent,
-            status: 'online',
-            connectionId
-          },
-          connection: pendingConnection.connection
-        };
-        
-        this.connectedAgents.set(connectionId, connectedAgent);
         
         // Remove from pending connections
         this.pendingConnections.delete(connectionId);
       }
     } else {
-      // No connection provided - create an offline agent entry with a null connection ID
-      // We'll store this in the connectedAgents map with status 'offline' for consistency
-      const offlineAgent: ConnectedAgent = {
-        agent: {
-          ...agent,
-          status: 'offline',
-          connectionId: `offline_${agent.id}`
-        },
-        connection: null
-      };
-      
-      this.connectedAgents.set(offlineAgent.agent.connectionId, offlineAgent);
+      // No connection provided - create an offline agent entry
+      if (existingAgentEntry) {
+        // Update existing agent to offline
+        existingAgentEntry.agent.status = 'offline';
+        existingAgentEntry.agent.statusDetails = {
+          disconnectedAt: new Date().toISOString()
+        };
+      } else {
+        // Create new offline agent entry
+        const offlineAgent: ConnectedAgent = {
+          agent: {
+            ...agent,
+            status: 'offline',
+            connectionId: `offline_${agent.id}`
+          },
+          connection: null
+        };
+        
+        this.connectedAgents.set(offlineAgent.agent.connectionId, offlineAgent);
+      }
     }
     
     return agent;
@@ -215,6 +236,22 @@ export class AgentRegistry implements IAgentRegistry {
     for (const connectedAgent of this.connectedAgents.values()) {
       if (connectedAgent.agent.id === agentId && connectedAgent.agent.status === 'online') {
         return connectedAgent.connection;
+      }
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Get connection ID by agent ID
+   * @param agentId - The agent ID
+   * @returns The connection ID or undefined if not found
+   */
+  getConnectionIdByAgentId(agentId: string): string | undefined {
+    // Find agent in connected agents with online status
+    for (const connectedAgent of this.connectedAgents.values()) {
+      if (connectedAgent.agent.id === agentId && connectedAgent.agent.status === 'online') {
+        return connectedAgent.agent.connectionId;
       }
     }
     

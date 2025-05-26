@@ -500,9 +500,9 @@ class Orchestrator {
           requestId: message.id
         });
 
-        // Get target agent connection and send task directly
-        const targetConnection = this.agents.getConnectionByAgentId(targetAgent.id);
-        if (!targetConnection) {
+        // Get target agent connection ID and send task directly
+        const targetConnectionId = this.agents.getConnectionIdByAgentId(targetAgent.id);
+        if (!targetConnectionId) {
           // Update task status to failed
           this.tasks.updateTaskStatus(childTaskId, 'failed', {
             error: 'Target agent connection not found',
@@ -543,7 +543,7 @@ class Orchestrator {
         };
 
         // Send the task to the target agent
-        this.agentServer.send(targetConnection.id, taskMessage);
+        this.agentServer.send(targetConnectionId, taskMessage);
         console.log(`Child task ${childTaskId} sent from agent ${requestingAgent.id} to agent ${targetAgent.id}`);
 
         // Update task status to running

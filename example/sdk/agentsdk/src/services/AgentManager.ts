@@ -47,25 +47,28 @@ export class AgentManager {
    * @param taskData Task data
    * @param timeout Request timeout
    */
-  // const taskRequestData = {
-  //   type: taskType,
-  //   ...taskData
-  // };
   async executeChildAgentTask(targetAgentName: string, taskData: any, timeout = 30000): Promise<any> {
-    const response = await this.webSocketManager.sendAndWaitForResponse({
+    // Use sendRequestWaitForResponse with custom event to wait for childagent.response
+    const response = await this.webSocketManager.sendRequestWaitForResponse({
       id: uuidv4(),
       type: 'agent.request',
       content: {
         targetAgent: targetAgentName,
         taskData
       }
-    } as BaseMessage, timeout);
+    }, {
+      timeout,
+      customEvent: 'childagent.response',
+      anyMessageId: true
+    });
     
     if (response.content.error) {
       throw new Error(response.content.error);
     }
     
-    return response.content.result;
+    // The response structure is: response.content.result.result
+    // where the first .result is the orchestrator wrapper and the second .result is the actual task result
+    return response.content.result?.result || response.content.result;
   }
 
  
