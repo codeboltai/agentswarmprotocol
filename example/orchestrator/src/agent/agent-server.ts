@@ -10,6 +10,7 @@ import {
 } from '../../../types/common';
 import { AgentRegistry } from '../registry/agent-registry';
 import { EventEmitter } from 'events';
+import { logger, MessageDirection } from '../core/utils/logger';
 
 // Extended WebSocket interface with ID
 interface WebSocketWithId extends WebSocket.WebSocket {
@@ -69,7 +70,7 @@ class AgentServer {
       const connectionId = uuidv4();
       (ws as WebSocketWithId).id = connectionId;
       
-      console.log(`New agent connection established: ${connectionId}`);
+      logger.connection(MessageDirection.AGENT_TO_ORCHESTRATOR, 'connected', connectionId);
       
       // Add as a pending connection in registry
       this.agents.addPendingConnection(connectionId, ws);
@@ -80,14 +81,14 @@ class AgentServer {
           const parsedMessage = JSON.parse(message.toString());
           await this.handleMessage(parsedMessage, connectionId);
         } catch (error) {
-          console.error('Error handling message:', error);
+          logger.error(MessageDirection.AGENT_TO_ORCHESTRATOR, 'Error handling message', error, connectionId);
           this.sendError(connectionId, 'Error processing message', error instanceof Error ? error.message : String(error));
         }
       });
       
       // Handle disconnections
       ws.on('close', () => {
-        console.log(`Agent connection closed: ${connectionId}`);
+        logger.connection(MessageDirection.AGENT_TO_ORCHESTRATOR, 'disconnected', connectionId);
         // Remove the connection from the registry
         this.agents.removeConnection(connectionId);
         // Emit event for disconnection, let the message handler deal with it
@@ -105,31 +106,33 @@ class AgentServer {
           }
         };
         ws.send(JSON.stringify(welcomeMessage));
+        logger.orchestratorToAgent('Welcome message sent', welcomeMessage, connectionId);
       } catch (error) {
-        console.error('Error sending welcome message:', error);
+        logger.error(MessageDirection.ORCHESTRATOR_TO_AGENT, 'Error sending welcome message', error, connectionId);
       }
     });
     
     // Start HTTP server for agents
     this.server.listen(this.port, () => {
-      console.log(`ASP Orchestrator running on port ${this.port} (for agents)`);
+      logger.system(`ASP Orchestrator Agent Server running on port ${this.port}`);
     });
 
     return this;
   }
 
   async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
-    console.log(`Received agent message: ${JSON.stringify(message)}`);
-    console.log(`Message content structure: ${JSON.stringify({
+    logger.agentToOrchestrator(`Received message: ${message.type}`, message, connectionId);
+    logger.debug(MessageDirection.AGENT_TO_ORCHESTRATOR, `Message content structure`, {
       contentType: message.content ? typeof message.content : 'undefined',
       hasTaskId: message.content?.taskId ? true : false,
       hasType: message.content?.type ? true : false,
       hasData: message.content?.data ? true : false,
       dataType: message.content?.data ? typeof message.content.data : 'undefined',
       dataIsEmpty: message.content?.data ? Object.keys(message.content.data).length === 0 : true
-    })}`);
+    }, connectionId);
     
     if (!message.type) {
+      logger.error(MessageDirection.AGENT_TO_ORCHESTRATOR, 'Invalid message format: type is required', message, connectionId);
       return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
     }
     
@@ -221,7 +224,7 @@ class AgentServer {
         
         // If no listeners for this specific message type, log a warning
         if (this.eventBus.listenerCount(message.type) === 0) {
-          console.warn(`No handlers registered for message type: ${message.type}`);
+          logger.warn(MessageDirection.AGENT_TO_ORCHESTRATOR, `No handlers registered for message type: ${message.type}`, { messageType: message.type }, connectionId);
           this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
         }
         break;
@@ -252,7 +255,7 @@ class AgentServer {
       connection.send(JSON.stringify(message));
       return message.id;
     } catch (error) {
-      console.error('Error sending message:', error);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_AGENT, 'Error sending message', error, connectionIdOrAgentId);
       throw error;
     }
   }
@@ -274,7 +277,7 @@ class AgentServer {
     try {
       this.send(connectionId, message);
     } catch (error) {
-      console.error('Error sending error message:', error);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_AGENT, 'Error sending error message', error, connectionId);
     }
   }
 
@@ -324,7 +327,7 @@ class AgentServer {
       this.agents.registerAgent(agent, connectionId);
       
       // Log the registration event
-      console.log(`Agent ${name} (${actualId}) registered successfully with connection ${connectionId}`);
+      logger.agentToOrchestrator(`Agent registered successfully`, { agentName: name, agentId: actualId }, connectionId);
       
       // Emit event for agent registration
       // this.eventBus.emit('agent.registered', actualId, connectionId);
@@ -337,7 +340,7 @@ class AgentServer {
         message: 'Agent successfully registered'
       };
     } catch (error) {
-      console.error(`Error registering agent: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(MessageDirection.AGENT_TO_ORCHESTRATOR, `Error registering agent`, error, connectionId);
       return { error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -404,7 +407,7 @@ class AgentServer {
   stop(): void {
     if (this.server) {
       this.server.close(() => {
-        console.log('Agent server stopped');
+        logger.system('Agent server stopped');
       });
     }
     
@@ -414,7 +417,7 @@ class AgentServer {
       });
       
       this.wss.close(() => {
-        console.log('WebSocket server for agents stopped');
+        logger.system('WebSocket server for agents stopped');
       });
     }
     

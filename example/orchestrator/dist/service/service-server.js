@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const WebSocket = __importStar(require("ws"));
 const http = __importStar(require("http"));
 const uuid_1 = require("uuid");
+const logger_1 = require("../core/utils/logger");
 /**
  * ServiceServer - Handles WebSocket communication with services
  * Responsible only for communication layer, not business logic
@@ -68,7 +69,7 @@ class ServiceServer {
             wsWithId.id = connectionId;
             // Store connection directly in our map
             this.connections.set(connectionId, wsWithId);
-            console.log(`New service connection established: ${connectionId}`);
+            logger_1.logger.connection(logger_1.MessageDirection.SERVICE_TO_ORCHESTRATOR, 'connected', connectionId);
             // Handle incoming messages from services
             ws.on('message', async (message) => {
                 try {
@@ -78,13 +79,13 @@ class ServiceServer {
                     await this.handleMessage(parsedMessage, connectionId);
                 }
                 catch (error) {
-                    console.error('Error handling message from service:', error);
+                    logger_1.logger.error(logger_1.MessageDirection.SERVICE_TO_ORCHESTRATOR, 'Error handling message from service', error, connectionId);
                     this.sendError(connectionId, 'Error processing message', null, error instanceof Error ? error.message : String(error));
                 }
             });
             // Handle disconnections
             ws.on('close', () => {
-                console.log(`Service connection closed: ${connectionId}`);
+                logger_1.logger.connection(logger_1.MessageDirection.SERVICE_TO_ORCHESTRATOR, 'disconnected', connectionId);
                 // Remove from our direct connections map
                 this.connections.delete(connectionId);
                 // Let the registry handle the disconnection
@@ -104,12 +105,12 @@ class ServiceServer {
         });
         // Start HTTP server for services
         this.server.listen(this.port, () => {
-            console.log(`ASP Orchestrator Service Interface running on port ${this.port}`);
+            logger_1.logger.system(`ASP Orchestrator Service Interface running on port ${this.port}`);
         });
         return this;
     }
     async handleMessage(message, connectionId) {
-        console.log(`Received service message: ${JSON.stringify(message)}`);
+        logger_1.logger.serviceToOrchestrator(`Received message: ${message.type}`, { messageId: message.id }, connectionId);
         if (!message.type) {
             return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
         }
@@ -149,7 +150,7 @@ class ServiceServer {
                 this.eventBus.emit(message.type, message, connectionId);
                 // If no listeners for this specific message type, log a warning
                 if (this.eventBus.listenerCount(message.type) === 0) {
-                    console.warn(`No handlers registered for message type: ${message.type}`);
+                    logger_1.logger.warn(logger_1.MessageDirection.SERVICE_TO_ORCHESTRATOR, `No handlers registered for message type: ${message.type}`, { messageType: message.type }, connectionId);
                     this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
                 }
                 break;
@@ -173,12 +174,12 @@ class ServiceServer {
                 return message.id;
             }
             else {
-                console.warn(`Connection not found for ID: ${connectionId}`);
+                logger_1.logger.warn(logger_1.MessageDirection.ORCHESTRATOR_TO_SERVICE, `Connection not found for ID: ${connectionId}`, undefined, connectionId);
                 throw new Error('Connection not found');
             }
         }
         catch (error) {
-            console.error('Error sending message to service:', error);
+            logger_1.logger.error(logger_1.MessageDirection.ORCHESTRATOR_TO_SERVICE, 'Error sending message to service', error, connectionId);
             throw error;
         }
     }
@@ -206,11 +207,11 @@ class ServiceServer {
                 ws.send(JSON.stringify(message));
             }
             else {
-                console.warn(`Failed to send error, connection not found for ID: ${connectionId}`);
+                logger_1.logger.warn(logger_1.MessageDirection.ORCHESTRATOR_TO_SERVICE, `Failed to send error - connection not found`, { errorMessage }, connectionId);
             }
         }
         catch (error) {
-            console.error('Error sending error message to service:', error);
+            logger_1.logger.error(logger_1.MessageDirection.ORCHESTRATOR_TO_SERVICE, 'Error sending error message to service', error, connectionId);
         }
     }
     // Helper method to send a message and wait for a response
