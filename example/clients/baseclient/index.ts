@@ -98,29 +98,29 @@ async function main() {
           message: 'Hello from baseclient! This should be processed by ChildAgent.' 
         }
       },
-      {
-        name: 'Text Processing Task (will be delegated to ChildAgent)',
-        data: { 
-          taskType: 'processText', 
-          text: 'The Agent Swarm Protocol enables seamless communication between distributed agents in a microservices architecture.' 
-        }
-      },
-      {
-        name: 'Calculation Task (will be delegated to ChildAgent)',
-        data: { 
-          taskType: 'calculate', 
-          operation: 'sum', 
-          numbers: [15, 25, 35, 45, 55] 
-        }
-      },
-      {
-        name: 'Custom Task (will be processed locally by BaseAgent)',
-        data: { 
-          taskType: 'customProcessing', 
-          query: 'This is a custom task that should be processed locally by BaseAgent.',
-          metadata: { source: 'baseclient', timestamp: new Date().toISOString() }
-        }
-      }
+      // {
+      //   name: 'Text Processing Task (will be delegated to ChildAgent)',
+      //   data: { 
+      //     taskType: 'processText', 
+      //     text: 'The Agent Swarm Protocol enables seamless communication between distributed agents in a microservices architecture.' 
+      //   }
+      // },
+      // {
+      //   name: 'Calculation Task (will be delegated to ChildAgent)',
+      //   data: { 
+      //     taskType: 'calculate', 
+      //     operation: 'sum', 
+      //     numbers: [15, 25, 35, 45, 55] 
+      //   }
+      // },
+      // {
+      //   name: 'Custom Task (will be processed locally by BaseAgent)',
+      //   data: { 
+      //     taskType: 'customProcessing', 
+      //     query: 'This is a custom task that should be processed locally by BaseAgent.',
+      //     metadata: { source: 'baseclient', timestamp: new Date().toISOString() }
+      //   }
+      // }
     ];
     
     // Send each task and wait for completion
