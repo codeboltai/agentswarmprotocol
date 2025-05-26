@@ -6,519 +6,332 @@ sidebar_position: 5
 
 The orchestrator is the central component of the Agent Swarm Protocol (ASP), providing a suite of core services that agents can leverage. This document outlines the available services and how agents can interact with them.
 
-## Core Services Overview
+## Orchestrator-Services Interface
 
-The ASP orchestrator provides several categories of services:
+The orchestrator communicates with services through WebSocket connections. This section documents all events and their JSON message formats for bidirectional communication between the orchestrator and services.
 
-1. **Foundation Services**: Basic capabilities required by most agents
-2. **Integration Services**: Connections to external systems and APIs
-3. **Agent Management Services**: Services for working with other agents
-4. **Utility Services**: Helper functionalities for common tasks
 
-## Accessing Services
+### Events Sent by Orchestrator to Services
 
-Agents can request services using the `requestService` method:
+#### 1. Welcome Message (`orchestrator.welcome`)
 
-```javascript
-const result = await agent.requestService('serviceName', {
-  // Service-specific parameters
-  param1: 'value1',
-  param2: 'value2'
-});
-```
-
-## Foundation Services
-
-### LLM Service
-
-Provides access to language models for text generation, analysis, and more.
-
-```javascript
-// Basic LLM request
-const completion = await agent.requestService('llm', {
-  prompt: 'Generate a summary of the following text: ...',
-  temperature: 0.7,
-  model: 'gpt-4' // Optional, defaults to configured model
-});
-
-// Chat completion
-const chatResponse = await agent.requestService('llm', {
-  messages: [
-    { role: 'system', content: 'You are a helpful assistant.' },
-    { role: 'user', content: 'What is the capital of France?' }
-  ],
-  temperature: 0.5
-});
-
-// Function calling
-const functionResult = await agent.requestService('llm', {
-  messages: [{ role: 'user', content: 'What is the weather in Paris?' }],
-  functions: [{
-    name: 'get_weather',
-    description: 'Get the current weather in a location',
-    parameters: {
-      type: 'object',
-      properties: {
-        location: { type: 'string', description: 'City name' }
-      },
-      required: ['location']
-    }
-  }],
-  function_call: 'auto'
-});
-```
-
-### Storage Service
-
-Provides persistent storage capabilities for agents.
-
-```javascript
-// Store data
-await agent.requestService('storage', {
-  action: 'set',
-  key: 'user-preferences',
-  value: { theme: 'dark', notifications: true }
-});
-
-// Retrieve data
-const preferences = await agent.requestService('storage', {
-  action: 'get',
-  key: 'user-preferences'
-});
-
-// Delete data
-await agent.requestService('storage', {
-  action: 'delete',
-  key: 'user-preferences'
-});
-
-// List keys with a prefix
-const keys = await agent.requestService('storage', {
-  action: 'list',
-  prefix: 'user-'
-});
-```
-
-### State Management Service
-
-Manages shared state between agents.
-
-```javascript
-// Update state (creates if doesn't exist)
-await agent.requestService('state', {
-  action: 'update',
-  path: 'workflow.status',
-  value: 'running'
-});
-
-// Get state
-const status = await agent.requestService('state', {
-  action: 'get',
-  path: 'workflow.status'
-});
-
-// Watch for state changes
-await agent.requestService('state', {
-  action: 'watch',
-  path: 'workflow',
-  callback: (newState) => {
-    console.log('Workflow state changed:', newState);
-  }
-});
-
-// Transaction (atomic update)
-await agent.requestService('state', {
-  action: 'transaction',
-  operations: [
-    { action: 'update', path: 'counter', value: 5 },
-    { action: 'update', path: 'lastUpdated', value: new Date().toISOString() }
-  ]
-});
-```
-
-### Logging Service
-
-Provides structured logging for debugging and monitoring.
-
-```javascript
-// Log a message
-await agent.requestService('logging', {
-  level: 'info', // 'debug', 'info', 'warn', 'error'
-  message: 'Processing user request',
-  context: {
-    userId: '12345',
-    requestId: 'req-abc-123'
-  }
-});
-
-// Log an error
-await agent.requestService('logging', {
-  level: 'error',
-  message: 'Failed to process user request',
-  error: new Error('Invalid input'),
-  context: {
-    userId: '12345',
-    requestId: 'req-abc-123'
-  }
-});
-```
-
-## Integration Services
-
-### Web Search Service
-
-Provides web search capabilities.
-
-```javascript
-const searchResults = await agent.requestService('web-search', {
-  query: 'latest AI research papers',
-  numResults: 5,
-  includeSnippets: true
-});
-```
-
-### Web Browsing Service
-
-Enables agents to browse and extract information from web pages.
-
-```javascript
-const pageContent = await agent.requestService('web-browser', {
-  action: 'fetchPage',
-  url: 'https://example.com/article'
-});
-
-const extractedData = await agent.requestService('web-browser', {
-  action: 'extractData',
-  url: 'https://example.com/products',
-  selectors: {
-    products: '.product-item',
-    name: '.product-name',
-    price: '.product-price'
-  }
-});
-```
-
-### File Service
-
-Provides file operations for agents.
-
-```javascript
-// Read file
-const fileContent = await agent.requestService('file', {
-  action: 'read',
-  path: '/temp/data.json'
-});
-
-// Write file
-await agent.requestService('file', {
-  action: 'write',
-  path: '/temp/results.json',
-  content: JSON.stringify({ results: [1, 2, 3] })
-});
-
-// List files
-const files = await agent.requestService('file', {
-  action: 'list',
-  path: '/temp',
-  pattern: '*.json'
-});
-```
-
-### Database Service
-
-Provides database access for agents.
-
-```javascript
-// Execute query
-const results = await agent.requestService('database', {
-  type: 'query',
-  query: 'SELECT * FROM users WHERE status = ?',
-  params: ['active']
-});
-
-// Execute transaction
-await agent.requestService('database', {
-  type: 'transaction',
-  statements: [
-    { query: 'INSERT INTO users (name, email) VALUES (?, ?)', params: ['John', 'john@example.com'] },
-    { query: 'UPDATE stats SET user_count = user_count + 1' }
-  ]
-});
-```
-
-### API Gateway Service
-
-Provides access to external REST APIs.
-
-```javascript
-const response = await agent.requestService('api-gateway', {
-  method: 'GET',
-  url: 'https://api.example.com/data',
-  headers: {
-    'Authorization': 'Bearer token123'
-  },
-  params: {
-    limit: 10,
-    offset: 0
-  }
-});
-```
-
-## Agent Management Services
-
-### Agent Discovery Service
-
-Allows agents to discover other agents in the system.
-
-```javascript
-// List all available agents
-const allAgents = await agent.requestService('agent-discovery', {
-  action: 'list'
-});
-
-// Find agents with specific capabilities
-const searchAgents = await agent.requestService('agent-discovery', {
-  action: 'find',
-  capabilities: ['search', 'summarize']
-});
-
-// Get agent details
-const agentDetails = await agent.requestService('agent-discovery', {
-  action: 'getDetails',
-  agentName: 'research-agent'
-});
-```
-
-### Child Agent Service
-
-Allows an agent to create and manage child agents.
-
-```javascript
-// Start a child agent
-const childAgent = await agent.requestService('agent', {
-  action: 'start',
-  agentName: 'specialized-processor',
-  config: {
-    customOption: 'value'
-  }
-});
-
-// Send a message to a child agent
-const response = await agent.requestService('agent', {
-  action: 'send',
-  agentId: childAgent.id,
-  message: {
-    type: 'process.request',
-    content: { data: 'to process' }
-  },
-  waitForResponse: true
-});
-
-// Stop a child agent
-await agent.requestService('agent', {
-  action: 'stop',
-  agentId: childAgent.id
-});
-```
-
-### Workflow Service
-
-Allows agents to create and execute workflows.
-
-```javascript
-// Execute a workflow
-const workflowResult = await agent.requestService('workflow', {
-  action: 'execute',
-  workflowName: 'data-processing',
-  inputs: {
-    data: ['item1', 'item2', 'item3']
-  }
-});
-
-// Get workflow status
-const status = await agent.requestService('workflow', {
-  action: 'getStatus',
-  workflowId: 'wf-123456'
-});
-
-// Register a new workflow
-await agent.requestService('workflow', {
-  action: 'register',
-  workflow: {
-    name: 'custom-workflow',
-    description: 'A custom workflow',
-    steps: [
-      // Workflow step definitions
-    ]
-  }
-});
-```
-
-## Utility Services
-
-### Tool Execution Service (MCP)
-
-Allows agents to use Machine Communication Protocol (MCP) tools.
-
-```javascript
-// Execute an MCP tool
-const result = await agent.requestService('mcp', {
-  tool: 'calculator',
-  params: {
-    operation: 'multiply',
-    a: 5,
-    b: 3
-  }
-});
-
-// List available MCP tools
-const tools = await agent.requestService('mcp', {
-  action: 'listTools'
-});
-```
-
-### Vector Database Service
-
-Provides vector database capabilities for semantic search.
-
-```javascript
-// Store embeddings
-await agent.requestService('vector-db', {
-  action: 'store',
-  collection: 'documents',
-  items: [
-    { id: 'doc1', vector: [...], metadata: { title: 'Document 1' } },
-    { id: 'doc2', vector: [...], metadata: { title: 'Document 2' } }
-  ]
-});
-
-// Search by vector similarity
-const results = await agent.requestService('vector-db', {
-  action: 'search',
-  collection: 'documents',
-  vector: [...],
-  limit: 5
-});
-
-// Create embeddings and store
-const textEmbeddings = await agent.requestService('vector-db', {
-  action: 'embed',
-  texts: ['Document text 1', 'Document text 2'],
-  model: 'text-embedding-ada-002'
-});
-```
-
-### Scheduling Service
-
-Allows agents to schedule tasks for future execution.
-
-```javascript
-// Schedule a one-time task
-await agent.requestService('scheduler', {
-  action: 'schedule',
-  task: {
-    type: 'agent.message',
-    agent: 'reminder-agent',
-    message: {
-      type: 'reminder',
-      content: 'Follow up with client'
-    }
-  },
-  when: '2023-12-25T09:00:00Z'
-});
-
-// Schedule a recurring task
-await agent.requestService('scheduler', {
-  action: 'schedule',
-  task: {
-    type: 'agent.message',
-    agent: 'report-generator',
-    message: {
-      type: 'generate-report'
-    }
-  },
-  cron: '0 9 * * 1' // Every Monday at 9 AM
-});
-
-// Cancel a scheduled task
-await agent.requestService('scheduler', {
-  action: 'cancel',
-  taskId: 'task-123456'
-});
-```
-
-### Notification Service
-
-Provides notification capabilities for agents.
-
-```javascript
-// Send a notification
-await agent.requestService('notification', {
-  channel: 'email',
-  recipient: 'user@example.com',
-  subject: 'Task Completed',
-  message: 'Your requested task has been completed.',
-  data: {
-    taskId: '12345',
-    result: 'success'
-  }
-});
-```
-
-## Service Security and Access Control
-
-By default, agents can only access services that they declare in their manifest file's `requiredServices` array. The orchestrator enforces this access control to ensure agents only use the services they need.
+Sent when a service first connects to the orchestrator.
 
 ```json
 {
-  "name": "example-agent",
-  "version": "1.0.0",
-  "requiredServices": [
-    "llm",
-    "storage",
-    "web-search"
-  ]
+  "id": "msg-uuid-123",
+  "type": "orchestrator.welcome",
+  "timestamp": "2023-12-01T10:00:00.000Z",
+  "content": {
+    "version": "1.0.0",
+    "message": "Welcome to Agent Swarm Protocol",
+    "config": {
+      "maxConcurrentTasks": 10,
+      "heartbeatInterval": 30000
+    }
+  }
 }
 ```
 
-## Creating Custom Services
+#### 2. Service Registration Confirmation (`service.registered`)
 
-The ASP orchestrator can be extended with custom services. Here's an example of creating a custom service:
+Confirms successful service registration.
 
-```javascript
-// In your orchestrator configuration
-const customService = {
-  name: 'custom-service',
-  handler: async (params, context) => {
-    // Service implementation
-    return { result: 'Custom service result' };
+```json
+{
+  "id": "msg-uuid-124",
+  "type": "service.registered",
+  "timestamp": "2023-12-01T10:00:01.000Z",
+  "content": {
+    "serviceId": "llm-service-001",
+    "name": "LLM Service",
+    "message": "Service registered successfully"
   }
-};
-
-const orchestrator = new Orchestrator({
-  // ... other options
-  customServices: [customService]
-});
+}
 ```
 
-## Best Practices
+#### 3. Task Execution Request (`service.task.execute`)
 
-- **Error Handling**: Always handle errors when calling services
-- **Timeouts**: Set reasonable timeouts for service calls
-- **Batching**: Batch related service calls when possible
-- **Caching**: Cache service results when appropriate
-- **Rate Limiting**: Be aware of service rate limits and throttle requests when necessary
-- **Security**: Never expose sensitive information through service calls
-- **Minimal Permissions**: Request only the services your agent actually needs
+Requests the service to execute a specific function/tool.
 
-## Next Steps
+```json
+{
+  "id": "task-uuid-125",
+  "type": "service.task.execute",
+  "timestamp": "2023-12-01T10:00:02.000Z",
+  "content": {
+    "functionName": "generate_text",
+    "params": {
+      "prompt": "Write a summary of AI trends",
+      "temperature": 0.7,
+      "maxTokens": 500
+    },
+    "metadata": {
+      "agentId": "agent-001",
+      "clientId": "client-123",
+      "timestamp": "2023-12-01T10:00:02.000Z",
+      "priority": "normal"
+    }
+  }
+}
+```
 
-Now that you understand the orchestrator services, you can:
+#### 4. Notification Acknowledgment (`notification.received`)
 
-1. Learn about [agent communication patterns](./../user-guide/agent-communication)
-2. Explore [agent marketplace](./../user-guide/agent-marketplace) publishing
-3. Dive into [advanced workflows](./../user-guide/advanced-workflows)
+Acknowledges receipt of a service notification.
 
-## Related Topics
+```json
+{
+  "id": "msg-uuid-126",
+  "type": "notification.received",
+  "timestamp": "2023-12-01T10:00:03.000Z",
+  "content": {
+    "message": "Notification received and processed",
+    "notificationId": "notif-uuid-100"
+  }
+}
+```
 
-1. Learn about agent communication patterns 
+#### 5. Status Update Confirmation (`service.status.updated`)
+
+Confirms a service status update.
+
+```json
+{
+  "id": "msg-uuid-127",
+  "type": "service.status.updated",
+  "timestamp": "2023-12-01T10:00:04.000Z",
+  "content": {
+    "status": "active",
+    "message": "Service status updated successfully"
+  }
+}
+```
+
+#### 6. Ping (`ping`)
+
+Health check message to verify service connectivity.
+
+```json
+{
+  "id": "msg-uuid-128",
+  "type": "ping",
+  "timestamp": "2023-12-01T10:00:05.000Z",
+  "content": {
+    "timestamp": "2023-12-01T10:00:05.000Z"
+  }
+}
+```
+
+#### 7. Error Message (`error`)
+
+Error notification from orchestrator to service.
+
+```json
+{
+  "id": "msg-uuid-129",
+  "type": "error",
+  "timestamp": "2023-12-01T10:00:06.000Z",
+  "content": {
+    "error": "Invalid function name provided",
+    "code": "INVALID_FUNCTION",
+    "stack": "Error stack trace..."
+  }
+}
+```
+
+### Events Sent by Services to Orchestrator
+
+#### 1. Service Registration (`service.register`)
+
+Initial registration message sent by service to orchestrator.
+
+```json
+{
+  "id": "msg-uuid-200",
+  "type": "service.register",
+  "timestamp": "2023-12-01T10:00:00.500Z",
+  "content": {
+    "id": "llm-service-001",
+    "name": "LLM Service",
+    "capabilities": ["generate", "chat", "embed"],
+    "tools": [
+      {
+        "id": "generate_text",
+        "name": "Text Generation",
+        "description": "Generate text based on prompts",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": { "type": "string" },
+            "temperature": { "type": "number" },
+            "maxTokens": { "type": "number" }
+          },
+          "required": ["prompt"]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "tokens": { "type": "number" }
+          }
+        }
+      }
+    ],
+    "manifest": {
+      "description": "OpenAI-powered language model service",
+      "version": "1.2.0",
+      "supportsNotifications": true,
+      "author": "ASP Team"
+    }
+  }
+}
+```
+
+#### 2. Task Result (`service.task.result`)
+
+Result of a completed task execution.
+
+```json
+{
+  "id": "msg-uuid-201",
+  "type": "service.task.result",
+  "taskId": "task-uuid-125",
+  "timestamp": "2023-12-01T10:00:10.000Z",
+  "content": {
+    "serviceId": "llm-service-001",
+    "taskId": "task-uuid-125",
+    "result": {
+      "text": "AI trends in 2023 include the rise of large language models...",
+      "tokens": 487,
+      "model": "gpt-4",
+      "usage": {
+        "promptTokens": 13,
+        "completionTokens": 487,
+        "totalTokens": 500
+      }
+    }
+  }
+}
+```
+
+#### 3. Task Notification (`service.task.notification`)
+
+Progress updates and notifications during task execution.
+
+```json
+{
+  "id": "msg-uuid-202",
+  "type": "service.task.notification",
+  "timestamp": "2023-12-01T10:00:07.000Z",
+  "content": {
+    "serviceId": "llm-service-001",
+    "taskId": "task-uuid-125",
+    "notification": {
+      "type": "progress",
+      "message": "Processing prompt...",
+      "timestamp": "2023-12-01T10:00:07.000Z",
+      "data": {
+        "progress": 50,
+        "step": "tokenization",
+        "estimatedTimeRemaining": 3000
+      }
+    }
+  }
+}
+```
+
+**Notification Types:**
+- `progress`: Task progress updates
+- `info`: General information
+- `warning`: Warning messages
+- `error`: Error notifications
+- `debug`: Debug information
+- `started`: Task started
+- `completed`: Task completed
+- `failed`: Task failed
+
+#### 4. Service Status Update (`service.status`)
+
+Updates the service's operational status.
+
+```json
+{
+  "id": "msg-uuid-203",
+  "type": "service.status",
+  "timestamp": "2023-12-01T10:00:08.000Z",
+  "content": {
+    "serviceId": "llm-service-001",
+    "status": "active",
+    "message": "Service is running normally",
+    "timestamp": "2023-12-01T10:00:08.000Z"
+  }
+}
+```
+
+**Status Values:**
+- `active`: Service is operational
+- `inactive`: Service is not operational
+- `busy`: Service is at capacity
+- `error`: Service has encountered an error
+- `maintenance`: Service is under maintenance
+
+#### 5. General Service Notification (`service.notification`)
+
+General notifications sent to clients or orchestrator.
+
+```json
+{
+  "id": "msg-uuid-204",
+  "type": "service.notification",
+  "timestamp": "2023-12-01T10:00:09.000Z",
+  "content": {
+    "serviceId": "llm-service-001",
+    "notification": {
+      "type": "info",
+      "message": "Model updated to latest version",
+      "timestamp": "2023-12-01T10:00:09.000Z",
+      "data": {
+        "previousVersion": "gpt-4-0613",
+        "newVersion": "gpt-4-1106-preview",
+        "improvements": ["Better reasoning", "Longer context"]
+      }
+    }
+  }
+}
+```
+
+#### 6. Service Error (`service.error`)
+
+Error messages from service to orchestrator.
+
+```json
+{
+  "id": "msg-uuid-205",
+  "type": "service.error",
+  "timestamp": "2023-12-01T10:00:11.000Z",
+  "content": {
+    "error": "API rate limit exceeded",
+    "code": "RATE_LIMIT_EXCEEDED",
+    "taskId": "task-uuid-125",
+    "stack": "Error: Rate limit exceeded at..."
+  }
+}
+```
+
+#### 7. Pong Response (`pong`)
+
+Response to ping health check.
+
+```json
+{
+  "id": "msg-uuid-206",
+  "type": "pong",
+  "timestamp": "2023-12-01T10:00:05.100Z",
+  "content": {
+    "timestamp": "2023-12-01T10:00:05.100Z"
+  }
+}
+```
+
+
