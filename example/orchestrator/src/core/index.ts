@@ -135,7 +135,7 @@ class Orchestrator {
       const notifiedClientIds = new Set<string>();
 
       // Get the requesting agent's tasks
-      const parentTasks = this.tasks.getTasksByAgentId(requestingAgent.id);
+      const parentTasks = this.tasks.getTasksByAgentIdForChildTasks(requestingAgent.id);
       
       // Filter tasks with clients
       const clientTasks = parentTasks.filter((t: any) => t.clientId && !notifiedClientIds.has(t.clientId));

@@ -104,6 +104,47 @@ agent.onTask(async (taskData: any, message: TaskExecuteMessage) => {
   try {
     // Send progress message
     console.log(chalk.cyan(`Sending progress update for task ${taskId}`));
+    console.log(chalk.yellow(`🔄 Delegating ${taskType} task to GrandChildAgent...`));
+      
+// Send progress message
+agent.sendTaskMessage(taskId, {
+  type: 'progress',
+  message: `Child delegating ${taskType} task to ChildAgent`,
+  data: { progress: 25, status: 'delegating' }
+});
+
+try {
+  // Delegate to child agent
+  const childResult = await agent.executeChildAgentTask('GrandChildAgent', taskData);
+  
+  // Send progress message
+  agent.sendTaskMessage(taskId, {
+    type: 'progress',
+    message: `GrandChildAgent completed ${taskType} task`,
+    data: { progress: 100, status: 'completed' }
+  });
+  
+  // Send the task result
+  agent.sendTaskResult(taskId, {
+    type: 'delegated.task.result',
+    message: `Task delegated to ChildAgent and completed successfully`,
+    delegatedTo: 'GrandChildAgent',
+    childResult,
+    timestamp: new Date().toISOString()
+  });
+  
+  return {
+    response: "Task delegated to ChildAgent and completed successfully",
+    delegatedTo: 'GrandChildAgent',
+    childResult,
+    isComplete: true
+  };
+} catch (delegationError) {
+  console.error(chalk.red(`❌ Error delegating to GrandChildAgent:`), delegationError);
+  
+
+}
+    
     agent.sendTaskMessage(taskId, {
       type: 'progress',
       message: `Child agent started processing ${taskType} task`,
