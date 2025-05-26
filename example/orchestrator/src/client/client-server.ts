@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, PendingResponse, SendOptions } from '../../../types/common';
 import { EventEmitter } from 'events';
 import { ClientRegistry, Client } from '../registry/client-registry';
+import { logger, MessageDirection } from '../core/utils/logger';
 
 // Extended WebSocket interface with ID
 interface WebSocketWithId extends WebSocket.WebSocket {
@@ -57,7 +58,7 @@ class ClientServer {
       const clientWs = ws as WebSocketWithId;
       clientWs.id = clientId;
       
-      console.log(`New client connection established: ${clientId}`);
+      logger.connection(MessageDirection.CLIENT_TO_ORCHESTRATOR, 'connected', clientId);
       this.clientConnections.set(clientId, clientWs);
       
       // Register the client in the registry with the connection ID
@@ -73,7 +74,7 @@ class ClientServer {
           const parsedMessage = JSON.parse(message.toString());
           await this.handleMessage(parsedMessage, clientId);
         } catch (error) {
-          console.error('Error handling client message:', error);
+          logger.error(MessageDirection.CLIENT_TO_ORCHESTRATOR, 'Error handling client message', error, clientId);
           this.sendError(
             clientId,
             'Error processing message',
@@ -85,7 +86,7 @@ class ClientServer {
       
       // Handle client disconnections
       ws.on('close', () => {
-        console.log(`Client connection closed: ${clientId}`);
+        logger.connection(MessageDirection.CLIENT_TO_ORCHESTRATOR, 'disconnected', clientId);
         this.clientConnections.delete(clientId);
         
         // Update client status in registry
@@ -109,7 +110,7 @@ class ClientServer {
     
     // Start HTTP server for clients
     this.clientServer.listen(this.clientPort, () => {
-      console.log(`ASP Client Interface running on port ${this.clientPort} (for clients)`);
+      logger.system(`ASP Client Interface running on port ${this.clientPort} (for clients)`);
     });
 
     return this;
@@ -132,13 +133,13 @@ class ClientServer {
     
     const result = this.send(clientId, message);
     if (result === false) {
-      console.log(`Error sending error message: Client ${clientId} not connected`);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Error sending error message: Client not connected`, undefined, clientId);
     }
   }
 
   // Handle messages from clients - similar to AgentServer pattern
   async handleMessage(message: BaseMessage, clientId: string): Promise<void> {
-    console.log(`Received client message: ${JSON.stringify(message)}`);
+    logger.clientToOrchestrator(`Received message: ${message.type}`, { messageId: message.id }, clientId);
     
     if (!message.type) {
       return this.sendError(clientId, 'Invalid message format', message.id, 'Message type is required');
@@ -211,7 +212,7 @@ class ClientServer {
         
         // If no listeners for this specific message type, log a warning
         if (this.eventBus.listenerCount(message.type) === 0) {
-          console.warn(`No handlers registered for message type: ${message.type}`);
+          logger.warn(MessageDirection.CLIENT_TO_ORCHESTRATOR, `No handlers registered for message type: ${message.type}`, { messageType: message.type }, clientId);
           this.sendError(clientId, `Unsupported message type: ${message.type}`, message.id);
         }
         break;
@@ -231,7 +232,7 @@ class ClientServer {
       const connection = this.getClientConnection(clientId);
       
       if (!connection) {
-        console.log(`Connection not found for client ID: ${clientId}`);
+        logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Connection not found for client ID: ${clientId}`, undefined, clientId);
         return false;
       }
       
@@ -248,7 +249,7 @@ class ClientServer {
       
       return message.id;
     } catch (error) {
-      console.error('Error sending message to client:', error);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_CLIENT, 'Error sending message to client', error, clientId);
       return false;
     }
   }
@@ -327,13 +328,13 @@ class ClientServer {
           });
         }
         
-        console.log(`Broadcast message sent to client: ${clientId}`);
+        logger.orchestratorToClient(`Broadcast message sent`, { messageType: message.type }, clientId);
       } catch (error) {
-        console.error(`Error sending broadcast message to client ${clientId}:`, error);
+        logger.error(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Error sending broadcast message`, error, clientId);
       }
     });
     
-    console.log(`Broadcast message sent to ${sentToClients.length} clients`);
+    logger.orchestratorToClient(`Broadcast message sent to ${sentToClients.length} clients`, { messageType: message.type, clientCount: sentToClients.length });
     return sentToClients;
   }
   
@@ -377,7 +378,7 @@ class ClientServer {
     });
     
     if (result === false) {
-      console.log(`Could not forward task result to client ${clientId}: Client not connected`);
+      logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Could not forward task result - client not connected`, { taskId }, clientId);
     }
   }
   
@@ -390,7 +391,7 @@ class ClientServer {
     });
     
     if (result === false) {
-      console.log(`Could not forward task error to client ${clientId}: Client not connected`);
+      logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Could not forward task error - client not connected`, { error: message }, clientId);
     }
   }
   
@@ -403,7 +404,7 @@ class ClientServer {
     });
     
     if (result === false) {
-      console.log(`Could not forward task notification to client ${clientId}: Client not connected`);
+      logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Could not forward task notification - client not connected`, { notification: content }, clientId);
     }
   }
   
@@ -416,7 +417,7 @@ class ClientServer {
     });
     
     if (result === false) {
-      console.log(`Could not forward service notification to client ${clientId}: Client not connected`);
+      logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Could not forward service notification - client not connected`, { notification: content }, clientId);
     }
   }
   
@@ -429,7 +430,7 @@ class ClientServer {
     });
     
     if (result === false) {
-      console.log(`Could not forward MCP task execution to client ${clientId}: Client not connected`);
+      logger.warn(MessageDirection.ORCHESTRATOR_TO_CLIENT, `Could not forward MCP task execution - client not connected`, { mcpTask: content }, clientId);
     }
   }
   
@@ -504,7 +505,7 @@ class ClientServer {
   stop(): void {
     if (this.clientServer) {
       this.clientServer.close(() => {
-        console.log('Client server stopped');
+        logger.system('Client server stopped');
       });
       
       // Close all client connections

@@ -3,6 +3,7 @@ import * as http from 'http';
 import { v4 as uuidv4 } from 'uuid';
 import { ServiceRegistry, BaseMessage, SendOptions } from '../../../types/common';
 import { EventEmitter } from 'events';
+import { logger, MessageDirection } from '../core/utils/logger';
 
 // Extended WebSocket interface with ID
 interface WebSocketWithId extends WebSocket.WebSocket {
@@ -74,7 +75,7 @@ class ServiceServer {
       // Store connection directly in our map
       this.connections.set(connectionId, wsWithId);
       
-      console.log(`New service connection established: ${connectionId}`);
+      logger.connection(MessageDirection.SERVICE_TO_ORCHESTRATOR, 'connected', connectionId);
       
       // Handle incoming messages from services
       ws.on('message', async (message: WebSocket.Data) => {
@@ -84,7 +85,7 @@ class ServiceServer {
           this.services.setConnection(connectionId, wsWithId);
           await this.handleMessage(parsedMessage, connectionId);
         } catch (error) {
-          console.error('Error handling message from service:', error);
+          logger.error(MessageDirection.SERVICE_TO_ORCHESTRATOR, 'Error handling message from service', error, connectionId);
           this.sendError(
             connectionId, 
             'Error processing message', 
@@ -96,7 +97,7 @@ class ServiceServer {
       
       // Handle disconnections
       ws.on('close', () => {
-        console.log(`Service connection closed: ${connectionId}`);
+        logger.connection(MessageDirection.SERVICE_TO_ORCHESTRATOR, 'disconnected', connectionId);
         // Remove from our direct connections map
         this.connections.delete(connectionId);
         // Let the registry handle the disconnection
@@ -118,14 +119,14 @@ class ServiceServer {
     
     // Start HTTP server for services
     this.server.listen(this.port, () => {
-      console.log(`ASP Orchestrator Service Interface running on port ${this.port}`);
+      logger.system(`ASP Orchestrator Service Interface running on port ${this.port}`);
     });
 
     return this;
   }
 
   async handleMessage(message: BaseMessage, connectionId: string): Promise<void> {
-    console.log(`Received service message: ${JSON.stringify(message)}`);
+    logger.serviceToOrchestrator(`Received message: ${message.type}`, { messageId: message.id }, connectionId);
     
     if (!message.type) {
       return this.sendError(connectionId, 'Invalid message format: type is required', message.id);
@@ -175,7 +176,7 @@ class ServiceServer {
         
         // If no listeners for this specific message type, log a warning
         if (this.eventBus.listenerCount(message.type) === 0) {
-          console.warn(`No handlers registered for message type: ${message.type}`);
+          logger.warn(MessageDirection.SERVICE_TO_ORCHESTRATOR, `No handlers registered for message type: ${message.type}`, { messageType: message.type }, connectionId);
           this.sendError(connectionId, `Unsupported message type: ${message.type}`, message.id);
         }
         break;
@@ -203,11 +204,11 @@ class ServiceServer {
         ws.send(JSON.stringify(message));
         return message.id;
       } else {
-        console.warn(`Connection not found for ID: ${connectionId}`);
+        logger.warn(MessageDirection.ORCHESTRATOR_TO_SERVICE, `Connection not found for ID: ${connectionId}`, undefined, connectionId);
         throw new Error('Connection not found');
       }
     } catch (error) {
-      console.error('Error sending message to service:', error);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_SERVICE, 'Error sending message to service', error, connectionId);
       throw error;
     }
   }
@@ -239,10 +240,10 @@ class ServiceServer {
       if (ws) {
         ws.send(JSON.stringify(message));
       } else {
-        console.warn(`Failed to send error, connection not found for ID: ${connectionId}`);
+        logger.warn(MessageDirection.ORCHESTRATOR_TO_SERVICE, `Failed to send error - connection not found`, { errorMessage }, connectionId);
       }
     } catch (error) {
-      console.error('Error sending error message to service:', error);
+      logger.error(MessageDirection.ORCHESTRATOR_TO_SERVICE, 'Error sending error message to service', error, connectionId);
     }
   }
 
