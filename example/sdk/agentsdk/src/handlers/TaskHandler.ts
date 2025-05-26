@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { TaskExecuteMessage, TaskHandler as TaskHandlerType } from '../core/types';
+import { TaskExecuteMessage, AgentTaskHandler as TaskHandlerType } from '../core/types';
 import { WebSocketManager } from '../core/WebSocketManager';
 
 export class TaskHandler extends EventEmitter {

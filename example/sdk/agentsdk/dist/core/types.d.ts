@@ -21,7 +21,8 @@ export interface AgentConfig {
     logger?: Console;
 }
 export type MessageHandler = (content: any, message: BaseMessage) => void;
-export type TaskHandler = (taskData: any, message: TaskExecuteMessage) => Promise<any>;
+export type AgentTaskHandler = (taskData: any, message: TaskExecuteMessage) => Promise<any>;
 export interface ServiceTaskOptions {
     timeout?: number;
 }
+export type AgentPendingResponse = PendingResponse;

@@ -155,5 +155,7 @@ export interface MCPTool {
     /** Tool parameters */
     parameters?: any;
 }
+export * from './client';
+export * from './logger';
 export * from './orchestrator';
 //# sourceMappingURL=index.d.ts.map

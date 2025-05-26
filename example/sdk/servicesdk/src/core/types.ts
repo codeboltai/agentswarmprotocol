@@ -1,7 +1,8 @@
-import { BaseMessage, ServiceStatus } from '@agentswarmprotocol/types/common';
+// Import and re-export service-specific types from the centralized types package
+import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { ServiceMessages } from '@agentswarmprotocol/types/messages';
 
-// Use more specific types from service messages
+// Re-export types from centralized package
 export type ServiceTaskExecuteMessage = ServiceMessages.ServiceTaskExecuteMessage;
 export type ServiceNotificationType = ServiceMessages.ServiceNotificationType;
 
@@ -27,7 +28,7 @@ export interface ServiceConfig {
   logger?: Console;
 }
 
-export interface PendingResponse {
+export interface ServicePendingResponse {
   resolve: (value: any) => void;
   reject: (reason?: any) => void;
   timeout: NodeJS.Timeout;
@@ -41,4 +42,7 @@ export interface ServiceNotification {
   data?: any;
 }
 
-export type TaskHandler = (params: any, message: ServiceTaskExecuteMessage) => Promise<any>; 
+export type ServiceTaskHandler = (params: any, message: ServiceTaskExecuteMessage) => Promise<any>;
+
+// Alias for backward compatibility
+export type TaskHandler = ServiceTaskHandler; 

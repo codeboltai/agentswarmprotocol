@@ -102,6 +102,62 @@ class Orchestrator {
         // Set up event listeners
         this.setupEventListeners();
     }
+    // Helper method to propagate messages up the task chain to find the ultimate client
+    propagateMessageUpTaskChain(task, taskMessage, originAgentId) {
+        try {
+            // Base case: no more parent tasks
+            if (!task || !task.requestingAgentId) {
+                return;
+            }
+            const currentAgent = this.agents.getAgentById(task.agentId);
+            const requestingAgent = this.agents.getAgentById(task.requestingAgentId);
+            if (!requestingAgent) {
+                return;
+            }
+            // Track which clients we've already sent messages to (to avoid duplicates)
+            const notifiedClientIds = new Set();
+            // Get the requesting agent's tasks
+            const parentTasks = this.tasks.getTasksByAgentIdForChildTasks(requestingAgent.id);
+            // Filter tasks with clients
+            const clientTasks = parentTasks.filter((t) => t.clientId && !notifiedClientIds.has(t.clientId));
+            // If we found at least one client task, send only to the first one
+            if (clientTasks.length > 0) {
+                const clientTask = clientTasks[0];
+                if (clientTask.clientId) {
+                    this.clientServer.forwardTaskNotificationToClient(clientTask.clientId, {
+                        taskId: clientTask.taskId,
+                        childTaskId: task.taskId,
+                        agentId: originAgentId || task.agentId,
+                        childAgentName: currentAgent?.name || "Unknown",
+                        parentAgentName: requestingAgent.name,
+                        message: taskMessage,
+                        timestamp: new Date().toISOString(),
+                        isChildAgentMessage: true
+                    });
+                    logger_1.logger.orchestratorToClient(`Forwarded child agent message to ancestor client`, {
+                        childTaskId: task.taskId,
+                        parentTaskId: clientTask.taskId,
+                        parentAgentId: requestingAgent.id,
+                        clientId: clientTask.clientId
+                    }, clientTask.clientId);
+                    // Mark this client as notified
+                    notifiedClientIds.add(clientTask.clientId);
+                    // Return early - we've sent the message to one client
+                    return;
+                }
+            }
+            // If no client tasks found, continue up the chain with a single parent task
+            // (We don't need to try all paths, just one that might lead to a client)
+            const nonClientTasks = parentTasks.filter((t) => !t.clientId && t.requestingAgentId);
+            if (nonClientTasks.length > 0) {
+                // Pick the first task to continue up the chain
+                this.propagateMessageUpTaskChain(nonClientTasks[0], taskMessage, originAgentId || task.agentId);
+            }
+        }
+        catch (error) {
+            logger_1.logger.error(logger_1.MessageDirection.ORCHESTRATOR_TO_CLIENT, `Error propagating message up task chain: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
     //OK
     setupEventListeners() {
         // IMPORTANT NOTE: When adding or modifying event handlers, ensure:
@@ -388,6 +444,8 @@ class Orchestrator {
                     this.agentServer.sendError(connectionId, `Task ${taskId} not found`, message.id);
                     return;
                 }
+                // Track which clients we've already sent messages to
+                const notifiedClientIds = new Set();
                 // If this task has a client ID associated with it, forward the message to the client
                 if (task.clientId) {
                     this.clientServer.forwardTaskNotificationToClient(task.clientId, {
@@ -396,6 +454,53 @@ class Orchestrator {
                         message: taskMessage,
                         timestamp: new Date().toISOString()
                     });
+                    // Mark this client as notified
+                    notifiedClientIds.add(task.clientId);
+                }
+                // If this is a child task, find the requesting agent's client and forward the message
+                // (but only if we haven't already sent to this client)
+                if (task.requestingAgentId) {
+                    const requestingAgent = this.agents.getAgentById(task.requestingAgentId);
+                    if (requestingAgent) {
+                        // Get the requesting agent's task to find its client
+                        const parentTasks = this.tasks.getTasksByAgentId(requestingAgent.id);
+                        // Get all parent tasks that have clients (including client tasks and parent tasks from other agents)
+                        // but only those we haven't notified yet
+                        const parentClientTasks = parentTasks.filter((parentTask) => parentTask.clientId && !notifiedClientIds.has(parentTask.clientId));
+                        if (parentClientTasks.length > 0) {
+                            // Forward the message to only the first client of the requesting agent
+                            // to avoid duplicate messages
+                            const parentTask = parentClientTasks[0];
+                            if (parentTask.clientId) {
+                                // Log the forwarding for debugging
+                                logger_1.logger.orchestratorToClient(`Forwarding child agent message to parent client`, {
+                                    childTaskId: taskId,
+                                    parentTaskId: parentTask.taskId,
+                                    childAgentId: task.agentId,
+                                    parentAgentId: requestingAgent.id,
+                                    clientId: parentTask.clientId
+                                }, parentTask.clientId);
+                                this.clientServer.forwardTaskNotificationToClient(parentTask.clientId, {
+                                    taskId: parentTask.taskId, // Use parent task ID for client context
+                                    childTaskId: taskId, // Include child task ID
+                                    agentId: agentId || task.agentId,
+                                    childAgentName: this.agents.getAgentById(task.agentId)?.name || "Unknown",
+                                    parentAgentName: requestingAgent.name,
+                                    message: taskMessage,
+                                    timestamp: new Date().toISOString(),
+                                    isChildAgentMessage: true
+                                });
+                                // Mark this client as notified
+                                notifiedClientIds.add(parentTask.clientId);
+                            }
+                        }
+                        else if (notifiedClientIds.size === 0) {
+                            // Only try to propagate up the chain if we haven't sent any messages yet
+                            // Handle case where no direct client tasks are found
+                            // Try to find parent task's parent tasks (chain upward)
+                            this.propagateMessageUpTaskChain(task, taskMessage, agentId);
+                        }
+                    }
                 }
                 // Send confirmation back to the agent
                 try {

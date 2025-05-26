@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { TaskExecuteMessage, TaskHandler as TaskHandlerType } from '../core/types';
+import { TaskExecuteMessage, AgentTaskHandler as TaskHandlerType } from '../core/types';
 import { WebSocketManager } from '../core/WebSocketManager';
 export declare class TaskHandler extends EventEmitter {
     private webSocketManager;

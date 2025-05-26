@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketManager } from '../core/WebSocketManager';
-import { TaskHandler as TaskHandlerType } from '../core/types';
+import { AgentTaskHandler as TaskHandlerType } from '../core/types';
 
 export class AgentManager {
   constructor(

@@ -1,24 +1,8 @@
 import chalk from 'chalk';
+import { LogLevel, MessageDirection } from '@agentswarmprotocol/types/common';
 
-export enum LogLevel {
-  DEBUG = 'debug',
-  INFO = 'info',
-  WARN = 'warn',
-  ERROR = 'error'
-}
-
-export enum MessageDirection {
-  AGENT_TO_ORCHESTRATOR = 'agent->orchestrator',
-  ORCHESTRATOR_TO_AGENT = 'orchestrator->agent',
-  CLIENT_TO_ORCHESTRATOR = 'client->orchestrator',
-  ORCHESTRATOR_TO_CLIENT = 'orchestrator->client',
-  SERVICE_TO_ORCHESTRATOR = 'service->orchestrator',
-  ORCHESTRATOR_TO_SERVICE = 'orchestrator->service',
-  AGENT_TO_AGENT = 'agent->agent',
-  INTERNAL = 'internal',
-  MCP = 'mcp',
-  SYSTEM = 'system'
-}
+// Re-export for backward compatibility
+export { LogLevel, MessageDirection };
 
 export class Logger {
   private static instance: Logger;

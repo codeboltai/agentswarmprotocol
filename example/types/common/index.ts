@@ -166,5 +166,11 @@ export interface MCPTool {
   parameters?: any;
 }
 
+// Export client types
+export * from './client';
+
+// Export logger types
+export * from './logger';
+
 // Export orchestrator specific types
 export * from './orchestrator'; 
