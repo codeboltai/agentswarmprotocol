@@ -1,6 +1,6 @@
 {
   "name": "@agentswarmprotocol/agentsdk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SDK for building agents compatible with Agent Swarm Protocol",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
