@@ -231,6 +231,10 @@ class SwarmAgentSDK extends events_1.EventEmitter {
                     this.emit('mcp-tool-execute-result', null);
                 }
                 break;
+            case 'task.message.received':
+                // Handle task message confirmation from orchestrator
+                this.emit('task-message-received', message.content);
+                break;
             default:
                 this.logger.debug(`Unhandled message type: ${message.type}`);
                 break;
