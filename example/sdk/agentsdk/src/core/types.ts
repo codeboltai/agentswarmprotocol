@@ -1,7 +1,8 @@
-import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
+// Import and re-export agent-specific types from the centralized types package
+import { BaseMessage } from '@agentswarmprotocol/types/common';
 import { AgentMessages } from '@agentswarmprotocol/types/messages';
 
-// Use more specific types from agent messages
+// Re-export types from centralized package
 export type TaskExecuteMessage = AgentMessages.TaskExecuteMessage;
 
 export interface PendingResponse {
@@ -26,8 +27,11 @@ export interface AgentConfig {
 }
 
 export type MessageHandler = (content: any, message: BaseMessage) => void;
-export type TaskHandler = (taskData: any, message: TaskExecuteMessage) => Promise<any>;
+export type AgentTaskHandler = (taskData: any, message: TaskExecuteMessage) => Promise<any>;
 
 export interface ServiceTaskOptions {
   timeout?: number;
-} 
+}
+
+// Alias for backward compatibility
+export type AgentPendingResponse = PendingResponse; 

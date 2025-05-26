@@ -4,18 +4,10 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { Client, ClientStatus } from '@agentswarmprotocol/types/common';
 
-export interface Client {
-  id: string;
-  name?: string;
-  status: ClientStatus;
-  connectionId?: string;
-  metadata?: Record<string, any>;
-  registeredAt: string;
-  lastActiveAt?: string;
-}
-
-export type ClientStatus = 'online' | 'offline' | 'busy' | 'error';
+// Re-export for backward compatibility
+export { Client, ClientStatus };
 
 interface ClientConfiguration {
   id: string;

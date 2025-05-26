@@ -5,29 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.logger = exports.Logger = exports.MessageDirection = exports.LogLevel = void 0;
 const chalk_1 = __importDefault(require("chalk"));
-var LogLevel;
-(function (LogLevel) {
-    LogLevel["DEBUG"] = "debug";
-    LogLevel["INFO"] = "info";
-    LogLevel["WARN"] = "warn";
-    LogLevel["ERROR"] = "error";
-})(LogLevel || (exports.LogLevel = LogLevel = {}));
-var MessageDirection;
-(function (MessageDirection) {
-    MessageDirection["AGENT_TO_ORCHESTRATOR"] = "agent->orchestrator";
-    MessageDirection["ORCHESTRATOR_TO_AGENT"] = "orchestrator->agent";
-    MessageDirection["CLIENT_TO_ORCHESTRATOR"] = "client->orchestrator";
-    MessageDirection["ORCHESTRATOR_TO_CLIENT"] = "orchestrator->client";
-    MessageDirection["SERVICE_TO_ORCHESTRATOR"] = "service->orchestrator";
-    MessageDirection["ORCHESTRATOR_TO_SERVICE"] = "orchestrator->service";
-    MessageDirection["AGENT_TO_AGENT"] = "agent->agent";
-    MessageDirection["INTERNAL"] = "internal";
-    MessageDirection["MCP"] = "mcp";
-    MessageDirection["SYSTEM"] = "system";
-})(MessageDirection || (exports.MessageDirection = MessageDirection = {}));
+const common_1 = require("@agentswarmprotocol/types/common");
+Object.defineProperty(exports, "LogLevel", { enumerable: true, get: function () { return common_1.LogLevel; } });
+Object.defineProperty(exports, "MessageDirection", { enumerable: true, get: function () { return common_1.MessageDirection; } });
 class Logger {
     constructor() {
-        this.logLevel = LogLevel.INFO;
+        this.logLevel = common_1.LogLevel.INFO;
     }
     static getInstance() {
         if (!Logger.instance) {
@@ -39,32 +22,32 @@ class Logger {
         this.logLevel = level;
     }
     shouldLog(level) {
-        const levels = [LogLevel.ERROR, LogLevel.WARN, LogLevel.INFO, LogLevel.DEBUG];
+        const levels = [common_1.LogLevel.ERROR, common_1.LogLevel.WARN, common_1.LogLevel.INFO, common_1.LogLevel.DEBUG];
         const currentLevelIndex = levels.indexOf(this.logLevel);
         const messageLevelIndex = levels.indexOf(level);
         return messageLevelIndex <= currentLevelIndex;
     }
     getDirectionColor(direction) {
         switch (direction) {
-            case MessageDirection.AGENT_TO_ORCHESTRATOR:
+            case common_1.MessageDirection.AGENT_TO_ORCHESTRATOR:
                 return chalk_1.default.cyan;
-            case MessageDirection.ORCHESTRATOR_TO_AGENT:
+            case common_1.MessageDirection.ORCHESTRATOR_TO_AGENT:
                 return chalk_1.default.blue;
-            case MessageDirection.CLIENT_TO_ORCHESTRATOR:
+            case common_1.MessageDirection.CLIENT_TO_ORCHESTRATOR:
                 return chalk_1.default.green;
-            case MessageDirection.ORCHESTRATOR_TO_CLIENT:
+            case common_1.MessageDirection.ORCHESTRATOR_TO_CLIENT:
                 return chalk_1.default.magenta;
-            case MessageDirection.SERVICE_TO_ORCHESTRATOR:
+            case common_1.MessageDirection.SERVICE_TO_ORCHESTRATOR:
                 return chalk_1.default.yellow;
-            case MessageDirection.ORCHESTRATOR_TO_SERVICE:
+            case common_1.MessageDirection.ORCHESTRATOR_TO_SERVICE:
                 return chalk_1.default.yellowBright;
-            case MessageDirection.AGENT_TO_AGENT:
+            case common_1.MessageDirection.AGENT_TO_AGENT:
                 return chalk_1.default.cyanBright;
-            case MessageDirection.MCP:
+            case common_1.MessageDirection.MCP:
                 return chalk_1.default.redBright;
-            case MessageDirection.INTERNAL:
+            case common_1.MessageDirection.INTERNAL:
                 return chalk_1.default.gray;
-            case MessageDirection.SYSTEM:
+            case common_1.MessageDirection.SYSTEM:
                 return chalk_1.default.greenBright;
             default:
                 return chalk_1.default.white;
@@ -72,13 +55,13 @@ class Logger {
     }
     getLogLevelColor(level) {
         switch (level) {
-            case LogLevel.ERROR:
+            case common_1.LogLevel.ERROR:
                 return chalk_1.default.red;
-            case LogLevel.WARN:
+            case common_1.LogLevel.WARN:
                 return chalk_1.default.yellow;
-            case LogLevel.INFO:
+            case common_1.LogLevel.INFO:
                 return chalk_1.default.blue;
-            case LogLevel.DEBUG:
+            case common_1.LogLevel.DEBUG:
                 return chalk_1.default.gray;
             default:
                 return chalk_1.default.white;
@@ -104,12 +87,12 @@ class Logger {
         const levelFormatted = this.formatLogLevel(level);
         let entityInfo = '';
         if (entityId) {
-            entityInfo = chalk_1.default.dim(`[${entityId}]`);
+            entityInfo = chalk_1.default.magenta(`[${entityId}]`);
         }
         const logMessage = `${directionFormatted} ${levelFormatted} ${entityInfo} ${message}`;
         console.log(logMessage);
         if (data) {
-            if (this.logLevel === LogLevel.DEBUG) {
+            if (this.logLevel === common_1.LogLevel.DEBUG) {
                 // Full detailed data in debug mode with gray formatting and better structure
                 console.log(chalk_1.default.gray('  ┌─ Data:'));
                 const formattedData = JSON.stringify(data, null, 2)
@@ -121,7 +104,7 @@ class Logger {
                     .join('\n');
                 console.log(formattedData);
             }
-            else if (this.logLevel === LogLevel.INFO) {
+            else if (this.logLevel === common_1.LogLevel.INFO) {
                 // Compact data display for info mode with gray formatting and visual separator
                 const compactData = JSON.stringify(data);
                 if (compactData.length > 100) {
@@ -138,50 +121,50 @@ class Logger {
     }
     // Convenience methods for different directions
     agentToOrchestrator(message, data, agentId) {
-        this.log(LogLevel.INFO, MessageDirection.AGENT_TO_ORCHESTRATOR, message, data, agentId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.AGENT_TO_ORCHESTRATOR, message, data, agentId);
     }
     orchestratorToAgent(message, data, agentId) {
-        this.log(LogLevel.INFO, MessageDirection.ORCHESTRATOR_TO_AGENT, message, data, agentId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.ORCHESTRATOR_TO_AGENT, message, data, agentId);
     }
     clientToOrchestrator(message, data, clientId) {
-        this.log(LogLevel.INFO, MessageDirection.CLIENT_TO_ORCHESTRATOR, message, data, clientId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.CLIENT_TO_ORCHESTRATOR, message, data, clientId);
     }
     orchestratorToClient(message, data, clientId) {
-        this.log(LogLevel.INFO, MessageDirection.ORCHESTRATOR_TO_CLIENT, message, data, clientId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.ORCHESTRATOR_TO_CLIENT, message, data, clientId);
     }
     serviceToOrchestrator(message, data, serviceId) {
-        this.log(LogLevel.INFO, MessageDirection.SERVICE_TO_ORCHESTRATOR, message, data, serviceId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.SERVICE_TO_ORCHESTRATOR, message, data, serviceId);
     }
     orchestratorToService(message, data, serviceId) {
-        this.log(LogLevel.INFO, MessageDirection.ORCHESTRATOR_TO_SERVICE, message, data, serviceId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.ORCHESTRATOR_TO_SERVICE, message, data, serviceId);
     }
     agentToAgent(message, data, fromAgentId, toAgentId) {
         const entityId = fromAgentId && toAgentId ? `${fromAgentId}->${toAgentId}` : fromAgentId || toAgentId;
-        this.log(LogLevel.INFO, MessageDirection.AGENT_TO_AGENT, message, data, entityId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.AGENT_TO_AGENT, message, data, entityId);
     }
     mcp(message, data, serverId) {
-        this.log(LogLevel.INFO, MessageDirection.MCP, message, data, serverId);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.MCP, message, data, serverId);
     }
     internal(message, data) {
-        this.log(LogLevel.INFO, MessageDirection.INTERNAL, message, data);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.INTERNAL, message, data);
     }
     system(message, data) {
-        this.log(LogLevel.INFO, MessageDirection.SYSTEM, message, data);
+        this.log(common_1.LogLevel.INFO, common_1.MessageDirection.SYSTEM, message, data);
     }
     error(direction, message, error, entityId) {
-        this.log(LogLevel.ERROR, direction, message, error, entityId);
+        this.log(common_1.LogLevel.ERROR, direction, message, error, entityId);
     }
     warn(direction, message, data, entityId) {
-        this.log(LogLevel.WARN, direction, message, data, entityId);
+        this.log(common_1.LogLevel.WARN, direction, message, data, entityId);
     }
     debug(direction, message, data, entityId) {
-        this.log(LogLevel.DEBUG, direction, message, data, entityId);
+        this.log(common_1.LogLevel.DEBUG, direction, message, data, entityId);
     }
     // Connection status logging
     connection(direction, status, entityId) {
         const statusColor = status === 'connected' ? chalk_1.default.green : chalk_1.default.red;
         const message = `${statusColor(status.toUpperCase())} - ${entityId}`;
-        this.log(LogLevel.INFO, direction, message, undefined, entityId);
+        this.log(common_1.LogLevel.INFO, direction, message, undefined, entityId);
     }
     // Task flow logging
     taskFlow(direction, action, taskId, fromEntity, toEntity) {
@@ -192,12 +175,12 @@ class Logger {
         else if (fromEntity || toEntity) {
             entityInfo = `${fromEntity || toEntity}:${taskId}`;
         }
-        this.log(LogLevel.INFO, direction, `Task ${action}`, undefined, entityInfo);
+        this.log(common_1.LogLevel.INFO, direction, `Task ${action}`, undefined, entityInfo);
     }
     // Message type logging
     messageType(direction, messageType, entityId, additionalInfo) {
         const message = `Message: ${chalk_1.default.bold(messageType)}${additionalInfo ? ` - ${additionalInfo}` : ''}`;
-        this.log(LogLevel.INFO, direction, message, undefined, entityId);
+        this.log(common_1.LogLevel.INFO, direction, message, undefined, entityId);
     }
 }
 exports.Logger = Logger;

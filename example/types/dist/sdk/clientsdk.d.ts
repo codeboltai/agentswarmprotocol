@@ -34,9 +34,9 @@ export interface ClientSDKMessage {
     [key: string]: unknown;
 }
 /**
- * Agent information in the client SDK
+ * Agent information in the client SDK (simplified version of Agent)
  */
-export interface AgentInfo {
+export interface ClientSDKAgentInfo {
     id: string;
     name: string;
     capabilities: string[];
@@ -105,8 +105,8 @@ export interface SwarmClientSDKInterface {
     sendRequest(message: Partial<BaseMessage>, options?: {
         timeout?: number;
     }): Promise<unknown>;
-    getAgents(filters?: Record<string, unknown>): Promise<AgentInfo[]>;
-    getAgentInfo(agentId: string): Promise<AgentInfo>;
+    getAgents(filters?: Record<string, unknown>): Promise<ClientSDKAgentInfo[]>;
+    getAgentInfo(agentId: string): Promise<ClientSDKAgentInfo>;
     getAgentCapabilities(agentId: string): Promise<string[]>;
     sendTask(agentName: string, taskData: Record<string, unknown>, options?: {
         waitForResult?: boolean;

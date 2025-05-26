@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { PendingResponse } from './types';
+import { AgentPendingResponse } from './types';
 export declare class WebSocketManager extends EventEmitter {
     private orchestratorUrl;
     private autoReconnect;
@@ -58,7 +58,7 @@ export declare class WebSocketManager extends EventEmitter {
     /**
      * Get the map of pending responses
      */
-    getPendingResponses(): Map<string, PendingResponse>;
+    getPendingResponses(): Map<string, AgentPendingResponse>;
     /**
      * Handle response for a pending request
      */

@@ -1,14 +1,14 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { BaseMessage } from '@agentswarmprotocol/types/common';
-import { PendingResponse } from './types';
+import { AgentPendingResponse } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 export class WebSocketManager extends EventEmitter {
   private ws: WebSocket | null = null;
   private connected: boolean = false;
   private connecting: boolean = false;
-  private pendingResponses: Map<string, PendingResponse> = new Map();
+  private pendingResponses: Map<string, AgentPendingResponse> = new Map();
   private defaultTimeout: number = 30000;
 
   constructor(
@@ -348,7 +348,7 @@ export class WebSocketManager extends EventEmitter {
   /**
    * Get the map of pending responses
    */
-  getPendingResponses(): Map<string, PendingResponse> {
+  getPendingResponses(): Map<string, AgentPendingResponse> {
     return this.pendingResponses;
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@agentswarmprotocol/orchestrator",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Orchestration layer for the Agent Swarm Protocol",
   "main": "dist/index.js",
   "scripts": {

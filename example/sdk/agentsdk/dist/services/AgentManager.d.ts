@@ -1,6 +1,6 @@
 import { AgentStatus } from '@agentswarmprotocol/types/common';
 import { WebSocketManager } from '../core/WebSocketManager';
-import { TaskHandler as TaskHandlerType } from '../core/types';
+import { AgentTaskHandler as TaskHandlerType } from '../core/types';
 export declare class AgentManager {
     private webSocketManager;
     private agentId;

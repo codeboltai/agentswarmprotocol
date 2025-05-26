@@ -5,7 +5,7 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
-import { AgentConfig, MessageHandler, TaskHandler, TaskExecuteMessage } from './core/types';
+import { AgentConfig, MessageHandler, AgentTaskHandler, TaskExecuteMessage } from './core/types';
 import { WebSocketManager } from './core/WebSocketManager';
 import { TaskHandler as TaskHandlerClass } from './handlers/TaskHandler';
 import { AgentManager } from './services/AgentManager';
@@ -323,7 +323,7 @@ class SwarmAgentSDK extends EventEmitter {
    * Register a task handler that will be called whenever a task is received
    * @param handler Task handler function
    */
-  onTask(handler: TaskHandler): SwarmAgentSDK {
+  onTask(handler: AgentTaskHandler): SwarmAgentSDK {
     this.taskHandler.onTask(handler);
     return this;
   }

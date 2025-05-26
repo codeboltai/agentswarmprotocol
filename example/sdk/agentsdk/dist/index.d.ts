@@ -3,7 +3,7 @@
  */
 import { EventEmitter } from 'events';
 import { BaseMessage, AgentStatus } from '@agentswarmprotocol/types/common';
-import { AgentConfig, TaskHandler } from './core/types';
+import { AgentConfig, AgentTaskHandler } from './core/types';
 declare class SwarmAgentSDK extends EventEmitter {
     protected agentId: string;
     protected name: string;
@@ -66,7 +66,7 @@ declare class SwarmAgentSDK extends EventEmitter {
      * Register a task handler that will be called whenever a task is received
      * @param handler Task handler function
      */
-    onTask(handler: TaskHandler): SwarmAgentSDK;
+    onTask(handler: AgentTaskHandler): SwarmAgentSDK;
     /**
      * Send a message during task execution
      * @param taskId ID of the task being executed

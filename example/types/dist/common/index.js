@@ -17,5 +17,9 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+// Export client types
+__exportStar(require("./client"), exports);
+// Export logger types
+__exportStar(require("./logger"), exports);
 // Export orchestrator specific types
 __exportStar(require("./orchestrator"), exports);
