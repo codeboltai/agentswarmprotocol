@@ -24,4 +24,4 @@ yarn-error.log*
 .wrangler
 .dev.vars*
 
-orchestrator-config.json
+example/configs/orchestrator-config.json
