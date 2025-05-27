@@ -28,3 +28,218 @@
   --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+/* Custom Sidebar Styling */
+.theme-doc-sidebar-container {
+  border-right: 1px solid var(--ifm-color-emphasis-200);
+}
+
+/* Sidebar menu styling */
+.theme-doc-sidebar-menu {
+  padding: 1rem 0;
+}
+
+/* General menu link styling for consistent sizing */
+.menu__link {
+  min-height: auto !important;
+  line-height: 1.4;
+}
+
+/* Main category headers styling */
+.menu__list .menu__list-item > .menu__link {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ifm-color-emphasis-800);
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0;
+  min-height: auto;
+}
+
+/* Collapsible menu items styling */
+.menu__list-item-collapsible > .menu__link {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ifm-color-emphasis-800);
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.25rem;
+  border-radius: 0;
+  min-height: auto;
+}
+
+/* Remove hover effect on collapsible category titles */
+.menu__list-item-collapsible > .menu__link:hover {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-800) !important;
+}
+
+/* Remove active/selected state on collapsible category titles */
+.menu__list-item-collapsible > .menu__link--active {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-800) !important;
+  border-left: none !important;
+  padding-left: 1rem !important;
+  font-weight: 600 !important;
+}
+
+.menu__list-item-collapsible .menu__link--active {
+  border-radius: 0;
+}
+
+/* Category items styling */
+.menu__list .menu__list-item .menu__list-item > .menu__link {
+  font-weight: 400;
+  font-size: 0.875rem;
+  color: var(--ifm-color-emphasis-700);
+  padding: 0.4rem 1rem 0.4rem 2rem;
+  margin-bottom: 0.125rem;
+  border-radius: 0;
+  min-height: auto;
+}
+
+/* Active nested item styling */
+.menu__list .menu__list-item .menu__list-item > .menu__link--active {
+  padding-left: 2rem !important;
+  border-left: none !important;
+  position: relative;
+  min-height: auto;
+}
+
+/* Add border positioned at the same location as vertical line for nested items */
+.menu__list .menu__list-item .menu__list-item > .menu__link--active::after {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: var(--ifm-color-primary);
+  z-index: 3;
+}
+
+/* Sub-category items styling */
+.menu__list .menu__list-item .menu__list-item .menu__list-item > .menu__link {
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--ifm-color-emphasis-600);
+  padding: 0.35rem 1rem 0.35rem 2.5rem;
+  margin-bottom: 0.125rem;
+  min-height: auto;
+}
+
+/* Active sub-nested item styling */
+.menu__list .menu__list-item .menu__list-item .menu__list-item > .menu__link--active {
+  padding-left: 2.5rem !important;
+  border-left: none !important;
+  position: relative;
+  min-height: auto;
+}
+
+/* Add border positioned at the same location as vertical line for sub-nested items */
+.menu__list .menu__list-item .menu__list-item .menu__list-item > .menu__link--active::after {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: var(--ifm-color-primary);
+  z-index: 3;
+}
+
+/* Active link styling */
+.menu__link--active {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-900) !important;
+  font-weight: 600 !important;
+  border-left: 3px solid var(--ifm-color-primary) !important;
+  padding-left: calc(1rem - 3px) !important;
+  min-height: auto !important;
+}
+
+/* Hover effects */
+.menu__link:hover {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-900);
+  text-decoration: none;
+}
+
+/* Category caret styling */
+.menu__caret {
+  margin-right: 0.5rem;
+}
+
+/* Spacing between major sections */
+.menu__list > .menu__list-item {
+  margin-bottom: 0.5rem;
+}
+
+/* Nested list styling */
+.menu__list .menu__list {
+  padding-left: 0;
+  margin-top: 0.25rem;
+  position: relative;
+}
+
+/* Add vertical connecting line for nested items */
+.menu__list .menu__list::before {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--ifm-color-emphasis-300);
+  z-index: 1;
+}
+
+/* Position nested items relative for the active border */
+.menu__list .menu__list-item .menu__list-item > .menu__link {
+  position: relative;
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] .menu__list .menu__list-item > .menu__link {
+  color: var(--ifm-color-emphasis-800);
+}
+
+[data-theme='dark'] .menu__list .menu__list-item .menu__list-item > .menu__link {
+  color: var(--ifm-color-emphasis-700);
+}
+
+[data-theme='dark'] .menu__list .menu__list-item .menu__list-item .menu__list-item > .menu__link {
+  color: var(--ifm-color-emphasis-600);
+}
+
+[data-theme='dark'] .menu__link--active {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-900) !important;
+  border-left: 3px solid var(--ifm-color-primary) !important;
+}
+
+[data-theme='dark'] .menu__link:hover {
+  background-color: transparent;
+  color: var(--ifm-color-emphasis-100);
+}
+
+/* Dark mode: Remove hover effect on collapsible category titles */
+[data-theme='dark'] .menu__list-item-collapsible > .menu__link:hover {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-800) !important;
+}
+
+/* Dark mode: Remove active/selected state on collapsible category titles */
+[data-theme='dark'] .menu__list-item-collapsible > .menu__link--active {
+  background-color: transparent !important;
+  color: var(--ifm-color-emphasis-800) !important;
+  border-left: none !important;
+  padding-left: 1rem !important;
+  font-weight: 600 !important;
+}
+
+/* Dark mode: Connecting lines */
+[data-theme='dark'] .menu__list .menu__list::before {
+  background-color: var(--ifm-color-emphasis-400);
+}
+
+
